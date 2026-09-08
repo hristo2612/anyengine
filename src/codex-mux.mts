@@ -1,3 +1,8 @@
+import {
+  appendBridgeInstructions,
+  type BridgeCatalogModel,
+  providerFor,
+} from './bridge-instructions.mjs'
 import type { CodexUpstream } from './codex-upstream.mjs'
 import type { SessionStore } from './store.mjs'
 import type { JsonRpcRequest, JsonRpcResponse, RpcPeer, WireMessage } from './types.mjs'
@@ -36,6 +41,10 @@ export interface NativeCodexMuxOptions {
   // peer it is delivered to. The bridge (bridge-control.mts) tracks upstream
   // turns from here.
   onNotification?: (message: { method: string; params: unknown }) => void
+  // Catalog for the cross-engine standing instructions appended to
+  // `developerInstructions` on every thread/start|resume|fork the child
+  // owns (docs/guide/bridge.md); null = injection off.
+  bridgeCatalog?: () => BridgeCatalogModel[] | null
 }
 
 export type Route = 'local' | 'upstream'
@@ -56,6 +65,10 @@ const LOCAL_GLOBAL_METHODS = new Set(['mock/experimentalMethod'])
 const RESERVE_MODEL_IDS = new Set(['gpt-reserve', 'gpt-5.6-luna'])
 const RATE_LIMIT_CACHE_MS = 30_000
 const THREAD_ID_KEYS = ['threadId', 'thread_id'] as const
+// Lifecycle requests whose params carry developerInstructions (v2 schema:
+// ThreadStartParams / ThreadResumeParams / ThreadForkParams; turn/start does
+// not).
+const INSTRUCTION_LIFECYCLE_METHODS = new Set(['thread/start', 'thread/resume', 'thread/fork'])
 
 export function isClaudeModelId(model: string): boolean {
   const id = model.trim().toLowerCase()
@@ -82,6 +95,10 @@ export class NativeCodexMux {
   private readonly upstream: CodexUpstream
   private readonly local: MuxLocalServer
   private readonly onNotification: NativeCodexMuxOptions['onNotification'] | null
+  private readonly bridgeCatalog: NativeCodexMuxOptions['bridgeCatalog'] | null
+  // The child's model catalog as last seen (model/list); feeds the bridge
+  // instructions and the bridge's alias table for gpt-* ids.
+  private upstreamModelCache: BridgeCatalogModel[] = []
   private readonly peers = new Map<string, RpcPeer>()
   private readonly peerByThread = new Map<string, RpcPeer>()
   // Child-owned threads with a turn in flight (turn/started .. turn/completed)
@@ -96,6 +113,11 @@ export class NativeCodexMux {
     this.upstream = options.upstream
     this.local = options.local
     this.onNotification = options.onNotification ?? null
+    this.bridgeCatalog = options.bridgeCatalog ?? null
+  }
+
+  upstreamModels(): BridgeCatalogModel[] {
+    return this.upstreamModelCache
   }
 
   get active(): boolean {
@@ -253,8 +275,8 @@ export class NativeCodexMux {
     if (route === 'local') return false
     const threadId = threadIdOf(params)
     if (threadId) this.peerByThread.set(threadId, peer)
-    if (method === 'thread/start' || method === 'thread/resume' || method === 'thread/fork') {
-      this.forwardThreadLifecycle(peer, request)
+    if (INSTRUCTION_LIFECYCLE_METHODS.has(method)) {
+      this.forwardThreadLifecycle(peer, this.withBridgeInstructions(request))
       return true
     }
     this.upstream.forwardRequest(peer, request.id, method, request.params)
@@ -332,6 +354,8 @@ export class NativeCodexMux {
       })
       return
     }
+    if (upstreamResult != null && this.upstreamModelCache.length === 0)
+      void this.refreshUpstreamModels()
     const merged = { ...asRecord(localResult), ...asRecord(upstreamResult) }
     debugLog('codex.mux.initialize', {
       peerId: peer.id,
@@ -339,6 +363,45 @@ export class NativeCodexMux {
       userAgent: merged.userAgent ?? null,
     })
     peer.send({ jsonrpc: '2.0', id: request.id, result: merged })
+  }
+
+  // The native child has no per-turn system prompt hook; its thread
+  // lifecycle params carry `developerInstructions`, so the standing
+  // cross-engine instructions ride there (appended after the desktop's own).
+  private withBridgeInstructions(request: JsonRpcRequest): JsonRpcRequest {
+    const catalog = this.bridgeCatalog?.() ?? null
+    if (!catalog) return request
+    const params = asRecord(request.params)
+    const existing =
+      typeof params.developerInstructions === 'string' ? params.developerInstructions : null
+    return {
+      ...request,
+      params: { ...params, developerInstructions: appendBridgeInstructions(existing, catalog) },
+    }
+  }
+
+  private rememberUpstreamModels(result: Record<string, unknown> | null): void {
+    const data = Array.isArray(result?.data) ? result.data : []
+    const models = data
+      .map((entry) => asRecord(entry))
+      .filter((entry) => typeof entry.id === 'string' && entry.hidden !== true)
+      .map((entry) => ({
+        id: String(entry.id),
+        displayName: typeof entry.displayName === 'string' ? entry.displayName : String(entry.id),
+        provider: providerFor(String(entry.id)),
+        isDefault: entry.isDefault === true,
+      }))
+    if (models.length > 0) this.upstreamModelCache = models
+  }
+
+  private async refreshUpstreamModels(): Promise<void> {
+    try {
+      this.rememberUpstreamModels(asRecord(await this.upstream.request('model/list', {})))
+    } catch (error) {
+      debugLog('codex.mux.modelListRefreshFailed', {
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   private forwardThreadLifecycle(peer: RpcPeer, request: JsonRpcRequest): void {
@@ -501,6 +564,7 @@ export class NativeCodexMux {
       .map((entry) => asRecord(entry))
       .filter((entry) => typeof entry.id === 'string' && !isCodexOpenAiModel(entry.id))
     if (!upstreamResult) return { data: claudeEntries, nextCursor: null }
+    this.rememberUpstreamModels(upstreamResult)
     let upstreamData = Array.isArray(upstreamResult.data) ? upstreamResult.data : []
     if (await this.shouldHideReserveModels()) {
       // The desktop enters "reserve mode" (composer locked to the reserve

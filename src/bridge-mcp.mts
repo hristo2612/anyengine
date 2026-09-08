@@ -7,6 +7,7 @@ import {
   BRIDGE_THREAD_HEADER,
   DEFAULT_WAIT_TIMEOUT_MS,
 } from './bridge-control.mjs'
+import { MODEL_ALIAS_TABLE } from './bridge-instructions.mjs'
 
 // `jinn_bridge`: the stdio MCP server every engine process gets
 // (`node dist/src/adapter.mjs bridge-mcp`, or scripts/bridge-mcp.mjs). It is
@@ -19,8 +20,7 @@ import {
 
 const PROTOCOL_VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18'])
 const LATEST_PROTOCOL = '2025-06-18'
-const MODEL_HINT =
-  'Model id or display name, e.g. "grok-4.6", "Claude Opus", "haiku", "gpt-5.6-sol"; list_models shows what is available.'
+const MODEL_HINT = `Which engine or model, as the user said it: "claude opus", "opus 5", "grok", "gpt", "grok-4.6", "Claude Sonnet", "gpt-5.6-sol". ${MODEL_ALIAS_TABLE} Unknown names are refused with the list of valid ids.`
 const TIMEOUT_PROP = {
   type: 'integer',
   description: `Milliseconds to wait for the turn (default ${DEFAULT_WAIT_TIMEOUT_MS}).`,
@@ -30,13 +30,12 @@ export const BRIDGE_TOOLS = [
   {
     name: 'list_models',
     description:
-      'List every model this adapter can run: OpenAI GPT (native Codex), Claude (Claude Code) and xAI Grok (Grok Build). Returns ids, display names and providers; any of them works as `model` in the other tools.',
+      'List the AI engines and models available right now: Claude (Claude Code), Grok (xAI Grok Build) and GPT (native Codex, when attached). Returns ids, display names and providers; call it only when unsure what exists, the other tools accept informal names directly.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'spawn_session',
-    description:
-      'Start a NEW top-level session on any model (it appears in the App sidebar) and run one turn with `prompt`. Waits for the reply by default and returns {threadId, status, text}. Continue it later with send_to_session / wait_session.',
+    description: `Start a new conversation on another AI engine (Claude, Grok, GPT) and send it a first message. Use when the user says "spawn a session with X", "ask X to ...", "hand this off to X", "delegate this to X". The session appears in the App sidebar; waits for the reply by default and returns {threadId, status, text}. Continue it with send_to_session. ${MODEL_ALIAS_TABLE}`,
     inputSchema: {
       type: 'object',
       required: ['model', 'prompt'],
@@ -56,8 +55,7 @@ export const BRIDGE_TOOLS = [
   },
   {
     name: 'spawn_subagents',
-    description:
-      "Run several tasks in PARALLEL as sub-agents of the calling thread, each on its own model, and return all results. They render as native sub-agents under the current thread in the App. Each task gets a fresh child session with the parent's working directory and approval policy.",
+    description: `Run several tasks in parallel on chosen engines (Claude, Grok, GPT) as sub-agents of the current thread and return every result. Use when the user says "spawn N sub-agents", "run this in parallel with 3 grok agents", "2 with grok and 2 with claude": one task per agent, each with its own model and prompt. They render as native sub-agents under the current thread and inherit its working directory and approval policy. ${MODEL_ALIAS_TABLE}`,
     inputSchema: {
       type: 'object',
       required: ['tasks'],
@@ -71,7 +69,10 @@ export const BRIDGE_TOOLS = [
             properties: {
               model: { type: 'string', description: MODEL_HINT },
               prompt: { type: 'string', description: 'The task for this sub-agent.' },
-              name: { type: 'string', description: 'Optional label shown in the App.' },
+              name: {
+                type: 'string',
+                description: 'Optional label shown in the App (e.g. "grok-1", "claude-2").',
+              },
             },
             additionalProperties: false,
           },
@@ -89,7 +90,7 @@ export const BRIDGE_TOOLS = [
   {
     name: 'send_to_session',
     description:
-      'Send another user message to an existing session (any thread id, from spawn_session or the App) and, by default, wait for its reply.',
+      'Continue a conversation you (or the user) already started on another engine: send a follow-up message to an existing session by thread id and, by default, wait for its reply.',
     inputSchema: {
       type: 'object',
       required: ['threadId', 'prompt'],
@@ -273,8 +274,7 @@ async function handleMcpMessage(
           protocolVersion: PROTOCOL_VERSIONS.has(requested) ? requested : LATEST_PROTOCOL,
           capabilities: { tools: {} },
           serverInfo: { name: 'jinn-bridge', version: '0.1.0' },
-          instructions:
-            'Cross-engine bridge: spawn sessions or parallel sub-agents on any model (GPT, Claude, Grok) from this thread. Prefer spawn_subagents for parallel work under the current thread.',
+          instructions: `Cross-engine bridge: start conversations or parallel sub-agents on the other AI engines (Claude, Grok, GPT) from this thread. When the user names an engine or says spawn / delegate / hand off / ask X, call these tools right away without asking for confirmation. spawn_subagents for parallel work, spawn_session for a standalone conversation. ${MODEL_ALIAS_TABLE}`,
         }
         break
       }

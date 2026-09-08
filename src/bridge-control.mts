@@ -5,17 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { type WebSocket, WebSocketServer } from 'ws'
+import { providerFor, resolveModelAlias } from './bridge-instructions.mjs'
 import type { Route } from './codex-mux.mjs'
 import type { JsonRpcResponse, RpcPeer, ThreadItem, WireMessage } from './types.mjs'
-import {
-  adapterHome,
-  debugLog,
-  ensureParent,
-  isCodexOpenAiModel,
-  newId,
-  socketPathLimit,
-  stableHash,
-} from './util.mjs'
+import { adapterHome, debugLog, ensureParent, newId, socketPathLimit, stableHash } from './util.mjs'
 
 // Cross-engine bridge, adapter side (docs/guide/bridge.md).
 //
@@ -32,6 +25,8 @@ import {
 //
 // Threads spawned here are ordinary threads: they show in the sidebar, can be
 // resumed by the desktop, and survive the bridge connection going away.
+
+export { providerFor } from './bridge-instructions.mjs'
 
 export const BRIDGE_SERVER_NAME = 'jinn_bridge'
 export const BRIDGE_ENV_SOCKET = 'CLAUDE_CODEX_BRIDGE_SOCKET'
@@ -492,30 +487,14 @@ class BridgeConnection {
     return this.models
   }
 
+  // Ids, display names and informal aliases ("claude opus", "grok", "gpt")
+  // all resolve against the live catalog (bridge-instructions.mts).
   private async resolveModel(requested: unknown): Promise<string> {
     const wanted = typeof requested === 'string' ? requested.trim() : ''
     if (!wanted) throw new Error('model is required')
     const models = await this.listModels()
-    const lower = wanted.toLowerCase()
-    const exact = models.find((m) => m.id.toLowerCase() === lower)
-    if (exact) return exact.id
-    const byName = models.find((m) => m.displayName.toLowerCase() === lower)
-    if (byName) return byName.id
-    const loose = lower.replace(/[\s_.-]+/g, '')
-    const fuzzy = models.filter((m) => {
-      const id = m.id.toLowerCase().replace(/[\s_.-]+/g, '')
-      const name = m.displayName.toLowerCase().replace(/[\s_.-]+/g, '')
-      return id === loose || name === loose || name.endsWith(loose) || id.startsWith(loose)
-    })
-    if (fuzzy.length === 1) return fuzzy[0]?.id ?? wanted
-    // Unknown ids still route (the mux sends unknown ids to the child), so
-    // only refuse when nothing in the catalog is close at all.
-    if (fuzzy.length === 0 && models.length > 0) {
-      throw new Error(
-        `unknown model "${wanted}"; available: ${models.map((m) => `${m.id} (${m.displayName})`).join(', ')}`,
-      )
-    }
-    throw new Error(`ambiguous model "${wanted}": ${fuzzy.map((m) => m.id).join(', ')}`)
+    if (models.length === 0) return wanted
+    return resolveModelAlias(wanted, models)
   }
 
   private caller(): BridgeThreadInfo | null {
@@ -852,12 +831,6 @@ interface SubagentResult {
 }
 
 // ---- helpers ------------------------------------------------------------
-
-export function providerFor(model: string): BridgeModel['provider'] {
-  if (isCodexOpenAiModel(model)) return 'openai'
-  if (/^grok/i.test(model)) return 'xai'
-  return 'anthropic'
-}
 
 export function nicknameFor(threadId: string): string {
   return `agent-${threadId.replace(/-/g, '').slice(0, 12)}`

@@ -101,6 +101,9 @@ async function handleRequest(message) {
         reasoningEffort: 'medium',
         serviceTier: null,
         instructionSources: [],
+        // Not part of the real answer: lets tests see what the adapter sent.
+        receivedDeveloperInstructions: params.developerInstructions ?? null,
+        receivedBaseInstructions: params.baseInstructions ?? null,
       })
     }
     case 'thread/resume':
@@ -115,6 +118,7 @@ async function handleRequest(message) {
         reasoningEffort: 'medium',
         serviceTier: null,
         instructionSources: [],
+        receivedDeveloperInstructions: params.developerInstructions ?? null,
       })
     case 'turn/start': {
       const threadId = params.threadId

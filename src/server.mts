@@ -90,6 +90,12 @@ import {
   nicknameFor,
   type ParentItemPhase,
 } from './bridge-control.mjs'
+import {
+  appendBridgeInstructions,
+  type BridgeCatalogModel,
+  bridgeInstructionsEnabled,
+  providerFor,
+} from './bridge-instructions.mjs'
 import { type MuxLocalServer, NativeCodexMux, routeForModel } from './codex-mux.mjs'
 import { CodexUpstream } from './codex-upstream.mjs'
 import type { SessionStore } from './store.mjs'
@@ -324,6 +330,7 @@ export class CodexClaudeAppServer {
       upstream,
       local,
       onNotification: (message) => this.bridge?.onNotification(message),
+      bridgeCatalog: () => this.bridgeCatalogForInstructions(),
     })
     this.mux = mux
     debugLog('codex.mux.attach', { binary: options.binary, args: options.args, eager: options.eager })
@@ -337,6 +344,37 @@ export class CodexClaudeAppServer {
 
   setBridge(bridge: BridgeControl | null): void {
     this.bridge = bridge
+  }
+
+  // Everything a thread can spawn through the bridge: the local Claude / Grok
+  // (and legacy codex-exec) entries plus the native child's catalog as last
+  // listed. Null when the bridge or its standing instructions are off.
+  bridgeCatalogForInstructions(): BridgeCatalogModel[] | null {
+    if (!this.bridge || !bridgeInstructionsEnabled()) return null
+    const seen = new Set<string>()
+    const catalog: BridgeCatalogModel[] = []
+    const upstream = this.mux?.active ? (this.mux.upstreamModels() ?? []) : []
+    for (const option of [...this.localModelOptions(), ...upstream]) {
+      if (seen.has(option.id)) continue
+      seen.add(option.id)
+      catalog.push({
+        id: option.id,
+        displayName: option.displayName,
+        provider: providerFor(option.id),
+        isDefault: option.isDefault === true,
+      })
+    }
+    return catalog
+  }
+
+  private localModelOptions(): Array<{ id: string; displayName: string; isDefault?: boolean }> {
+    const options = [...claudeModelOptions(), ...codexProxyModelOptions(), ...grokModelOptions()]
+    const defaultModel = this.configModel
+    return options.map((option) => ({
+      id: option.id,
+      displayName: option.displayName,
+      isDefault: option.id === defaultModel || option.isDefault === true,
+    }))
   }
 
   // What the cross-engine bridge (src/bridge-control.mts) borrows from the
@@ -2149,6 +2187,11 @@ export class CodexClaudeAppServer {
       })
     }
     const turnPurpose = params.outputSchema == null ? 'normal' : 'summary'
+    // Standing cross-engine instructions (docs/guide/bridge.md): Claude gets
+    // them via --append-system-prompt, Grok as the first-prompt prefix.
+    const bridgeCatalog = turnPurpose === 'summary' ? null : this.bridgeCatalogForInstructions()
+    if (bridgeCatalog)
+      systemPromptAddendum = appendBridgeInstructions(systemPromptAddendum, bridgeCatalog)
 
     const rawTurnModel = stringOr(params.model, thread.model)
     const isCodexThread = thread.runtimeBackend === 'codex' && process.env.CLAUDE_CODEX_MOCK !== '1'
