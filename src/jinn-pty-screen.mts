@@ -203,7 +203,6 @@ export function parseStartupPrompt(viewport: readonly string[]): StartupPromptAn
 // owns the screen. Claude Code's shortcut hint doubles as a version-stable
 // readiness marker.
 export function composerReady(viewport: readonly string[]): boolean {
-  if (parseStartupPrompt(viewport)) return false
   return (
     viewport.some((line) => /^\s*❯\s*$/.test(line)) ||
     viewport.some((line) => /\? for shortcuts/.test(line))

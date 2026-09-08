@@ -147,6 +147,9 @@ export class PtyHookServer {
 
 export interface PtySettingsOptions {
   threadId: string
+  // Unique per spawn so disposing a superseded PTY never removes the files a
+  // fresh respawn of the same thread is about to read.
+  fileStem: string
   relayScript: string
   nodeBinary: string
   // Seconds Claude Code waits for a hook command before killing it. PreToolUse
@@ -173,14 +176,14 @@ export function buildPtySettings(options: PtySettingsOptions): Record<string, un
 // private state dir and passed to the CLI as `--settings <file>`.
 export function writePtySettings(dir: string, options: PtySettingsOptions): string {
   mkdirSync(dir, { recursive: true, mode: 0o700 })
-  const file = join(dir, `${safeFileName(options.threadId)}.settings.json`)
+  const file = join(dir, `${safeFileName(options.fileStem)}.settings.json`)
   writeJsonFile(file, buildPtySettings(options))
   return file
 }
 
-export function writePtyMcpConfig(dir: string, threadId: string, mcpServers: unknown): string {
+export function writePtyMcpConfig(dir: string, fileStem: string, mcpServers: unknown): string {
   mkdirSync(dir, { recursive: true, mode: 0o700 })
-  const file = join(dir, `${safeFileName(threadId)}.mcp.json`)
+  const file = join(dir, `${safeFileName(fileStem)}.mcp.json`)
   const config =
     mcpServers && typeof mcpServers === 'object' && 'mcpServers' in (mcpServers as object)
       ? mcpServers

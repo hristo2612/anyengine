@@ -88,6 +88,7 @@ const IMMEDIATE_STOP_FAILURE_ERRORS = new Set([
 ])
 const STOP_FAILURE_GRACE_MS = 20_000
 const STARTUP_POLL_MS = 250
+const STARTUP_HOOK_GRACE_MS = 3000
 const PERMISSION_PROMPT_SETTLE_MS = 400
 const PERMISSION_PROMPT_VERIFY_MS = 1500
 const PERMISSION_PROMPT_MAX_ATTEMPTS = 3
@@ -109,6 +110,7 @@ interface PtySession {
   settingsPath: string
   mcpPath: string | null
   exited: boolean
+  disposed: boolean
   sessionStarted: boolean
   lastOutputAt: number
 }
@@ -146,6 +148,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   private readonly turns = new Map<string, ActiveTurn>()
   private readonly hooks: PtyHookServer
   private hooksStarted: Promise<number> | null = null
+  private spawnSeq = 0
   private stopped = false
 
   constructor(options: JinnPtyRuntimeOptions) {
@@ -289,14 +292,17 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   private async spawn(context: RuntimeTurnContext): Promise<PtySession> {
     repairNodePtySpawnHelper()
     const { spawn } = require('node-pty') as typeof import('node-pty')
+    this.spawnSeq += 1
+    const fileStem = `${context.threadId}-${this.spawnSeq}`
     const settingsPath = writePtySettings(this.options.stateDir, {
       threadId: context.threadId,
+      fileStem,
       relayScript: this.options.relayScript,
       nodeBinary: this.options.nodeBinary,
       hookTimeoutSec: this.options.hookTimeoutSec,
     })
     const mcpPath = context.mcpServers
-      ? writePtyMcpConfig(this.options.stateDir, context.threadId, context.mcpServers)
+      ? writePtyMcpConfig(this.options.stateDir, fileStem, context.mcpServers)
       : null
 
     let proxy: SsePtyProxy | null = null
@@ -349,6 +355,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
       settingsPath,
       mcpPath,
       exited: false,
+      disposed: false,
       sessionStarted: false,
       lastOutputAt: Date.now(),
     }
@@ -358,16 +365,27 @@ export class JinnPtyRuntime implements ClaudeRuntime {
     })
     proc.onExit((event) => {
       session.exited = true
-      debugLog('jinnPty.exit', { threadId: session.threadId, exitCode: event.exitCode })
       if (this.sessions.get(session.threadId) === session) this.sessions.delete(session.threadId)
-      this.disposeSession(session)
-      const turn = this.turns.get(session.threadId)
-      if (turn && turn.session === session && !turn.settled) {
-        void this.failTurn(
-          turn,
-          `claude process exited (code ${event.exitCode ?? 'unknown'}) before the turn completed`,
-        )
-      }
+      // Read the last screen lines before disposing: they are the only account
+      // of why the CLI died (auth error, bad flag, crash).
+      void session.screen
+        .viewport()
+        .catch(() => [] as string[])
+        .then((viewport) => {
+          const tail = viewport
+            .filter((line) => line.trim())
+            .slice(-6)
+            .join('\n')
+          debugLog('jinnPty.exit', { threadId: session.threadId, exitCode: event.exitCode, tail })
+          this.disposeSession(session)
+          const turn = this.turns.get(session.threadId)
+          if (turn && turn.session === session && !turn.settled) {
+            void this.failTurn(
+              turn,
+              `claude process exited (code ${event.exitCode ?? 'unknown'}) before the turn completed${tail ? `:\n${tail}` : ''}`,
+            )
+          }
+        })
     })
     this.sessions.set(context.threadId, session)
     return session
@@ -393,6 +411,8 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   }
 
   private disposeSession(session: PtySession): void {
+    if (session.disposed) return
+    session.disposed = true
     session.proxy?.stop()
     session.proxy = null
     session.screen.dispose()
@@ -438,19 +458,24 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   // Poll the screen after a cold spawn: answer startup dialogs (workspace
   // trust defaults to "No, exit"), then wait for the composer or SessionStart.
   private async awaitReady(session: PtySession, turn: ActiveTurn): Promise<void> {
-    const deadline = Date.now() + this.options.startupTimeoutMs
+    const startedAt = Date.now()
+    const deadline = startedAt + this.options.startupTimeoutMs
     let answered = false
     while (Date.now() < deadline && !turn.settled && !session.exited) {
       const viewport = await session.screen.viewport()
-      const dialog = parseStartupPrompt(viewport)
-      if (dialog && !answered) {
+      // The answered dialog may linger in scrollback; only answer it once.
+      const dialog = answered ? null : parseStartupPrompt(viewport)
+      if (dialog) {
         debugLog('jinnPty.startupPrompt', { threadId: session.threadId, label: dialog.label })
         for (const key of dialog.keystrokes) session.proc.write(key)
         answered = true
         await delay(STARTUP_POLL_MS * 2)
         continue
       }
-      if (!dialog && (session.sessionStarted || composerReady(viewport))) return
+      if (composerReady(viewport)) return
+      // SessionStart alone is accepted only after a grace period, since a
+      // startup dialog can render after the hook fires.
+      if (session.sessionStarted && Date.now() - startedAt > STARTUP_HOOK_GRACE_MS) return
       await delay(STARTUP_POLL_MS)
     }
     if (!turn.settled && !session.exited) {
