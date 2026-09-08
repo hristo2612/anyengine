@@ -111,9 +111,120 @@ function showDialog(lines, options, cursor, onSelect) {
   dialog.render = render
 }
 
+// Background Task sub-agents as Claude Code 2.1.x runs them: PostToolUse
+// answers `async_launched` at once, SubagentStop fires when each agent stops,
+// and the result reaches the main agent as an injected <task-notification>
+// prompt (UserPromptSubmit) when it is idle, or silently mid-turn (only the
+// transcript shows it). Variants, chosen by words in the prompt:
+//   ASYNC          idle-time injection, one notification per agent
+//   ASYNC_INLINE   both results consumed mid-turn before the first Stop
+//   ASYNC_LOST     agent B never stops (exercises the runtime's timeout)
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function taskNotification(agent) {
+  return [
+    '<task-notification>',
+    `<task-id>${agent.agentId}</task-id>`,
+    `<tool-use-id>${agent.toolUseId}</tool-use-id>`,
+    `<output-file>${agent.outputFile}</output-file>`,
+    '<status>completed</status>',
+    `<summary>Agent "${agent.description}" finished</summary>`,
+    `<result>${agent.word}</result>`,
+    '</task-notification>',
+  ].join('\n')
+}
+
+async function launchAsyncAgent(word) {
+  const agent = {
+    word,
+    agentId: `a${randomUUID().replace(/-/g, '').slice(0, 16)}`,
+    toolUseId: `toolu_${randomUUID().slice(0, 8)}`,
+    description: `Reply ${word}`,
+    outputFile: path.join(transcriptDir, `${word}.output`),
+  }
+  const input = { description: agent.description, prompt: `Reply with exactly: ${word}` }
+  await fire('PreToolUse', { tool_name: 'Agent', tool_input: input, tool_use_id: agent.toolUseId })
+  write(`\r\n⏺ Agent(${agent.description})\r\n  ⎿  Running in the background\r\n`)
+  await fire('PostToolUse', {
+    tool_name: 'Agent',
+    tool_input: input,
+    tool_use_id: agent.toolUseId,
+    tool_response: {
+      isAsync: true,
+      status: 'async_launched',
+      agentId: agent.agentId,
+      description: agent.description,
+      resolvedModel: 'fake',
+      prompt: input.prompt,
+      outputFile: agent.outputFile,
+      canReadOutputFile: true,
+    },
+  })
+  await fire('SubagentStart', { agent_id: agent.agentId, agent_type: 'general-purpose' })
+  return agent
+}
+
+async function stopAsyncAgent(agent) {
+  await fire('SubagentStop', {
+    agent_id: agent.agentId,
+    agent_type: 'general-purpose',
+    agent_transcript_path: path.join(transcriptDir, `agent-${agent.agentId}.jsonl`),
+    last_assistant_message: agent.word,
+    stop_hook_active: false,
+  })
+}
+
+// Idle-time delivery: the CLI submits the notification as a prompt.
+async function injectNotification(agent, answer) {
+  if (interrupted) return
+  const prompt = taskNotification(agent)
+  fs.appendFileSync(
+    transcriptPath,
+    `${JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: prompt } })}\n`,
+  )
+  await fire('UserPromptSubmit', { prompt, prompt_id: randomUUID() })
+  await reply(answer)
+}
+
+async function asyncSubagents(prompt) {
+  const a = await launchAsyncAgent('ALPHA')
+  const b = await launchAsyncAgent('BRAVO')
+  if (prompt.includes('ASYNC_INLINE')) {
+    await stopAsyncAgent(a)
+    await stopAsyncAgent(b)
+    fs.appendFileSync(
+      transcriptPath,
+      `${JSON.stringify({
+        type: 'user',
+        timestamp: new Date().toISOString(),
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: `${taskNotification(a)}\n${taskNotification(b)}` }],
+        },
+      })}\n`,
+    )
+    await reply('A=ALPHA B=BRAVO')
+    return
+  }
+  await reply('Both agents are running in the background.')
+  await sleep(300)
+  await stopAsyncAgent(a)
+  await sleep(300)
+  await injectNotification(a, 'Got ALPHA, waiting for BRAVO')
+  if (prompt.includes('ASYNC_LOST')) return
+  await sleep(300)
+  await stopAsyncAgent(b)
+  await sleep(300)
+  await injectNotification(b, 'A=ALPHA B=BRAVO')
+}
+
 async function submit(prompt) {
   const promptId = randomUUID()
   await fire('UserPromptSubmit', { prompt, prompt_id: promptId })
+  if (prompt.includes('ASYNC')) {
+    await asyncSubagents(prompt)
+    return
+  }
   const echo = /echo (\S+)/.exec(prompt)
   if (prompt.includes('SAFETY')) {
     const toolUseId = `toolu_${randomUUID().slice(0, 8)}`

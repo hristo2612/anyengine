@@ -9,15 +9,18 @@ import {
   CompactionStreamGate,
   MAIN_AGENT_SENTINEL,
   SsePtyProxy,
+  type SseStreamInfo,
   type StreamDelta,
   sseEventToDeltas,
 } from '../src/jinn-pty-proxy.mjs'
 import {
+  asyncLaunch,
   buildInteractiveArgs,
   isNativeClaudeCommand,
   JinnPtyRuntime,
   type JinnPtyRuntimeOptions,
   shapeToolResult,
+  streamIsCurrent,
 } from '../src/jinn-pty-runtime.mjs'
 import {
   chooseApproval,
@@ -28,7 +31,9 @@ import {
 } from '../src/jinn-pty-screen.mjs'
 import {
   lastAssistantTextFromTranscript,
+  parseTaskNotifications,
   sanitizeAssistantText,
+  taskNotificationsFromTranscript,
 } from '../src/jinn-pty-transcript.mjs'
 import { resolveRuntimeConfig } from '../src/runtime-config.mjs'
 import type { PermissionDecision, RuntimeEvent, RuntimeTurnContext } from '../src/types.mjs'
@@ -93,6 +98,7 @@ async function harness(
     cols: 100,
     rows: 30,
     turnTimeoutMs: 20_000,
+    asyncSubagentTimeoutMs: 60_000,
     startupTimeoutMs: 10_000,
     streamProxy: false,
     extraArgs: [],
@@ -369,9 +375,22 @@ test('sse proxy forwards requests untouched and tees only sentinel streams', asy
   await once(upstream, 'listening')
   const upstreamPort = (upstream.address() as { port: number }).port
   const events: string[] = []
-  const proxy = new SsePtyProxy('t', (event) => events.push(String(event.type)), {
-    upstream: { hostname: '127.0.0.1', port: upstreamPort, protocol: 'http:' },
-  })
+  const streams: SseStreamInfo[] = []
+  let tagCalls = 0
+  const proxy = new SsePtyProxy(
+    't',
+    (event, stream) => {
+      events.push(String(event.type))
+      streams.push(stream)
+    },
+    {
+      upstream: { hostname: '127.0.0.1', port: upstreamPort, protocol: 'http:' },
+      tagStream: () => {
+        tagCalls += 1
+        return { turnId: 'turn-1', acceptedAt: 5 }
+      },
+    },
+  )
   const port = await proxy.start()
   const post = async (body: unknown) => {
     const response = await fetch(`http://127.0.0.1:${port}/v1/messages`, {
@@ -386,6 +405,7 @@ test('sse proxy forwards requests untouched and tees only sentinel streams', asy
     })
     return response.text()
   }
+  const before = Date.now()
   const raw = await post({
     tools: [{ name: 'Bash' }],
     system: [{ type: 'text', text: `base ${MAIN_AGENT_SENTINEL}` }],
@@ -398,6 +418,12 @@ test('sse proxy forwards requests untouched and tees only sentinel streams', asy
     'content_block_delta',
     'message_stop',
   ])
+  // Every event of one request carries the same start-time/tag snapshot,
+  // taken once when the request reached the proxy.
+  assert.equal(tagCalls, 1)
+  assert.equal(new Set(streams).size, 1)
+  assert.ok(streams[0] && streams[0].startedAt >= before && streams[0].startedAt <= Date.now())
+  assert.deepEqual(streams[0]?.tag, { turnId: 'turn-1', acceptedAt: 5 })
   assert.equal(seenHeaders[0]?.authorization, 'Bearer test-token')
   assert.equal(seenHeaders[0]?.['anthropic-beta'], 'x')
   assert.equal(seenHeaders[0]?.['accept-encoding'], undefined)
@@ -408,6 +434,7 @@ test('sse proxy forwards requests untouched and tees only sentinel streams', asy
   assert.deepEqual(events, [], 'non-sentinel requests are not teed')
   await post({ system: MAIN_AGENT_SENTINEL })
   assert.deepEqual(events, [], 'tool-less requests are not teed')
+  assert.equal(tagCalls, 1, "untee'd requests are not tagged")
   proxy.stop()
   upstream.close()
 })
@@ -575,6 +602,168 @@ test('jinn-pty runtime: a stale --resume id falls back to a fresh session', asyn
     const spawns = (await readFile(h.argsFile, 'utf8')).trim().split('\n')
     assert.equal(spawns.length, 2, 'spawned twice: resume attempt, then fresh')
     assert.ok(!JSON.parse(spawns[1] ?? '[]').includes('--resume'), 'second spawn has no --resume')
+  } finally {
+    await h.close()
+  }
+})
+
+test("stream gate: only requests that started inside the accepted prompt are this turn's", () => {
+  const stream = (startedAt: number, tag: unknown): SseStreamInfo => ({ startedAt, tag })
+  const t1 = { turnId: 'turn-1', acceptedAt: 1000 }
+  assert.equal(streamIsCurrent(stream(1001, t1), 'turn-1', 1000), true)
+  assert.equal(streamIsCurrent(stream(1000, t1), 'turn-1', 1000), true, 'same tick passes')
+  // The post-Stop follow-up-suggestion request: started before the next
+  // prompt was accepted, tagged with a null / older acceptance.
+  assert.equal(
+    streamIsCurrent(stream(999, { turnId: 'turn-1', acceptedAt: null }), 'turn-1', 1000),
+    false,
+  )
+  assert.equal(
+    streamIsCurrent(stream(1500, { turnId: 'turn-1', acceptedAt: 900 }), 'turn-1', 1000),
+    false,
+  )
+  assert.equal(streamIsCurrent(stream(999, t1), 'turn-1', 1000), false, 'started before acceptance')
+  // No turn was active when the request started.
+  assert.equal(streamIsCurrent(stream(1001, null), 'turn-1', 1000), false)
+  assert.equal(streamIsCurrent(stream(1001, undefined), 'turn-1', 1000), false)
+  // A different turn, or the turn's acceptance has since been reset by a held Stop.
+  assert.equal(streamIsCurrent(stream(1001, t1), 'turn-2', 1000), false)
+  assert.equal(streamIsCurrent(stream(1001, t1), 'turn-1', null), false)
+  assert.equal(streamIsCurrent(stream(1001, t1), 'turn-1', 2000), false)
+
+  assert.deepEqual(
+    asyncLaunch('Agent', {
+      isAsync: true,
+      status: 'async_launched',
+      agentId: 'a1',
+      description: 'd',
+    }),
+    { agentId: 'a1', description: 'd' },
+  )
+  assert.deepEqual(asyncLaunch('Task', { status: 'async_launched', agentId: 'a2' }), {
+    agentId: 'a2',
+    description: '',
+  })
+  assert.equal(asyncLaunch('Agent', { status: 'completed', content: 'x' }), null)
+  assert.equal(asyncLaunch('Bash', { isAsync: true, agentId: 'a3' }), null)
+  assert.equal(asyncLaunch('Agent', { isAsync: true }), null, 'no agent id, nothing to track')
+})
+
+test('task notifications are parsed from prompts and transcripts', async () => {
+  const block = (id: string, result: string, status = 'completed') =>
+    `<task-notification>\n<task-id>${id}</task-id>\n<tool-use-id>toolu_1</tool-use-id>\n<status>${status}</status>\n<summary>Agent finished</summary>\n<result>${result}</result>\n</task-notification>`
+  assert.deepEqual(parseTaskNotifications('plain prompt'), [])
+  assert.deepEqual(
+    parseTaskNotifications(`${block('a1', 'ALPHA')}\n${block('b2', 'oops', 'failed')}`),
+    [
+      { taskId: 'a1', status: 'completed', result: 'ALPHA' },
+      { taskId: 'b2', status: 'failed', result: 'oops' },
+    ],
+  )
+  assert.deepEqual(
+    parseTaskNotifications('<task-notification><status>completed</status></task-notification>'),
+    [],
+  )
+  const dir = await mkdtemp(join(tmpdir(), 'claude-codex-notify-'))
+  const file = join(dir, 't.jsonl')
+  const line = (type: string, ts: string, content: unknown) =>
+    JSON.stringify({ type, timestamp: ts, message: { role: type, content } })
+  await writeFile(
+    file,
+    [
+      line('user', '2026-01-01T00:00:00Z', block('old', 'x')),
+      line('assistant', '2026-01-02T00:00:00Z', [{ type: 'text', text: block('fake', 'y') }]),
+      line('user', '2026-01-02T00:00:01Z', [{ type: 'text', text: block('a1', 'ALPHA') }]),
+      line('user', '2026-01-02T00:00:02Z', 'just a prompt'),
+    ].join('\n'),
+  )
+  assert.deepEqual(
+    taskNotificationsFromTranscript(file, Date.parse('2026-01-02T00:00:00Z')).map((n) => n.taskId),
+    ['a1'],
+  )
+  assert.deepEqual(
+    taskNotificationsFromTranscript(file).map((n) => n.taskId),
+    ['old', 'a1'],
+  )
+  await rm(dir, { recursive: true, force: true })
+})
+
+function toolResults(
+  events: RuntimeEvent[],
+): Array<Extract<RuntimeEvent, { type: 'tool_result' }>> {
+  return events.filter(
+    (event): event is Extract<RuntimeEvent, { type: 'tool_result' }> =>
+      event.type === 'tool_result',
+  )
+}
+
+test('jinn-pty runtime: async sub-agents keep the turn open until their results are answered', async () => {
+  const h = await harness()
+  try {
+    const startedAt = Date.now()
+    await h.run(turnContext({ prompt: 'ASYNC fan out', sandboxMode: 'danger-full-access' }))
+    const durationMs = Date.now() - startedAt
+    const toolUses = h.events.filter((event) => event.type === 'tool_use')
+    assert.equal(toolUses.length, 2)
+    assert.ok(toolUses.every((event) => event.type === 'tool_use' && event.toolName === 'Agent'))
+    const results = toolResults(h.events)
+    assert.equal(results.length, 2, 'one tool_result per sub-agent, none for async_launched')
+    assert.ok(results.every((event) => !String(event.content).includes('async_launched')))
+    assert.match(String(results[0]?.content), /^ALPHA\n\nagentId: a[0-9a-f]{16}$/)
+    assert.match(String(results[1]?.content), /^BRAVO\n\nagentId: a[0-9a-f]{16}$/)
+    assert.ok(results.every((event) => !event.isError))
+    assert.equal(
+      results[0]?.toolUseId,
+      toolUses[0] && toolUses[0].type === 'tool_use' ? toolUses[0].toolUseId : null,
+      'the result closes the launching tool call',
+    )
+    const completions = h.events.filter((event) => event.type === 'completed')
+    assert.equal(completions.length, 1, 'the intermediate Stops did not complete the turn')
+    const done = completed(h.events)
+    assert.equal(done.success, true)
+    assert.equal(done.result, 'A=ALPHA B=BRAVO')
+    assert.equal(text(h.events), 'A=ALPHA B=BRAVO')
+    const lastResult = results[1]
+    assert.ok(lastResult && h.events.indexOf(lastResult) < h.events.indexOf(done))
+    assert.ok(durationMs < 8000, `completed as soon as the last answer arrived (${durationMs}ms)`)
+
+    // The warm PTY takes an ordinary turn afterwards.
+    h.events = []
+    await h.run(turnContext({ turnId: 'turn-2', prompt: 'Reply with exactly the word PONG2' }))
+    assert.equal(completed(h.events).result, 'PONG:Reply with exactly the word PONG2')
+    assert.equal(toolResults(h.events).length, 0)
+  } finally {
+    await h.close()
+  }
+})
+
+test('jinn-pty runtime: async results consumed mid-turn complete on the first Stop', async () => {
+  const h = await harness()
+  try {
+    const startedAt = Date.now()
+    await h.run(turnContext({ prompt: 'ASYNC_INLINE fan out', sandboxMode: 'danger-full-access' }))
+    const durationMs = Date.now() - startedAt
+    assert.equal(completed(h.events).result, 'A=ALPHA B=BRAVO')
+    assert.equal(toolResults(h.events).length, 2)
+    assert.ok(durationMs < 4000, `no notification grace was waited (${durationMs}ms)`)
+  } finally {
+    await h.close()
+  }
+})
+
+test('jinn-pty runtime: a sub-agent that never stops times out with a placeholder result', async () => {
+  const h = await harness({ asyncSubagentTimeoutMs: 1500 })
+  try {
+    await h.run(turnContext({ prompt: 'ASYNC_LOST fan out', sandboxMode: 'danger-full-access' }))
+    const results = toolResults(h.events)
+    assert.equal(results.length, 2)
+    assert.match(String(results[0]?.content), /^ALPHA/)
+    assert.equal(results[0]?.isError, false)
+    assert.match(String(results[1]?.content), /did not report back within 1500ms/)
+    assert.equal(results[1]?.isError, true)
+    const done = completed(h.events)
+    assert.equal(done.success, true)
+    assert.equal(done.result, 'Got ALPHA, waiting for BRAVO')
   } finally {
     await h.close()
   }
