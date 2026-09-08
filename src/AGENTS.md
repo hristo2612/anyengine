@@ -19,6 +19,13 @@ Adapter internals. All files are `.mts` ESM, compiled to `dist/*.mjs`. See the
 - `codex-mux.mts` — native-codex multiplexer: thread ownership (persisted in
   `store.mts`), default route = child, merged `thread/list` / `model/list` /
   `config/read`. Hooked into `server.mts#handle` via `attachNativeCodex`.
+- `bridge-control.mts` — cross-engine bridge, adapter side: unix-socket control
+  channel + `BridgePeer` that injects `thread/start` / `turn/start` through
+  `server.mts#handle` (so the mux routes by model) and tees the spawned
+  thread's notifications/approvals to the desktop peer; sub-agent projection.
+  `server.mts#bridgeHost` is what it borrows from the protocol layer.
+- `bridge-mcp.mts` — the `jinn_bridge` stdio MCP server every engine spawns
+  (`adapter.mjs bridge-mcp`); thin client of the control channel.
 
 ## Runtime backends
 

@@ -81,7 +81,16 @@ import {
   wrapMcpToolError,
   wrapMcpToolResult,
 } from './server-helpers.mjs'
-import { type MuxLocalServer, NativeCodexMux } from './codex-mux.mjs'
+import {
+  type BridgeControl,
+  type BridgeHost,
+  type BridgeSubagentThreadInput,
+  type BridgeThreadInfo,
+  isBridgePeer,
+  nicknameFor,
+  type ParentItemPhase,
+} from './bridge-control.mjs'
+import { type MuxLocalServer, NativeCodexMux, routeForModel } from './codex-mux.mjs'
 import { CodexUpstream } from './codex-upstream.mjs'
 import type { SessionStore } from './store.mjs'
 import type {
@@ -220,6 +229,11 @@ export class CodexClaudeAppServer {
   // Native-codex multiplexer (docs/guide/backends.md). Null when no real
   // codex binary is configured or CLAUDE_CODEX_GPT_ROUTE=exec.
   private mux: NativeCodexMux | null = null
+  // Cross-engine bridge (docs/guide/bridge.md); null when CLAUDE_CODEX_BRIDGE=0.
+  private bridge: BridgeControl | null = null
+  // The desktop peer that most recently initialized: where bridge-spawned
+  // top-level threads (no ancestor) send their notifications.
+  private lastAppPeer: RpcPeer | null = null
   private readonly store: SessionStore
   private readonly runtime: ClaudeRuntime
 
@@ -237,6 +251,7 @@ export class CodexClaudeAppServer {
         method: message.method,
         params: summarizeRpcParams(message.method, message.params),
       })
+      if (message.method === 'initialize' && !isBridgePeer(peer)) this.lastAppPeer = peer
       if (this.mux && (await this.mux.handle(peer, message))) return
       if ('id' in message) {
         await this.handleRequest(peer, message as JsonRpcRequest)
@@ -259,6 +274,7 @@ export class CodexClaudeAppServer {
   closePeer(peer: RpcPeer): void {
     debugLog('peer.close', { peerId: peer.id })
     this.mux?.closePeer(peer)
+    if (this.lastAppPeer?.id === peer.id) this.lastAppPeer = null
     for (const [threadId, activePeer] of this.activePeerByThread.entries()) {
       if (activePeer.id === peer.id) this.activePeerByThread.delete(threadId)
     }
@@ -282,7 +298,12 @@ export class CodexClaudeAppServer {
   // is the desktop's argv (leading `-c` globals, `app-server`, its flags)
   // replayed verbatim; `eager` spawns now (stdio mode, one desktop per
   // process) instead of on the first `initialize`.
-  attachNativeCodex(options: { binary: string; args: string[]; eager: boolean }): NativeCodexMux {
+  attachNativeCodex(options: {
+    binary: string
+    args: string[]
+    eager: boolean
+    env?: Record<string, string>
+  }): NativeCodexMux {
     const local: MuxLocalServer = {
       dispatch: (peer, method, params) => this.dispatch(peer, method, params),
       localThreadOwner: (threadId) => {
@@ -295,9 +316,15 @@ export class CodexClaudeAppServer {
     const upstream = new CodexUpstream({
       binary: options.binary,
       args: options.args,
+      env: options.env ? { ...process.env, ...options.env } : process.env,
       onMessage: (message) => mux?.onUpstreamMessage(message),
     })
-    mux = new NativeCodexMux({ store: this.store, upstream, local })
+    mux = new NativeCodexMux({
+      store: this.store,
+      upstream,
+      local,
+      onNotification: (message) => this.bridge?.onNotification(message),
+    })
     this.mux = mux
     debugLog('codex.mux.attach', { binary: options.binary, args: options.args, eager: options.eager })
     if (options.eager) upstream.start()
@@ -306,6 +333,159 @@ export class CodexClaudeAppServer {
 
   hasActiveTurns(): boolean {
     return this.activeTurnByThread.size > 0
+  }
+
+  setBridge(bridge: BridgeControl | null): void {
+    this.bridge = bridge
+  }
+
+  // What the cross-engine bridge (src/bridge-control.mts) borrows from the
+  // protocol layer. Requests come back in through `handle` under a bridge
+  // peer, so routing and persistence stay the desktop's code paths.
+  bridgeHost(): BridgeHost {
+    return {
+      handle: (peer, message) => this.handle(peer, message),
+      closePeer: (peer) => this.closePeer(peer),
+      appPeerFor: (threadId) => this.appPeerFor(threadId),
+      threadInfo: (threadId) => this.bridgeThreadInfo(threadId),
+      routeForModel: (model) => (this.mux?.active ? routeForModel(model) : 'local'),
+      soleActiveThread: () => {
+        const ids = new Set<string>(this.activeTurnByThread.keys())
+        for (const id of this.mux?.activeUpstreamThreadIds() ?? []) ids.add(id)
+        return ids.size === 1 ? [...ids][0] ?? null : null
+      },
+      createSubagentThread: (input) => this.createBridgeSubagentThread(input),
+      emitParentItem: (parentThreadId, turnId, item, phase) =>
+        this.emitBridgeParentItem(parentThreadId, turnId, item, phase),
+      supportsCompletedActivity: (threadId) => {
+        const peer = this.appPeerFor(threadId)
+        return peer ? this.supportsCompletedSubagentActivity(peer) : false
+      },
+    }
+  }
+
+  // Nearest desktop peer up the thread's ancestry (bridge peers are skipped:
+  // they only relay), else the primary desktop peer.
+  private appPeerFor(threadId: string | null): RpcPeer | null {
+    const seen = new Set<string>()
+    let current = threadId
+    while (current && !seen.has(current)) {
+      seen.add(current)
+      const peer = this.activePeerByThread.get(current)
+      if (peer && !isBridgePeer(peer)) return peer
+      current = this.store.getThread(current)?.forkedFromId ?? null
+    }
+    const primary = this.mux?.primaryAppPeer ?? null
+    if (primary && !isBridgePeer(primary)) return primary
+    return this.lastAppPeer
+  }
+
+  private bridgeThreadInfo(threadId: string): BridgeThreadInfo | null {
+    const local = this.store.getThread(threadId)
+    if (local) {
+      return {
+        id: threadId,
+        owner: 'local',
+        cwd: local.cwd,
+        model: local.model,
+        approvalPolicy: local.approvalPolicy,
+        sandboxMode: local.sandboxMode,
+        activeTurnId: this.activeTurnByThread.get(threadId) ?? null,
+      }
+    }
+    const upstream = this.mux?.upstreamThreadInfo(threadId)
+    if (!upstream) return null
+    return {
+      id: threadId,
+      owner: 'upstream',
+      ...upstream,
+      activeTurnId: this.mux?.activeUpstreamTurnId(threadId) ?? null,
+    }
+  }
+
+  // A bridge sub-agent thread mirrors what the Task tool path creates: a
+  // child linked to its parent (parentThreadId, agentRole/agentNickname) that
+  // the desktop shows under the parent. Its turn is a real turn started by
+  // the bridge through `turn/start`.
+  private createBridgeSubagentThread(input: BridgeSubagentThreadInput): {
+    threadId: string
+    agentNickname: string
+    agentPath: string
+  } {
+    const parent = this.store.getThread(input.parentThreadId)
+    const now = nowSeconds()
+    const id = newId()
+    const agentNickname = nicknameFor(id)
+    const thread: ThreadRecord = {
+      id,
+      sessionId: parent?.sessionId ?? id,
+      forkedFromId: input.parentThreadId,
+      preview: input.prompt.slice(0, 200),
+      name: input.name,
+      archived: false,
+      cwd: input.cwd,
+      model: input.model,
+      reasoningEffort: parent?.reasoningEffort ?? this.configReasoningEffort,
+      modelProvider: 'claude-code',
+      claudeSessionId: null,
+      source: normalizeSessionSource(parent?.source ?? 'appServer'),
+      createdAt: now,
+      updatedAt: now,
+      status: { type: 'idle' },
+      approvalPolicy: normalizeApprovalPolicy(input.approvalPolicy) ?? 'never',
+      sandboxMode: normalizeSandboxMode(input.sandboxMode) ?? 'danger-full-access',
+      permissionProfileId: null,
+      ephemeral: true,
+      threadSource: 'subagent',
+      agentRole: input.name ?? 'bridge',
+      agentNickname,
+      baseInstructions: parent?.baseInstructions ?? null,
+      developerInstructions: parent?.developerInstructions ?? null,
+      personality: parent?.personality ?? null,
+      runtimeBackend: 'claude',
+      codexSessionId: null,
+    }
+    this.store.upsertThread(thread)
+    this.activePeerByThread.set(id, input.peer)
+    recordRunEvent('subagent.spawned', {
+      parentThreadId: input.parentThreadId,
+      parentTurnId: null,
+      childThreadId: id,
+      model: input.model,
+      agentRole: thread.agentRole,
+      agentNickname,
+      via: 'bridge',
+    })
+    this.notify(input.peer, { method: 'thread/started', params: { thread: this.toThread(thread, []) } })
+    return { threadId: id, agentNickname, agentPath: `/root/${agentNickname}` }
+  }
+
+  // Parent-side collab items for a bridge sub-agent. Persisted when the
+  // parent's turn lives in our store (a local parent); a child-owned (gpt-*)
+  // parent only gets the live notifications.
+  private emitBridgeParentItem(
+    parentThreadId: string,
+    turnId: string,
+    item: ThreadItem,
+    phase: ParentItemPhase,
+  ): void {
+    const turn = this.store.getTurn(turnId)
+    const persist = turn != null && turn.threadId === parentThreadId
+    const peer = this.appPeerFor(parentThreadId)
+    const params = { threadId: parentThreadId, turnId, item }
+    if (phase === 'begin' && persist) this.store.appendItem(turnId, item)
+    if (phase === 'end' && persist) this.store.updateItem(turnId, item.id, () => item)
+    if (phase === 'endMove' && persist) this.store.updateItemAndMoveToEnd(turnId, item.id, () => item)
+    if (!peer) return
+    if (phase === 'lifecycle') {
+      this.emitItemLifecycle(peer, parentThreadId, turnId, item)
+      return
+    }
+    if (phase === 'begin') {
+      this.notify(peer, { method: 'item/started', params: { ...params, startedAtMs: nowMillis() } })
+      return
+    }
+    this.notify(peer, { method: 'item/completed', params: { ...params, completedAtMs: nowMillis() } })
   }
 
   setIdleCheckHandler(handler: () => void): void {
@@ -2059,7 +2239,12 @@ export class CodexClaudeAppServer {
         effort: resolvedEffort,
         claudeSessionId: isCodexThread ? thread.codexSessionId : thread.claudeSessionId,
         forkSession,
-        mcpServers: readMcpConfig().sdkValue,
+        // Every engine also gets the cross-engine bridge server for this
+        // thread (docs/guide/bridge.md); summary turns never spawn engines.
+        mcpServers:
+          this.bridge && turnPurpose !== 'summary'
+            ? this.bridge.mergeMcpServers(thread.id, readMcpConfig().sdkValue)
+            : readMcpConfig().sdkValue,
         allowedTools: defaultAllowedTools(),
         addDirs: stringListFromEnv('CLAUDE_CODEX_ADD_DIRS', []),
         enableFileCheckpointing: process.env.CLAUDE_CODEX_ENABLE_FILE_CHECKPOINTING === '1',
@@ -4521,6 +4706,7 @@ export class CodexClaudeAppServer {
     // already have closed, while persistence still needs to settle child and
     // parent state without throwing on a broken pipe.
     if (this.stopped) return
+    this.bridge?.onNotification(notification)
     const target = this.peerForParams(peer, notification.params)
     debugLog('rpc.notify', {
       peerId: target.id,

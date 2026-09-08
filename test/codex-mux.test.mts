@@ -27,6 +27,20 @@ const DESKTOP_ARGV = [
 
 type Wire = Record<string, any>
 
+// The adapter inserts its own `-c mcp_servers.jinn_bridge=...` override (the
+// cross-engine bridge, test/bridge.test.mts) after the desktop's globals;
+// everything else must be replayed verbatim.
+function assertDesktopArgvReplayed(argv: string[]): void {
+  const index = argv.findIndex((arg) => arg.startsWith('mcp_servers.jinn_bridge='))
+  assert.ok(index > 0 && argv[index - 1] === '-c', 'bridge override is a -c global')
+  assert.ok(index < argv.indexOf('app-server'), 'bridge override precedes app-server')
+  assert.match(
+    argv[index] ?? '',
+    /env_vars=\["CLAUDE_CODEX_BRIDGE_SOCKET","CLAUDE_CODEX_BRIDGE_TOKEN"\]/,
+  )
+  assert.deepEqual([...argv.slice(0, index - 1), ...argv.slice(index + 1)], DESKTOP_ARGV)
+}
+
 class StdioClient {
   readonly child: ChildProcess
   readonly messages: Wire[] = []
@@ -137,7 +151,7 @@ test('native-codex mux: argv replay, id rewriting both ways, approval round-trip
 
     // The child was spawned with the desktop's argv, globals first, verbatim.
     const recorded = JSON.parse(await readFile(join(home, 'fake-argv.json'), 'utf8'))
-    assert.deepEqual(recorded.argv, DESKTOP_ARGV)
+    assertDesktopArgvReplayed(recorded.argv)
     assert.equal(recorded.env.CODEX_APP_TOOLS_PIPE_PATH, '/tmp/codex-browser-use/test.sock')
 
     // Default route: a method the adapter has no idea about reaches the child
@@ -291,7 +305,7 @@ test('codex-shim passes the desktop -c globals through to the adapter and child'
     const init = await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
     assert.equal(init.result.userAgent, 'codex_app_server/0.153.4 (fake)')
     const recorded = JSON.parse(await readFile(join(home, 'fake-argv.json'), 'utf8'))
-    assert.deepEqual(recorded.argv, DESKTOP_ARGV)
+    assertDesktopArgvReplayed(recorded.argv)
   } finally {
     await client.close()
     await rm(home, { recursive: true, force: true })

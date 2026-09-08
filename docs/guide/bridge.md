@@ -1,0 +1,113 @@
+# Cross-engine bridge
+
+Any thread the adapter runs can start sessions and sub-agents on **any other
+engine**: a Claude thread can fan out to Grok, a Grok thread can ask GPT, a GPT
+thread (native Codex child) can spawn Claude. The engines never talk to each
+other directly; each one gets one extra MCP server, `jinn_bridge`, whose tools
+go back through the adapter's own protocol layer.
+
+```
+claude / grok / codex child ──stdio MCP──▶ jinn_bridge ──unix socket──▶ adapter
+                                          (bridge-mcp)   (bridge-control)   │
+                                                                             ▼
+                                                    thread/start · turn/start (as the desktop would)
+                                                                             │
+                                          ┌──────────────────────────────────┼─────────────┐
+                                          ▼                                  ▼             ▼
+                                   jinn-pty (Claude)                grok runtime      real codex child (gpt-*)
+```
+
+## Tools
+
+| Tool | What it does |
+| --- | --- |
+| `list_models()` | The merged catalog (`model/list`): GPT ids from the native child when attached, the Claude entries from `CLAUDE_CODEX_MODELS`, the Grok models. Ids, display names, provider. |
+| `spawn_session({ model, prompt, cwd?, title?, wait?, timeoutMs? })` | New top-level thread (visible in the App sidebar), one turn. Waits for the answer by default (10 min). Returns `{ threadId, turnId, status, text }`. |
+| `spawn_subagents({ tasks: [{ model, prompt, name? }], cwd?, timeoutMs?, parentThreadId? })` | Runs the tasks in parallel as **children of the calling thread**; returns every result. The App shows them as native sub-agents under the parent. |
+| `send_to_session({ threadId, prompt, wait?, timeoutMs? })` | Another turn on an existing thread (spawned or not). |
+| `wait_session({ threadId, timeoutMs? })` | Waits for the running turn (after `wait:false`), or returns the last finished one. |
+
+`model` accepts an id (`grok-4.6`, `haiku`, `gpt-5.6-sol`) or a display name
+(`Claude Opus`). Unknown names are refused with the catalog.
+
+## How a spawn is routed
+
+The bridge does not call runtimes. It injects `thread/start` and `turn/start`
+into the protocol layer under a **bridge peer**, so:
+
+- the native-codex multiplexer picks the owner from the model exactly as for
+  the desktop (`claude-*`/`opus`/`sonnet`/`haiku`/`fable`/`grok-*` local,
+  `gpt-*` to the child);
+- the spawned thread is persisted, listed and resumable like any other;
+- every notification, approval and `requestUserInput` the spawned thread
+  produces is teed to the desktop peer that owns the **calling** thread, so
+  approvals still surface in the App for the child thread;
+- the child inherits the caller's `cwd`, `approvalPolicy` and sandbox (falls
+  back to `on-request` / `workspace-write` when the caller is unknown).
+
+Sub-agents mirror what the Task tool path emits: `collabAgentToolCall
+spawnAgent` → `subAgentActivity started` → `wait` on the parent's active turn,
+closed with `wait completed|failed` and `subAgentActivity completed|interrupted`.
+Local children are created with `parentThreadId`, `threadSource: subagent`,
+`agentRole` (= task name) and an `agent-<hex>` nickname; a gpt-* child is
+allocated by the real app-server and linked through the parent items only.
+
+## Wiring per engine
+
+The adapter builds the server spec once per thread:
+
+```json
+{ "jinn_bridge": { "type": "stdio",
+                   "command": "<node>", "args": ["<dist>/src/adapter.mjs", "bridge-mcp"],
+                   "env": { "CLAUDE_CODEX_BRIDGE_SOCKET": "…/bridge-<pid>.sock",
+                            "CLAUDE_CODEX_BRIDGE_TOKEN": "<per-process>",
+                            "CLAUDE_CODEX_BRIDGE_THREAD": "<calling thread id>" } } }
+```
+
+- **Claude (`jinn-pty`, native SDK)** — merged into the turn's `mcpServers`
+  next to `CLAUDE_CODEX_MCP_SERVERS`; `jinn-pty` writes it to the
+  `--mcp-config` file it already passes to `claude`. One PTY per thread, so
+  the thread id rides the server env.
+- **Grok** — the same record converted to ACP `session/new` / `session/load`
+  `mcpServers` (`env` as `[{name, value}]`). Grok reaches the tools through its
+  `search_tool` / `use_tool` pair.
+- **GPT (native child)** — the adapter appends
+  `-c mcp_servers.jinn_bridge={command=…,args=[…],env_vars=["CLAUDE_CODEX_BRIDGE_SOCKET","CLAUDE_CODEX_BRIDGE_TOKEN"],tool_timeout_sec=3600,enabled=true}`
+  to the child's argv (after the desktop's own `-c` globals) and puts the two
+  variables in the child's environment; the token never appears in argv.
+  Codex spawns one bridge per process, so there is no thread id: the adapter
+  uses the single thread with a turn in flight, or `parentThreadId` when
+  given. `tool_timeout_sec` is raised because Codex defaults MCP calls to 60 s.
+
+Hand-written configs can use `scripts/bridge-mcp.mjs` as the command with the
+three variables set.
+
+## Control channel
+
+`bridge-control.mts` listens on a unix socket under the adapter home
+(`bridge-<pid>.sock`, dir mode 0700) and requires `Authorization: Bearer
+<token>` on the WebSocket upgrade; the token is random per adapter process.
+Both can be pinned (`CLAUDE_CODEX_BRIDGE_SOCKET`, `CLAUDE_CODEX_BRIDGE_TOKEN`;
+the tests do). `CLAUDE_CODEX_BRIDGE=0` disables the bridge entirely. Stale
+sockets from dead adapters are reaped on start.
+
+## Testing
+
+```bash
+npm run build && node --test dist/test/bridge.test.mjs   # fake child + mock runtime
+source ~/.claude-codex/runtime.env
+node scripts/smoke-bridge.mjs claude   # sonnet thread spawns a grok-4.6 session
+node scripts/smoke-bridge.mjs grok     # grok thread fans out 2 haiku + 2 grok sub-agents
+node scripts/smoke-bridge.mjs gpt      # gpt thread spawns a haiku session (records usage limits)
+```
+
+## Known gaps
+
+- A gpt-* **child** thread is not linked by `parentThreadId` (the real
+  app-server owns it); the parent's collab items carry the link.
+- Parent-side collab items for a gpt-* **parent** are live notifications
+  only: the child's rollout does not persist them.
+- The caller of a GPT thread is inferred; two GPT turns calling the bridge at
+  once need `parentThreadId`.
+- Turn text is collected from `item/completed agentMessage` (fallback: the
+  deltas); tool output of the spawned thread is not returned.

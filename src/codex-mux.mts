@@ -32,9 +32,23 @@ export interface NativeCodexMuxOptions {
   store: SessionStore
   upstream: CodexUpstream
   local: MuxLocalServer
+  // Sees every notification the child emits (after id rewriting), whichever
+  // peer it is delivered to. The bridge (bridge-control.mts) tracks upstream
+  // turns from here.
+  onNotification?: (message: { method: string; params: unknown }) => void
 }
 
-type Route = 'local' | 'upstream'
+export type Route = 'local' | 'upstream'
+
+// What the bridge learns about a child-owned thread from the child's own
+// `thread/start` / `thread/resume` answers: enough to inherit cwd and policy
+// when that thread spawns children of its own.
+export interface UpstreamThreadInfo {
+  cwd: string | null
+  model: string | null
+  approvalPolicy: string | null
+  sandboxMode: string | null
+}
 
 const MERGED_METHODS = new Set(['thread/list', 'thread/loaded/list', 'model/list', 'config/read'])
 const LOCAL_GLOBAL_METHODS = new Set(['mock/experimentalMethod'])
@@ -50,12 +64,30 @@ export function isClaudeModelId(model: string): boolean {
   return claudeModelOptions().some((option) => option.id.toLowerCase() === id)
 }
 
+// Owner of a NEW thread by model id alone (no provider / title-thread
+// exceptions): the rule `thread/start` applies, shared with the bridge so it
+// can tell which creation path a spawned child takes.
+export function routeForModel(model: string): Route {
+  const id = model.trim()
+  if (!id) return 'local'
+  if (isCodexOpenAiModel(id)) return 'upstream'
+  if (isClaudeModelId(id)) return 'local'
+  // grok-* threads are served by the local grok runtime (src/grok-runtime.mts).
+  if (/^grok/i.test(id)) return 'local'
+  return 'upstream'
+}
+
 export class NativeCodexMux {
   private readonly store: SessionStore
   private readonly upstream: CodexUpstream
   private readonly local: MuxLocalServer
+  private readonly onNotification: NativeCodexMuxOptions['onNotification'] | null
   private readonly peers = new Map<string, RpcPeer>()
   private readonly peerByThread = new Map<string, RpcPeer>()
+  // Child-owned threads with a turn in flight (turn/started .. turn/completed)
+  // and what their lifecycle answers revealed; both in-memory only.
+  private readonly activeUpstreamTurns = new Map<string, string>()
+  private readonly upstreamThreads = new Map<string, UpstreamThreadInfo>()
   private primaryPeer: RpcPeer | null = null
   private stopped = false
 
@@ -63,10 +95,38 @@ export class NativeCodexMux {
     this.store = options.store
     this.upstream = options.upstream
     this.local = options.local
+    this.onNotification = options.onNotification ?? null
   }
 
   get active(): boolean {
     return this.upstream.available
+  }
+
+  // The desktop peer that last initialized (never a bridge peer: the bridge
+  // does not send `initialize`).
+  get primaryAppPeer(): RpcPeer | null {
+    return this.primaryPeer
+  }
+
+  upstreamThreadInfo(threadId: string): UpstreamThreadInfo | null {
+    if (!this.store.isNativeCodexThread(threadId) && !this.upstreamThreads.has(threadId))
+      return null
+    return (
+      this.upstreamThreads.get(threadId) ?? {
+        cwd: null,
+        model: null,
+        approvalPolicy: null,
+        sandboxMode: null,
+      }
+    )
+  }
+
+  activeUpstreamTurnId(threadId: string): string | null {
+    return this.activeUpstreamTurns.get(threadId) ?? null
+  }
+
+  activeUpstreamThreadIds(): string[] {
+    return [...this.activeUpstreamTurns.keys()]
   }
 
   // Returns true when the message was consumed here (forwarded or merged);
@@ -141,9 +201,18 @@ export class NativeCodexMux {
         if (downId != null) outgoing = { ...params, requestId: downId }
         break
       }
+      case 'turn/started': {
+        const turnId = idOf(asRecord(params.turn))
+        if (threadId && turnId) this.activeUpstreamTurns.set(threadId, turnId)
+        break
+      }
+      case 'turn/completed':
+        if (threadId) this.activeUpstreamTurns.delete(threadId)
+        break
       default:
         break
     }
+    this.onNotification?.({ method: message.method, params: outgoing })
     const target = this.peerForThread(threadId)
     if (threadId && target) {
       target.send({ jsonrpc: '2.0', method: message.method, params: outgoing })
@@ -201,7 +270,7 @@ export class NativeCodexMux {
   }
 
   private routeThreadStart(params: Record<string, unknown>): Route {
-    const model = typeof params.model === 'string' ? params.model.trim() : ''
+    const model = typeof params.model === 'string' ? params.model : ''
     const provider = typeof params.modelProvider === 'string' ? params.modelProvider : ''
     const isTitleOrHelper =
       params.ephemeral === true ||
@@ -216,12 +285,7 @@ export class NativeCodexMux {
       return 'local'
     }
     if (provider === 'claude-code') return 'local'
-    if (!model) return 'local'
-    if (isCodexOpenAiModel(model)) return 'upstream'
-    if (isClaudeModelId(model)) return 'local'
-    // grok-* threads are served by the local grok runtime (src/grok-runtime.mts).
-    if (/^grok/i.test(model)) return 'local'
-    return 'upstream'
+    return routeForModel(model)
   }
 
   private ownerOf(threadId: string): Route {
@@ -284,8 +348,12 @@ export class NativeCodexMux {
       id: peer.id,
       send: (message) => {
         const response = message as JsonRpcResponse
-        const id = idOf(asRecord(asRecord(response.result).thread))
-        if (id) this.recordUpstreamThread(id, peer)
+        const result = asRecord(response.result)
+        const id = idOf(asRecord(result.thread))
+        if (id) {
+          this.recordUpstreamThread(id, peer)
+          this.upstreamThreads.set(id, upstreamThreadInfoFrom(result))
+        }
         peer.send(message)
       },
       close: () => peer.close(),
@@ -409,7 +477,8 @@ export class NativeCodexMux {
     try {
       const result = asRecord(await this.upstream.request('account/rateLimits/read', {}))
       const limits = asRecord(result.rateLimits)
-      reached = limits.rateLimitReachedType != null || asRecord(result.rateLimitUpsell).banner_type != null
+      reached =
+        limits.rateLimitReachedType != null || asRecord(result.rateLimitUpsell).banner_type != null
     } catch (error) {
       debugLog('codex.mux.rateLimitProbeFailed', {
         message: error instanceof Error ? error.message : String(error),
@@ -531,4 +600,31 @@ function threadIdOf(params: Record<string, unknown>): string | null {
 // A `Thread` object (thread/started, thread/list rows, thread/start result).
 function idOf(thread: Record<string, unknown>): string | null {
   return typeof thread.id === 'string' && thread.id.length > 0 ? thread.id : null
+}
+
+// thread/start | thread/resume result -> the bits a spawned child inherits.
+// The child's `sandbox` is the v2 envelope ({type:'workspaceWrite'}); older
+// answers carry the plain string.
+function upstreamThreadInfoFrom(result: Record<string, unknown>): UpstreamThreadInfo {
+  const sandbox = result.sandbox
+  const sandboxType =
+    typeof sandbox === 'string'
+      ? sandbox
+      : typeof asRecord(sandbox).type === 'string'
+        ? String(asRecord(sandbox).type)
+        : null
+  const sandboxMode =
+    sandboxType == null
+      ? null
+      : ({
+          workspaceWrite: 'workspace-write',
+          readOnly: 'read-only',
+          dangerFullAccess: 'danger-full-access',
+        }[sandboxType] ?? sandboxType)
+  return {
+    cwd: typeof result.cwd === 'string' ? result.cwd : null,
+    model: typeof result.model === 'string' ? result.model : null,
+    approvalPolicy: typeof result.approvalPolicy === 'string' ? result.approvalPolicy : null,
+    sandboxMode,
+  }
 }

@@ -234,6 +234,17 @@ the child is stdio-only, so a desktop restart restarts it too; cross-backend
 ```bash
 npm run smoke:native-codex   # real smoke: gpt PONG + native command approval + Claude PONG
 ```
+## Cross-engine bridge
+
+Every engine the adapter runs (interactive `claude`, `grok agent`, the real
+`codex app-server` child) gets one extra MCP server, `jinn_bridge`, whose
+tools start sessions and parallel sub-agents on **any** model: a Claude
+thread can fan out to Grok, a Grok thread can ask GPT, a GPT thread can spawn
+Claude. Requests go back through the adapter's protocol layer, so the model
+routing above applies unchanged and the spawned threads (and their approvals)
+show up in the App under the calling thread. Details, wiring per engine and
+the smoke: [Cross-engine bridge](./bridge.md).
+
 ## grok (xAI Grok Build CLI)
 
 Runs xAI's `grok` CLI in its agent mode (`grok agent -m <model> stdio`, the
