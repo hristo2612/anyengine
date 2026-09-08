@@ -28,6 +28,7 @@ export default defineConfig({
             { text: 'Using the Codex App', link: '/guide/gui' },
             { text: 'Configuration', link: '/guide/configuration' },
             { text: 'Backends', link: '/guide/backends' },
+            { text: 'Cross-engine bridge', link: '/guide/bridge' },
           ],
         },
       ],

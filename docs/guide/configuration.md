@@ -81,6 +81,21 @@ export CLAUDE_CODEX_ADD_DIRS="/repo/shared,/repo/docs"
 export CLAUDE_CODEX_ENABLE_FILE_CHECKPOINTING=1
 ```
 
+## Cross-engine bridge
+
+```bash
+# The `jinn_bridge` MCP server every engine gets (docs/guide/bridge.md) is on
+# by default; 0 disables it.
+export CLAUDE_CODEX_BRIDGE=1
+# Pin the loopback control socket / token (default: bridge-<pid>.sock under the
+# adapter home and a random per-process token). The three variables below are
+# what the adapter passes to each engine's bridge process; set them by hand
+# only for a hand-written MCP config that runs scripts/bridge-mcp.mjs.
+# export CLAUDE_CODEX_BRIDGE_SOCKET="$HOME/.codex/claude-codex-adapter/bridge.sock"
+# export CLAUDE_CODEX_BRIDGE_TOKEN="..."
+# export CLAUDE_CODEX_BRIDGE_THREAD="<calling thread id>"
+```
+
 ## Worktree isolation
 
 ```bash
@@ -159,6 +174,9 @@ export CLAUDE_CODEX_NODE="/absolute/path/to/node"
 | `CLAUDE_CODEX_DISABLE_GROK` | `1` hides the Grok models. |
 | `CLAUDE_CODEX_MODEL_ALIASES` / `_EFFORT_ALIASES` | Id remapping. |
 | `CLAUDE_CODEX_MCP_SERVERS` | MCP server config (JSON or file path). |
+| `CLAUDE_CODEX_BRIDGE` | `0` disables the cross-engine `jinn_bridge` MCP server (default on). |
+| `CLAUDE_CODEX_BRIDGE_SOCKET` / `_TOKEN` | Pin the bridge control socket / token (default: per-process). |
+| `CLAUDE_CODEX_BRIDGE_THREAD` | Calling thread id handed to a bridge process (set by the adapter per engine process). |
 | `CLAUDE_CODEX_ALLOWED_TOOLS` | Pre-approved tools. |
 | `CLAUDE_CODEX_ADD_DIRS` | Extra directories exposed to Claude. |
 | `CLAUDE_CODEX_ENABLE_FILE_CHECKPOINTING` | Enable SDK file checkpointing. |
