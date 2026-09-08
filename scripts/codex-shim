@@ -64,7 +64,9 @@ case "$SUBCMD" in
       echo "codex shim is in native Codex mode, but no real codex binary was found; set CODEX_REAL" >&2
       exit 127
     fi
-    # Adapter expects argv[0] == app-server; Codex-only -c overrides are dropped.
+    # Leading -c globals are passed through: the adapter records them and
+    # replays the identical argv when it spawns the real app-server child
+    # (native-codex passthrough, docs/guide/backends.md).
     # Daemon mode (--listen unix://) is launched by the App over SSH with nohup;
     # detach stdin so the SSH bootstrap session returns instead of timing out.
     # Real codex daemonises here and returns; the App's bootstrap subshell waits
@@ -75,13 +77,13 @@ case "$SUBCMD" in
         unix://*)
           SOCK="${CODEX_HOME:-$HOME/.codex}/app-server-control/app-server-control.sock"
           [ "$a" != "unix://" ] && SOCK="${a#unix://}"
-          "$NODE_BIN" "$ADAPTER" "${REST[@]}" </dev/null &
+          "$NODE_BIN" "$ADAPTER" ${GLOBAL_OPTS[@]+"${GLOBAL_OPTS[@]}"} "${REST[@]}" </dev/null &
           disown 2>/dev/null || true
           for _ in $(seq 1 100); do [ -S "$SOCK" ] && exit 0; sleep 0.1; done
           exit 0 ;;
       esac
     done
-    exec "$NODE_BIN" "$ADAPTER" "${REST[@]}" ;;
+    exec "$NODE_BIN" "$ADAPTER" ${GLOBAL_OPTS[@]+"${GLOBAL_OPTS[@]}"} "${REST[@]}" ;;
 esac
 
 if [ -n "$REAL_CODEX" ]; then exec "$REAL_CODEX" "$@"; fi

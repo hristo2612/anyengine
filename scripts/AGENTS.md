@@ -7,8 +7,13 @@ plain `.mjs` / shell.
 ## Map
 
 - `codex-shim` — the `PATH` shim Codex App invokes. Routes `codex app-server`
-  into the adapter (`CLAUDE_CODEX_ADAPTER`); forwards everything else to the real
-  Codex CLI (`CODEX_REAL`). Keep it dependency-free and POSIX-sh portable.
+  into the adapter (`CLAUDE_CODEX_ADAPTER`), passing the desktop's leading `-c`
+  globals through so the adapter can replay them to the real child; forwards
+  everything else to the real Codex CLI (`CODEX_REAL`). Keep it
+  dependency-free and bash-3.2 safe (macOS `/bin/bash`).
+- `smoke-native-codex.mjs` — real smoke for the native-codex multiplexer
+  (`npm run smoke:native-codex`): gpt PONG through the bundled app-server,
+  native command approval, then a Claude PONG.
 - `claude-codex-mode` — host helper to switch runtime backends, restart bridges,
   and read status/logs. Writes `~/.claude-codex/runtime.env`.
 - `hooks/guard.mjs` — Claude Code hook enforcing project conventions (blocks
