@@ -437,9 +437,13 @@ export class NativeCodexMux {
       // The desktop enters "reserve mode" (composer locked to the reserve
       // model, picker replaced by an Add Credits wall, every other model
       // hidden, Claude/Grok included) as soon as the list contains the reserve
-      // model while the account's limit is reached. Dropping that entry keeps
-      // the normal picker; GPT turns still fail natively until the reset.
-      upstreamData = upstreamData.filter((entry) => !RESERVE_MODEL_IDS.has(String(asRecord(entry).id)))
+      // model while the account's limit is reached.
+      // Hiding only the reserve entry is not enough: with any OpenAI model
+      // left in the list the desktop still filters the picker down to the
+      // reserve set (now empty). While the limit is reached every OpenAI model
+      // is unusable anyway, so hide them all; they return automatically once
+      // the limit resets (30 s cache).
+      upstreamData = []
     }
     if (upstreamResult.nextCursor != null) return { ...upstreamResult, data: upstreamData }
     const upstreamIds = new Set(upstreamData.map((entry) => String(asRecord(entry).id)))
