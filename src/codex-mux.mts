@@ -216,6 +216,8 @@ export class NativeCodexMux {
     if (!model) return 'local'
     if (isCodexOpenAiModel(model)) return 'upstream'
     if (isClaudeModelId(model)) return 'local'
+    // grok-* threads are served by the local grok runtime (src/grok-runtime.mts).
+    if (/^grok/i.test(model)) return 'local'
     return 'upstream'
   }
 
