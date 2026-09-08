@@ -47,10 +47,13 @@
     "acceptance:ssh-runtime-matrix": "npm run build && node scripts/acceptance-ssh-runtime-matrix.mjs",
     "probe:codex-cli-remote": "npm run build && node scripts/probe-codex-cli-remote.mjs",
     "start": "node dist/src/adapter.mjs",
-    "generate:schema": "codex app-server generate-ts --experimental --out generated/codex-app-server"
+    "generate:schema": "codex app-server generate-ts --experimental --out generated/codex-app-server",
+    "postinstall": "node scripts/fix-node-pty-permissions.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.201",
+    "@xterm/headless": "^6.0.0",
+    "node-pty": "^1.1.0",
     "ws": "^8.21.0"
   },
   "devDependencies": {

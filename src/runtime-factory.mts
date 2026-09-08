@@ -1,6 +1,7 @@
 import { ClaudePTranscriptRuntime } from './claude-p-runtime.mjs'
 import { CodexProxyRuntime } from './codex-proxy-runtime.mjs'
 import { HttpAgentRuntime } from './http-agent-runtime.mjs'
+import { defaultRelayScript, defaultStateDir, JinnPtyRuntime } from './jinn-pty-runtime.mjs'
 import { MockRuntime } from './mock-runtime.mjs'
 import { NativeClaudeRuntime } from './native-runtime.mjs'
 import {
@@ -95,7 +96,12 @@ class SelectableRuntime implements ClaudeRuntime {
 }
 
 function shouldHandleLocally(type: RuntimeBackendType, context: RuntimeTurnContext): boolean {
-  return context.purpose === 'summary' && (type === 'agent-http' || type === 'agentapi')
+  // A summary (title) turn through a warm PTY would pollute the real Claude
+  // session's conversation, so jinn-pty answers those locally like the HTTP bridges.
+  return (
+    context.purpose === 'summary' &&
+    (type === 'agent-http' || type === 'agentapi' || type === 'jinn-pty')
+  )
 }
 
 async function runLocalStructuredSummaryTurn(
@@ -176,6 +182,12 @@ function instantiateRuntime(config: RuntimeConfig, type: RuntimeBackendType): Cl
       return new ClaudePTranscriptRuntime(config.claudeP)
     case 'codex-proxy':
       return new CodexProxyRuntime()
+    case 'jinn-pty':
+      return new JinnPtyRuntime({
+        ...config.jinnPty,
+        stateDir: config.jinnPty.stateDir ?? defaultStateDir(),
+        relayScript: config.jinnPty.relayScript ?? defaultRelayScript(),
+      })
     case 'agent-sdk-sidecar':
     default:
       return new NativeClaudeRuntime()

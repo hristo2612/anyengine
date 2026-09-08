@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { resolveRuntimeConfig } from './runtime-config.mjs'
 import { createRuntime } from './runtime-factory.mjs'
 import { CodexClaudeAppServer } from './server.mjs'
 import { SessionStore } from './store.mjs'
@@ -118,7 +119,11 @@ async function main(): Promise<void> {
   // sidecar is reclaimed. Codex App re-probes and restarts the daemon on
   // reconnect. Set CLAUDE_CODEX_IDLE_EXIT_MS=0 to keep the legacy persistent
   // behavior.
-  const idleExitMs = Number(process.env.CLAUDE_CODEX_IDLE_EXIT_MS ?? 15000)
+  // The jinn-pty runtime keeps one warm interactive `claude` PTY per thread;
+  // exiting on idle would kill them and force a `--resume` cold start on the
+  // next turn, so that runtime defaults to never idling out.
+  const defaultIdleExitMs = resolveRuntimeConfig().type === 'jinn-pty' ? 0 : 15000
+  const idleExitMs = Number(process.env.CLAUDE_CODEX_IDLE_EXIT_MS ?? defaultIdleExitMs)
   const idleExitEnabled = isUnixDaemon && Number.isFinite(idleExitMs) && idleExitMs > 0
   let activePeers = 0
   let everConnected = false

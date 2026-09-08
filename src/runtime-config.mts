@@ -12,6 +12,10 @@ export type RuntimeBackendType =
   // codex-proxy = `codex exec --json` per turn. Selected per-thread when the
   // user picks a gpt-* model in the App's model dropdown.
   | 'codex-proxy'
+  // jinn-pty = the interactive `claude` TUI driven inside a long-lived PTY per
+  // thread (subscription-billed), with Claude Code hooks relayed back over
+  // loopback HTTP. Ported from Jinn's interactive engine.
+  | 'jinn-pty'
 
 export interface RuntimeConfig {
   type: RuntimeBackendType
@@ -31,6 +35,21 @@ export interface RuntimeConfig {
     skipPermissions: boolean
     resume: boolean
     stopTimeoutRetries: number
+  }
+  jinnPty: {
+    cli: string
+    cols: number
+    rows: number
+    turnTimeoutMs: number
+    startupTimeoutMs: number
+    streamProxy: boolean
+    extraArgs: string[]
+    hookTimeoutSec: number
+    autoApproveSafetyPrompts: boolean
+    keepApiKey: boolean
+    stateDir: string | null
+    relayScript: string | null
+    nodeBinary: string
   }
 }
 
@@ -70,6 +89,31 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
       resume: envFlag(env.CLAUDE_CODEX_CLAUDE_P_RESUME, false),
       stopTimeoutRetries: numericEnv(env.CLAUDE_CODEX_CLAUDE_P_STOP_TIMEOUT_RETRIES, 1, 0, 5),
     },
+    jinnPty: {
+      cli: env.CLAUDE_CODEX_CLI || 'claude',
+      cols: numericEnv(env.CLAUDE_CODEX_PTY_COLS, 120, 40, 500),
+      rows: numericEnv(env.CLAUDE_CODEX_PTY_ROWS, 40, 10, 200),
+      turnTimeoutMs: numericEnv(
+        env.CLAUDE_CODEX_PTY_TURN_TIMEOUT_MS,
+        60 * 60_000,
+        0,
+        24 * 60 * 60_000,
+      ),
+      startupTimeoutMs: numericEnv(
+        env.CLAUDE_CODEX_PTY_STARTUP_TIMEOUT_MS,
+        30_000,
+        1_000,
+        10 * 60_000,
+      ),
+      streamProxy: envFlag(env.CLAUDE_CODEX_PTY_STREAM_PROXY, true),
+      extraArgs: stringList(env.CLAUDE_CODEX_PTY_ARGS),
+      hookTimeoutSec: numericEnv(env.CLAUDE_CODEX_PTY_HOOK_TIMEOUT_S, 3600, 30, 24 * 60 * 60),
+      autoApproveSafetyPrompts: envFlag(env.CLAUDE_CODEX_PTY_AUTO_APPROVE_SAFETY_PROMPTS, true),
+      keepApiKey: envFlag(env.CLAUDE_CODEX_PTY_KEEP_API_KEY, false),
+      stateDir: env.CLAUDE_CODEX_PTY_STATE_DIR || null,
+      relayScript: env.CLAUDE_CODEX_PTY_HOOK_RELAY || null,
+      nodeBinary: env.CLAUDE_CODEX_PTY_NODE || process.execPath,
+    },
   }
 }
 
@@ -107,6 +151,12 @@ export function normalizeRuntimeType(value: string | undefined): RuntimeBackendT
       // 'codex' mode (which bypasses our adapter entirely) — codex-proxy
       // keeps the adapter daemon in the loop and forwards just the turn.
       return 'codex-proxy'
+    case 'jinn-pty':
+    case 'jinn':
+    case 'pty':
+    case 'claude-pty':
+    case 'interactive':
+      return 'jinn-pty'
     default:
       throw new Error(`unknown CLAUDE_CODEX_RUNTIME_TYPE: ${value}`)
   }
