@@ -12,6 +12,7 @@ export CLAUDE_CODEX_RUNTIME_TYPE="agent-sdk-sidecar"
 #   agent-http - HTTP/SSE bridge for Claude Code Channels / agent-http
 #   agentapi   - HTTP/SSE bridge for coder/agentapi
 #   claude-p   - one-shot PTY/transcript wrapper via claude-p
+#   jinn-pty   - interactive `claude` TUI in a warm PTY per thread (subscription)
 #   mock       - local protocol testing
 ```
 
@@ -90,10 +91,42 @@ export CLAUDE_CODEX_WORKTREE_ROOT="$HOME/.claude-codex/worktrees"
 
 When enabled, each new Codex thread runs in a dedicated `git worktree`.
 
+## jinn-pty runtime
+
+```bash
+export CLAUDE_CODEX_RUNTIME_TYPE="jinn-pty"
+# Interactive claude binary (default: `claude` on PATH). A .mjs/.js path runs under node.
+export CLAUDE_CODEX_CLI="claude"
+# PTY geometry (defaults 120x40).
+export CLAUDE_CODEX_PTY_COLS="120"
+export CLAUDE_CODEX_PTY_ROWS="40"
+# Wall-clock cap per turn in ms (default 3600000; 0 = none). The transcript is
+# consulted before a timed-out turn is failed.
+export CLAUDE_CODEX_PTY_TURN_TIMEOUT_MS="3600000"
+# Time allowed for the TUI to reach its composer after a cold spawn (default 30000).
+export CLAUDE_CODEX_PTY_STARTUP_TIMEOUT_MS="30000"
+# Per-token streaming through the loopback SSE tee proxy (default 1).
+export CLAUDE_CODEX_PTY_STREAM_PROXY="1"
+# Seconds Claude Code waits for a hook (PreToolUse blocks on the App's approval; default 3600).
+export CLAUDE_CODEX_PTY_HOOK_TIMEOUT_S="3600"
+# Answer Claude Code's hardcoded safety prompts from the screen (default 1).
+export CLAUDE_CODEX_PTY_AUTO_APPROVE_SAFETY_PROMPTS="1"
+# Keep ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN in the PTY env (default 0, so the
+# TUI authenticates with the subscription login).
+export CLAUDE_CODEX_PTY_KEEP_API_KEY="0"
+# Extra CLI flags appended to every spawn (whitespace-separated or JSON array).
+export CLAUDE_CODEX_PTY_ARGS=""
+# Advanced: relay script, node binary for hooks, and the private state dir.
+# export CLAUDE_CODEX_PTY_HOOK_RELAY="/path/to/scripts/jinn-pty-hook-relay.mjs"
+# export CLAUDE_CODEX_PTY_NODE="/absolute/path/to/node"
+# export CLAUDE_CODEX_PTY_STATE_DIR="/tmp/claude-codex-pty"
+```
+
 ## Daemon
 
 ```bash
 # Idle shutdown grace period in ms (default 15000; 0 = never exit).
+# The jinn-pty runtime defaults this to 0 so its warm PTYs survive between turns.
 export CLAUDE_CODEX_IDLE_EXIT_MS="15000"
 
 # Pin a node binary for the shim (e.g. when default node is < 24).
@@ -122,6 +155,16 @@ export CLAUDE_CODEX_NODE="/absolute/path/to/node"
 | `CLAUDE_CODEX_ADD_DIRS` | Extra directories exposed to Claude. |
 | `CLAUDE_CODEX_ENABLE_FILE_CHECKPOINTING` | Enable SDK file checkpointing. |
 | `CLAUDE_CODEX_AUTO_WORKTREE` / `_WORKTREE_ROOT` | Per-thread worktree isolation. |
-| `CLAUDE_CODEX_IDLE_EXIT_MS` | Daemon idle shutdown. |
+| `CLAUDE_CODEX_IDLE_EXIT_MS` | Daemon idle shutdown (jinn-pty defaults to 0). |
+| `CLAUDE_CODEX_CLI` | Interactive `claude` binary for `jinn-pty`. |
+| `CLAUDE_CODEX_PTY_COLS` / `_ROWS` | PTY geometry for `jinn-pty`. |
+| `CLAUDE_CODEX_PTY_TURN_TIMEOUT_MS` | Per-turn wall-clock cap for `jinn-pty`. |
+| `CLAUDE_CODEX_PTY_STARTUP_TIMEOUT_MS` | Cold-spawn readiness wait for `jinn-pty`. |
+| `CLAUDE_CODEX_PTY_STREAM_PROXY` | SSE tee proxy for per-token streaming (`1`/`0`). |
+| `CLAUDE_CODEX_PTY_HOOK_TIMEOUT_S` | Hook command timeout Claude Code applies. |
+| `CLAUDE_CODEX_PTY_AUTO_APPROVE_SAFETY_PROMPTS` | Answer hardcoded TUI safety prompts from the screen. |
+| `CLAUDE_CODEX_PTY_KEEP_API_KEY` | Keep API-key env vars in the PTY (default stripped). |
+| `CLAUDE_CODEX_PTY_ARGS` | Extra `claude` flags for every `jinn-pty` spawn. |
+| `CLAUDE_CODEX_PTY_HOOK_RELAY` / `_NODE` / `_STATE_DIR` | Advanced `jinn-pty` overrides. |
 | `CLAUDE_CODEX_MOCK` | Run the protocol without Claude credentials. |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` | Claude auth / custom endpoint configuration. Keep real values out of git. |

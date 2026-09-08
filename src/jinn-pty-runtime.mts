@@ -88,7 +88,11 @@ const IMMEDIATE_STOP_FAILURE_ERRORS = new Set([
 ])
 const STOP_FAILURE_GRACE_MS = 20_000
 const STARTUP_POLL_MS = 250
-const STARTUP_HOOK_GRACE_MS = 3000
+// The real TUI can take several seconds to draw its dialogs after the
+// SessionStart hook fires, so the hook alone is trusted only late.
+const STARTUP_HOOK_GRACE_MS = 12_000
+const STARTUP_PROMPT_RETRY_MS = 1500
+const STARTUP_PROMPT_MAX_ANSWERS = 5
 const PERMISSION_PROMPT_SETTLE_MS = 400
 const PERMISSION_PROMPT_VERIFY_MS = 1500
 const PERMISSION_PROMPT_MAX_ATTEMPTS = 3
@@ -460,18 +464,36 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   private async awaitReady(session: PtySession, turn: ActiveTurn): Promise<void> {
     const startedAt = Date.now()
     const deadline = startedAt + this.options.startupTimeoutMs
-    let answered = false
+    let dialogSeen = 0
+    let answers = 0
+    let lastAnswerAt = 0
     while (Date.now() < deadline && !turn.settled && !session.exited) {
       const viewport = await session.screen.viewport()
-      // The answered dialog may linger in scrollback; only answer it once.
-      const dialog = answered ? null : parseStartupPrompt(viewport)
+      const dialog = parseStartupPrompt(viewport)
       if (dialog) {
-        debugLog('jinnPty.startupPrompt', { threadId: session.threadId, label: dialog.label })
-        for (const key of dialog.keystrokes) session.proc.write(key)
-        answered = true
-        await delay(STARTUP_POLL_MS * 2)
+        // Verify rather than assume: keystrokes sent while the TUI is still
+        // mounting its input handler are dropped, so answer only once the
+        // dialog has been stable for two polls and re-answer while it stays.
+        dialogSeen += 1
+        const now = Date.now()
+        if (
+          dialogSeen >= 2 &&
+          answers < STARTUP_PROMPT_MAX_ANSWERS &&
+          now - lastAnswerAt >= STARTUP_PROMPT_RETRY_MS
+        ) {
+          answers += 1
+          lastAnswerAt = now
+          debugLog('jinnPty.startupPrompt', {
+            threadId: session.threadId,
+            label: dialog.label,
+            attempt: answers,
+          })
+          for (const key of dialog.keystrokes) session.proc.write(key)
+        }
+        await delay(STARTUP_POLL_MS)
         continue
       }
+      dialogSeen = 0
       if (composerReady(viewport)) return
       // SessionStart alone is accepted only after a grace period, since a
       // startup dialog can render after the hook fires.

@@ -23,6 +23,11 @@ Claude backends sit behind the `ClaudeRuntime` interface and are constructed in
 - `native-runtime.mts` — default, in-process Claude Agent SDK.
 - `http-agent-runtime.mts` — `agent-http` / `agentapi` HTTP/SSE bridges.
 - `claude-p-runtime.mts` — one-shot `claude-p` transcript wrapper.
+- `jinn-pty-runtime.mts` — interactive `claude` TUI in a warm node-pty per
+  thread (subscription-billed); helpers in `jinn-pty-hooks.mts` (loopback hook
+  server + `--settings` writer), `jinn-pty-proxy.mts` (SSE tee proxy +
+  compaction gate), `jinn-pty-screen.mts` (headless xterm + dialog parsers),
+  `jinn-pty-transcript.mts`. Hook relay: `scripts/jinn-pty-hook-relay.mjs`.
 - `codex-proxy-runtime.mts` — native Codex passthrough (`codex exec`).
 - `mock-runtime.mts` — credential-free protocol testing (`CLAUDE_CODEX_MOCK=1`).
 

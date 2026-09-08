@@ -48,7 +48,8 @@
     "probe:codex-cli-remote": "npm run build && node scripts/probe-codex-cli-remote.mjs",
     "start": "node dist/src/adapter.mjs",
     "generate:schema": "codex app-server generate-ts --experimental --out generated/codex-app-server",
-    "postinstall": "node scripts/fix-node-pty-permissions.mjs"
+    "postinstall": "node scripts/fix-node-pty-permissions.mjs",
+    "smoke:jinn-pty": "npm run build && node scripts/smoke-jinn-pty.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.201",

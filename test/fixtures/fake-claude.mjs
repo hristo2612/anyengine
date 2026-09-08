@@ -256,7 +256,8 @@ if (process.env.FAKE_CLAUDE_TRUST_PROMPT) {
     0,
     async (position) => {
       if (position === 0) process.exit(1)
-      write('\r\n ▐▛███▛█   Fake Claude Code\r\n')
+      // The real TUI redraws from a clean screen once the dialog is answered.
+      write('\x1b[2J\x1b[H ▐▛███▛█   Fake Claude Code\r\n')
       composer()
     },
   )
