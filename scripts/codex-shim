@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
+# claude-codex shim. ChatGPT.app 26.9xx launches
+# `codex -c features.code_mode_host=true app-server --listen unix://`, so the
+# subcommand is not argv[1]. Strip leading global options before deciding.
 set -euo pipefail
 
 RUNTIME_ENV="${CLAUDE_CODEX_RUNTIME_ENV:-$HOME/.claude-codex/runtime.env}"
-
 if [ -f "$RUNTIME_ENV" ]; then
   # shellcheck source=/dev/null
   source "$RUNTIME_ENV"
@@ -10,69 +12,78 @@ fi
 
 ADAPTER="${CLAUDE_CODEX_ADAPTER:-/opt/claude-codex-adapter/dist/src/adapter.mjs}"
 NODE_BIN="${CLAUDE_CODEX_NODE:-node}"
-# Keep the reported version in sync with codexCompatVersion() in src/util.mts —
-# both default to 0.142.3 and honour CLAUDE_CODEX_COMPAT_VERSION.
 COMPAT_VERSION="${CLAUDE_CODEX_COMPAT_VERSION:-${CODEX_SHIM_COMPAT_VERSION:-0.142.3}}"
-# Distinguishing suffix (see codexVersionSuffix() in src/util.mts). The `-`
-# form (not `:-`) means CLAUDE_CODEX_VERSION_SUFFIX="" disables it.
 VERSION_SUFFIX="${CLAUDE_CODEX_VERSION_SUFFIX-claude-codex}"
 MODE="${CLAUDE_CODEX_ROUTE:-${CLAUDE_CODEX_RUNTIME_TYPE:-agent-sdk-sidecar}}"
 
 resolve_real_codex() {
   if [ -n "${CODEX_REAL:-}" ] && [ -x "$CODEX_REAL" ]; then
-    printf '%s\n' "$CODEX_REAL"
-    return 0
+    printf '%s\n' "$CODEX_REAL"; return 0
   fi
-
-  local self
+  local self candidate
   self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/$(basename "${BASH_SOURCE[0]}")"
-
-  local candidate
   while IFS= read -r candidate; do
     [ -n "$candidate" ] || continue
     [ "$candidate" != "$self" ] || continue
     [ -x "$candidate" ] || continue
-    printf '%s\n' "$candidate"
-    return 0
+    printf '%s\n' "$candidate"; return 0
   done < <({ type -P -a codex 2>/dev/null || which -a codex 2>/dev/null; } | awk '!seen[$0]++')
-
   return 1
 }
 
 is_native_codex_mode() {
-  case "$MODE" in
-    codex|native-codex|real-codex|native|real)
-      return 0
-      ;;
-  esac
+  case "$MODE" in codex|native-codex|real-codex|native|real) return 0;; esac
   return 1
 }
 
 REAL_CODEX="$(resolve_real_codex || true)"
 
-case "${1:-}" in
+# Split leading global options (e.g. `-c key=value`, `--config key=value`) from
+# the subcommand and its args.
+GLOBAL_OPTS=()
+REST=("$@")
+while [ "${#REST[@]}" -gt 0 ]; do
+  case "${REST[0]}" in
+    -c|--config|-m|--model|-p|--profile|-C|--cd)
+      GLOBAL_OPTS+=("${REST[0]}" "${REST[1]:-}"); REST=("${REST[@]:2}") ;;
+    -c=*|--config=*|-m=*|--model=*|--profile=*|--cd=*)
+      GLOBAL_OPTS+=("${REST[0]}"); REST=("${REST[@]:1}") ;;
+    *) break ;;
+  esac
+done
+SUBCMD="${REST[0]:-}"
+
+case "$SUBCMD" in
   --version|-V|version)
-    if is_native_codex_mode && [ -n "$REAL_CODEX" ]; then
-      exec "$REAL_CODEX" "$@"
-    fi
+    if is_native_codex_mode && [ -n "$REAL_CODEX" ]; then exec "$REAL_CODEX" "$@"; fi
     echo "${CODEX_SHIM_VERSION:-codex-cli ${COMPAT_VERSION}${VERSION_SUFFIX:+ (${VERSION_SUFFIX})}}"
-    exit 0
-    ;;
+    exit 0 ;;
   app-server)
     if is_native_codex_mode; then
-      if [ -n "$REAL_CODEX" ]; then
-        exec "$REAL_CODEX" "$@"
-      fi
+      if [ -n "$REAL_CODEX" ]; then exec "$REAL_CODEX" "$@"; fi
       echo "codex shim is in native Codex mode, but no real codex binary was found; set CODEX_REAL" >&2
       exit 127
     fi
-    exec "$NODE_BIN" "$ADAPTER" "$@"
-    ;;
+    # Adapter expects argv[0] == app-server; Codex-only -c overrides are dropped.
+    # Daemon mode (--listen unix://) is launched by the App over SSH with nohup;
+    # detach stdin so the SSH bootstrap session returns instead of timing out.
+    # Real codex daemonises here and returns; the App's bootstrap subshell waits
+    # for this command, so we must return too: background the adapter (stdout/
+    # stderr already point at the App's log), wait for its socket, exit 0.
+    for a in "${REST[@]}"; do
+      case "$a" in
+        unix://*)
+          SOCK="${CODEX_HOME:-$HOME/.codex}/app-server-control/app-server-control.sock"
+          [ "$a" != "unix://" ] && SOCK="${a#unix://}"
+          "$NODE_BIN" "$ADAPTER" "${REST[@]}" </dev/null &
+          disown 2>/dev/null || true
+          for _ in $(seq 1 100); do [ -S "$SOCK" ] && exit 0; sleep 0.1; done
+          exit 0 ;;
+      esac
+    done
+    exec "$NODE_BIN" "$ADAPTER" "${REST[@]}" ;;
 esac
 
-if [ -n "$REAL_CODEX" ]; then
-  exec "$REAL_CODEX" "$@"
-fi
-
+if [ -n "$REAL_CODEX" ]; then exec "$REAL_CODEX" "$@"; fi
 echo "codex shim supports --version and app-server; set CODEX_REAL for fallback" >&2
 exit 127
