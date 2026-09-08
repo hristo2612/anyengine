@@ -50,13 +50,15 @@ interface PendingServerRequest {
 const ANSWERED_SERVER_REQUEST_CAP = 512
 
 export function resolveNativeCodexBinary(env: NodeJS.ProcessEnv = process.env): string | null {
+  // CLAUDE_CODEX_NATIVE_CODEX=0 switches the passthrough off entirely, even
+  // when CLAUDE_CODEX_REAL_CODEX names a binary: the SSH/Remote twin runs this
+  // way so it never carries the account's rate-limit state into the App.
+  if ((env.CLAUDE_CODEX_NATIVE_CODEX ?? '').trim() === '0') return null
   const explicit = env.CLAUDE_CODEX_REAL_CODEX?.trim()
   if (explicit) return explicit
-  // Auto-detection is off in mock mode and under CLAUDE_CODEX_NATIVE_CODEX=0
-  // (the test suite): a dev machine with the desktop installed must not have
-  // its unit tests spawn the real binary. An explicit path above still wins.
+  // Auto-detection is off in mock mode (the test suite): a dev machine with
+  // the desktop installed must not have its unit tests spawn the real binary.
   if (env.CLAUDE_CODEX_MOCK === '1') return null
-  if ((env.CLAUDE_CODEX_NATIVE_CODEX ?? '').trim() === '0') return null
   const bundled = '/Applications/ChatGPT.app/Contents/Resources/codex'
   if (existsSync(bundled)) return bundled
   const real = env.CODEX_REAL?.trim()
