@@ -38,6 +38,9 @@ type Route = 'local' | 'upstream'
 
 const MERGED_METHODS = new Set(['thread/list', 'thread/loaded/list', 'model/list', 'config/read'])
 const LOCAL_GLOBAL_METHODS = new Set(['mock/experimentalMethod'])
+// Model ids the desktop treats as the "reserve" fallback (renderer: ELr()).
+const RESERVE_MODEL_IDS = new Set(['gpt-reserve', 'gpt-5.6-luna'])
+const RATE_LIMIT_CACHE_MS = 30_000
 const THREAD_ID_KEYS = ['threadId', 'thread_id'] as const
 
 export function isClaudeModelId(model: string): boolean {
@@ -395,6 +398,28 @@ export class NativeCodexMux {
   // Child catalog first (real ChatGPT models, defaults, tiers), Claude
   // entries appended on the last page with isDefault unset so the child's
   // default stays the desktop's default.
+  private rateLimitReachedCache: { at: number; reached: boolean } | null = null
+
+  private async shouldHideReserveModels(): Promise<boolean> {
+    if ((process.env.CLAUDE_CODEX_HIDE_RATE_LIMIT_UPSELL ?? '').trim() !== '1') return false
+    const now = Date.now()
+    if (this.rateLimitReachedCache && now - this.rateLimitReachedCache.at < RATE_LIMIT_CACHE_MS)
+      return this.rateLimitReachedCache.reached
+    let reached = false
+    try {
+      const result = asRecord(await this.upstream.request('account/rateLimits/read', {}))
+      const limits = asRecord(result.rateLimits)
+      reached = limits.rateLimitReachedType != null || asRecord(result.rateLimitUpsell).banner_type != null
+    } catch (error) {
+      debugLog('codex.mux.rateLimitProbeFailed', {
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
+    this.rateLimitReachedCache = { at: now, reached }
+    debugLog('codex.mux.reserveModels', { hidden: reached })
+    return reached
+  }
+
   private async mergeModelList(peer: RpcPeer, params: Record<string, unknown>): Promise<unknown> {
     const [upstreamSettled, localSettled] = await Promise.allSettled([
       this.upstream.request('model/list', params),
@@ -407,8 +432,16 @@ export class NativeCodexMux {
       .map((entry) => asRecord(entry))
       .filter((entry) => typeof entry.id === 'string' && !isCodexOpenAiModel(entry.id))
     if (!upstreamResult) return { data: claudeEntries, nextCursor: null }
-    const upstreamData = Array.isArray(upstreamResult.data) ? upstreamResult.data : []
-    if (upstreamResult.nextCursor != null) return upstreamResult
+    let upstreamData = Array.isArray(upstreamResult.data) ? upstreamResult.data : []
+    if (await this.shouldHideReserveModels()) {
+      // The desktop enters "reserve mode" (composer locked to the reserve
+      // model, picker replaced by an Add Credits wall, every other model
+      // hidden, Claude/Grok included) as soon as the list contains the reserve
+      // model while the account's limit is reached. Dropping that entry keeps
+      // the normal picker; GPT turns still fail natively until the reset.
+      upstreamData = upstreamData.filter((entry) => !RESERVE_MODEL_IDS.has(String(asRecord(entry).id)))
+    }
+    if (upstreamResult.nextCursor != null) return { ...upstreamResult, data: upstreamData }
     const upstreamIds = new Set(upstreamData.map((entry) => String(asRecord(entry).id)))
     const upstreamHasDefault = upstreamData.some((entry) => asRecord(entry).isDefault === true)
     const appended = claudeEntries
