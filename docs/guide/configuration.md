@@ -103,6 +103,9 @@ export CLAUDE_CODEX_PTY_ROWS="40"
 # Wall-clock cap per turn in ms (default 3600000; 0 = none). The transcript is
 # consulted before a timed-out turn is failed.
 export CLAUDE_CODEX_PTY_TURN_TIMEOUT_MS="3600000"
+# How long a turn stays open for background Task sub-agents to report back
+# (default 600000; 0 = do not wait).
+export CLAUDE_CODEX_PTY_ASYNC_SUBAGENT_TIMEOUT_MS="600000"
 # Time allowed for the TUI to reach its composer after a cold spawn (default 30000).
 export CLAUDE_CODEX_PTY_STARTUP_TIMEOUT_MS="30000"
 # Per-token streaming through the loopback SSE tee proxy (default 1).
@@ -167,6 +170,7 @@ export CLAUDE_CODEX_NODE="/absolute/path/to/node"
 | `CLAUDE_CODEX_CLI` | Interactive `claude` binary for `jinn-pty`. |
 | `CLAUDE_CODEX_PTY_COLS` / `_ROWS` | PTY geometry for `jinn-pty`. |
 | `CLAUDE_CODEX_PTY_TURN_TIMEOUT_MS` | Per-turn wall-clock cap for `jinn-pty`. |
+| `CLAUDE_CODEX_PTY_ASYNC_SUBAGENT_TIMEOUT_MS` | How long a `jinn-pty` turn waits for background Task sub-agents to report back (default 600000; 0 disables). |
 | `CLAUDE_CODEX_PTY_STARTUP_TIMEOUT_MS` | Cold-spawn readiness wait for `jinn-pty`. |
 | `CLAUDE_CODEX_PTY_STREAM_PROXY` | SSE tee proxy for per-token streaming (`1`/`0`). |
 | `CLAUDE_CODEX_PTY_HOOK_TIMEOUT_S` | Hook command timeout Claude Code applies. |

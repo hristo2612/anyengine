@@ -112,8 +112,8 @@ How a turn works:
    re-sent until it does). `turn/steer` pastes into the live PTY;
    `turn/interrupt` sends Escape.
 3. **Hooks.** The settings file wires `SessionStart`, `UserPromptSubmit`,
-   `PreToolUse`, `PostToolUse`, `Stop`, `StopFailure`, `Notification` and
-   `SessionEnd` to `scripts/jinn-pty-hook-relay.mjs`, which POSTs each payload
+   `PreToolUse`, `PostToolUse`, `Stop`, `StopFailure`, `SubagentStop`,
+   `Notification` and `SessionEnd` to `scripts/jinn-pty-hook-relay.mjs`, which POSTs each payload
    to a loopback HTTP server owned by the adapter (random port, token passed
    through the PTY environment only). `PreToolUse` becomes the App's native
    command / file-change approval: read-only tools (Read, Glob, Grep,
@@ -123,15 +123,32 @@ How a turn works:
    closes the tool item, `Stop` completes the turn with the final assistant
    text (from the hook, or the session transcript as a fallback),
    `StopFailure` fails it.
-4. **Streaming.** `ANTHROPIC_BASE_URL` points the CLI at a per-PTY loopback
+4. **Background sub-agents.** Claude Code 2.1.x runs `Task`/`Agent` in the
+   background: `PostToolUse` answers `async_launched` immediately and the
+   result reaches the main agent later (as an injected `<task-notification>`
+   message, or after a `ScheduleWakeup` call). The runtime withholds the
+   tool result until the sub-agent's `SubagentStop` (or its notification)
+   lands, so the App's child thread shows as running and then receives the
+   real answer; a `Stop` that arrives while a launched sub-agent is still
+   running, or has finished but the main agent has not yet answered its
+   notification, keeps the turn open and the later text streams into the
+   same turn. The turn completes on the `Stop` after the last result has been
+   consumed, or after `CLAUDE_CODEX_PTY_ASYNC_SUBAGENT_TIMEOUT_MS`
+   (default 10 min) with what it has; sub-agents that never report get a
+   failed placeholder result.
+5. **Streaming.** `ANTHROPIC_BASE_URL` points the CLI at a per-PTY loopback
    proxy that forwards every request unchanged to `api.anthropic.com`
    (auth headers pass through untouched and are never logged) and tees the
    SSE response into `text_delta` / `reasoning_delta` events. Only the main
    agent's requests are teed (identified by a sentinel appended to the system
    prompt); sub-agents, title generation and auto-compaction summaries never
-   reach the transcript. Set `CLAUDE_CODEX_PTY_STREAM_PROXY=0` to disable the
-   proxy — the final text then arrives as one delta at `Stop`.
-5. **Safety prompts.** Claude Code keeps a few hardcoded prompts (dangerous
+   reach the transcript. Each teed request is stamped with its start time and
+   the turn's prompt-acceptance epoch (`UserPromptSubmit`); requests that
+   began before the prompt was accepted, after a held `Stop`, or with no turn
+   active are dropped, which keeps the CLI's post-`Stop` follow-up-suggestion
+   call out of the next turn. Set `CLAUDE_CODEX_PTY_STREAM_PROXY=0` to
+   disable the proxy — the final text then arrives as one delta at `Stop`.
+6. **Safety prompts.** Claude Code keeps a few hardcoded prompts (dangerous
    `rm`, `&` background operator) that ignore hook decisions. When the CLI
    reports one via the `Notification` hook the runtime reads the dialog from the
    screen and answers it consistently with the App's decision for that tool.
