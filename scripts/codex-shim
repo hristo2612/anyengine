@@ -77,6 +77,10 @@ case "$SUBCMD" in
         unix://*)
           SOCK="${CODEX_HOME:-$HOME/.codex}/app-server-control/app-server-control.sock"
           [ "$a" != "unix://" ] && SOCK="${a#unix://}"
+          # The SSH/Remote twin serves Claude + Grok only; the desktop LOCAL host
+          # (stdio) owns the native GPT passthrough. Keeps the twin free of the
+          # account rate-limit state that hides the App model picker.
+          CLAUDE_CODEX_NATIVE_CODEX="${CLAUDE_CODEX_REMOTE_NATIVE_CODEX:-0}" \
           "$NODE_BIN" "$ADAPTER" ${GLOBAL_OPTS[@]+"${GLOBAL_OPTS[@]}"} "${REST[@]}" </dev/null &
           disown 2>/dev/null || true
           for _ in $(seq 1 100); do [ -S "$SOCK" ] && exit 0; sleep 0.1; done
