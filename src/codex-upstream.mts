@@ -65,6 +65,31 @@ export function resolveNativeCodexBinary(env: NodeJS.ProcessEnv = process.env): 
   return real || null
 }
 
+// CLAUDE_CODEX_HIDE_RATE_LIMIT_UPSELL=1: keep the real usage numbers but drop
+// the "reserve" markers (`rateLimitReachedType`, `rateLimitUpsell`) that make
+// the desktop force its reserve model and hide the whole model picker,
+// including the Claude/Grok entries this adapter serves. GPT turns still reach
+// OpenAI and still fail natively while the account is over its limit.
+function hideRateLimitUpsell(): boolean {
+  return (process.env.CLAUDE_CODEX_HIDE_RATE_LIMIT_UPSELL ?? '').trim() === '1'
+}
+
+export function sanitizeRateLimitPayload<T>(value: T): T {
+  if (!hideRateLimitUpsell() || value == null || typeof value !== 'object') return value
+  const clone = JSON.parse(JSON.stringify(value)) as Record<string, unknown>
+  const scrub = (limits: unknown) => {
+    if (limits && typeof limits === 'object') {
+      const record = limits as Record<string, unknown>
+      if ('rateLimitReachedType' in record) record.rateLimitReachedType = null
+    }
+  }
+  scrub(clone.rateLimits)
+  const byId = clone.rateLimitsByLimitId
+  if (byId && typeof byId === 'object') for (const entry of Object.values(byId as object)) scrub(entry)
+  if ('rateLimitUpsell' in clone) clone.rateLimitUpsell = null
+  return clone as T
+}
+
 export class CodexUpstream {
   readonly binary: string
   readonly args: string[]
@@ -279,6 +304,10 @@ export class CodexUpstream {
       // Notification or server request from the child. The mux picks the
       // peer; for server requests it calls rewriteServerRequestId() so the
       // desktop never sees the child's raw id.
+      if (/rateLimits/i.test(message.method) && 'params' in message) {
+        this.onMessage({ ...message, params: sanitizeRateLimitPayload(message.params) })
+        return
+      }
       this.onMessage(message)
       return
     }
@@ -294,7 +323,10 @@ export class CodexUpstream {
       if (entry.peer) {
         const forwarded: JsonRpcResponse = { jsonrpc: '2.0', id: entry.downId }
         if (response.error) forwarded.error = response.error
-        else forwarded.result = response.result ?? null
+        else
+          forwarded.result = /rateLimits/i.test(entry.method)
+            ? sanitizeRateLimitPayload(response.result ?? null)
+            : (response.result ?? null)
         debugLog('codex.upstream.response', {
           method: entry.method,
           downId: entry.downId,
