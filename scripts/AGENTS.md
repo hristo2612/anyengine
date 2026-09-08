@@ -24,6 +24,8 @@ plain `.mjs` / shell.
 - `smoke-real-claude.mjs` — round-trips a real Claude turn (`npm run smoke:real`).
 - `smoke-jinn-pty.mjs` — real-Claude smoke for the `jinn-pty` runtime over a
   WebSocket listener (`npm run smoke:jinn-pty`).
+- `smoke-grok.mjs` — real-grok smoke for the `grok` runtime: a `grok-*` thread
+  over a WebSocket listener, text turn + approved Bash turn (`npm run smoke:grok`).
 - `jinn-pty-hook-relay.mjs` — Claude Code hook command for `jinn-pty`; POSTs
   hook JSON to the adapter's loopback hook server and prints its reply.
 - `fix-node-pty-permissions.mjs` — `postinstall`: restores the exec bit on

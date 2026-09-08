@@ -1306,7 +1306,7 @@ function stringOrNull(value: unknown): string | null {
 
 export function sdkResumeSessionId(value: string | null, cwd?: string): string | null {
   if (!value) return null
-  if (/^(agent-http|agentapi|claude-p):/.test(value)) return null
+  if (/^(agent-http|agentapi|claude-p|grok):/.test(value)) return null
   if (cwd) {
     const home = homedir()
     const slug = (dir: string) => dir.replace(/[^a-zA-Z0-9-]/g, "-")

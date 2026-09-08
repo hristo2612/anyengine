@@ -35,6 +35,11 @@ Claude backends sit behind the `ClaudeRuntime` interface and are constructed in
   `jinn-pty-transcript.mts`. Hook relay: `scripts/jinn-pty-hook-relay.mjs`.
 - `codex-proxy-runtime.mts` — legacy `codex exec` proxy, opt-in via
   `CLAUDE_CODEX_GPT_ROUTE=exec` (gpt-* threads default to the multiplexer).
+- `codex-proxy-runtime.mts` — native Codex passthrough (`codex exec`).
+- `grok-runtime.mts` — xAI Grok Build CLI over its agent protocol (`grok agent
+  stdio`), one warm process per thread; selected per thread for `grok-*` models.
+  Helpers: `grok-acp.mts` (wire → RuntimeEvent mapping, argv, permissions) and
+  `grok-models.mts` (picker catalog + binary discovery).
 - `mock-runtime.mts` — credential-free protocol testing (`CLAUDE_CODEX_MOCK=1`).
 
 **Adding a backend:** create `<name>-runtime.mts` implementing `ClaudeRuntime`,

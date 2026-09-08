@@ -19,6 +19,8 @@ import {
 } from './provider-loop-selection.mjs'
 import { recordRunEvent } from './run-registry.mjs'
 import { normalizeRuntimeType } from './runtime-config.mjs'
+import { isGrokModel } from './grok-acp.mjs'
+import { grokModelOptions } from './grok-models.mjs'
 import {
   addedFileDiff,
   asRecord,
@@ -2052,7 +2054,7 @@ export class CodexClaudeAppServer {
         purpose: turnPurpose,
         prompt: effectivePrompt,
         cwd: stringOr(params.cwd, thread.cwd),
-        runtimeType: isCodexThread ? 'codex-proxy' : null,
+        runtimeType: isCodexThread ? 'codex-proxy' : grokRuntimeTypeFor(resolvedModel),
         model: resolvedModel,
         effort: resolvedEffort,
         claudeSessionId: isCodexThread ? thread.codexSessionId : thread.claudeSessionId,
@@ -3479,6 +3481,29 @@ export class CodexClaudeAppServer {
         supports_websockets: false,
       }
     }
+    if (grokModelOptions().length > 0) {
+      // 'grok' = xAI Grok Build CLI forwarded via `grok agent stdio`; auth is
+      // the grok binary's own login, so no OpenAI auth gating either.
+      providers.grok = {
+        name: 'Grok (xAI · forwarded)',
+        base_url: null,
+        env_key: null,
+        env_key_instructions: null,
+        experimental_bearer_token: null,
+        auth: null,
+        aws: null,
+        wire_api: 'responses',
+        query_params: null,
+        http_headers: null,
+        env_http_headers: null,
+        request_max_retries: null,
+        stream_max_retries: null,
+        stream_idle_timeout_ms: null,
+        websocket_connect_timeout_ms: null,
+        requires_openai_auth: false,
+        supports_websockets: false,
+      }
+    }
     return providers
   }
 
@@ -3492,7 +3517,10 @@ export class CodexClaudeAppServer {
     // to runtimeBackend='codex' which the runtime router dispatches to
     // CodexProxyRuntime (shells out to `codex exec --json`).
     const codexOptions = codexProxyModelOptions()
-    const options = [...claudeOptions, ...codexOptions]
+    // grok-* ids (xAI Grok Build CLI) route the thread's turns to the grok
+    // runtime; see grok-models.mts for discovery / CLAUDE_CODEX_GROK_MODELS.
+    const grokOptions = grokModelOptions()
+    const options = [...claudeOptions, ...codexOptions, ...grokOptions]
     const hasConfiguredDefault = options.some((option) => option.id === defaultModel)
     const reasoningEfforts = [
       { reasoningEffort: 'low', description: 'Fast runtime response' },
@@ -4673,4 +4701,13 @@ export class CodexClaudeAppServer {
       )
     } catch {}
   }
+}
+
+// Per-thread rule: a grok-* model selects the grok runtime regardless of the
+// configured default backend (mirrors how gpt-* selects codex-proxy). Mock
+// mode keeps every model on the mock runtime so protocol tests stay
+// deterministic.
+function grokRuntimeTypeFor(model: string | null): 'grok' | null {
+  if (process.env.CLAUDE_CODEX_MOCK === '1') return null
+  return isGrokModel(model) ? 'grok' : null
 }

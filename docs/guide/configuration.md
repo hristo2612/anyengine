@@ -153,6 +153,10 @@ export CLAUDE_CODEX_NODE="/absolute/path/to/node"
 | `provider_loop_agent_loop` | Saved config key for agent-loop selection via `config/value/write`. |
 | `CLAUDE_CODEX_DEFAULT_MODEL` / `_EFFORT` | Defaults for new threads. |
 | `CLAUDE_CODEX_MODELS` | Codex App model picker list. |
+| `CLAUDE_CODEX_GROK_MODELS` | Grok entries for the picker (comma list or JSON array); default is `grok models` output when a grok binary is found. |
+| `CLAUDE_CODEX_GROK_BIN` | xAI `grok` binary for the `grok` runtime (default: `PATH`, then `~/.local/bin/grok`). |
+| `CLAUDE_CODEX_GROK_ARGS` / `_IDLE_MS` / `_TURN_TIMEOUT_MS` / `_STARTUP_TIMEOUT_MS` | Extra `grok agent` flags, idle process reap, per-turn and startup timeouts. |
+| `CLAUDE_CODEX_DISABLE_GROK` | `1` hides the Grok models. |
 | `CLAUDE_CODEX_MODEL_ALIASES` / `_EFFORT_ALIASES` | Id remapping. |
 | `CLAUDE_CODEX_MCP_SERVERS` | MCP server config (JSON or file path). |
 | `CLAUDE_CODEX_ALLOWED_TOOLS` | Pre-approved tools. |

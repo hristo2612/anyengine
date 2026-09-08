@@ -16,6 +16,9 @@ export type RuntimeBackendType =
   // thread (subscription-billed), with Claude Code hooks relayed back over
   // loopback HTTP. Ported from Jinn's interactive engine.
   | 'jinn-pty'
+  // grok = xAI's `grok agent stdio` (Agent Client Protocol) per thread.
+  // Selected per-thread when the user picks a grok-* model in the App.
+  | 'grok'
 
 export interface RuntimeConfig {
   type: RuntimeBackendType
@@ -50,6 +53,13 @@ export interface RuntimeConfig {
     stateDir: string | null
     relayScript: string | null
     nodeBinary: string
+  }
+  grok: {
+    binary: string | null
+    extraArgs: string[]
+    turnTimeoutMs: number
+    startupTimeoutMs: number
+    idleExitMs: number
   }
 }
 
@@ -114,6 +124,23 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
       relayScript: env.CLAUDE_CODEX_PTY_HOOK_RELAY || null,
       nodeBinary: env.CLAUDE_CODEX_PTY_NODE || process.execPath,
     },
+    grok: {
+      binary: env.CLAUDE_CODEX_GROK_BIN || env.GROK_BIN || null,
+      extraArgs: stringList(env.CLAUDE_CODEX_GROK_ARGS),
+      turnTimeoutMs: numericEnv(
+        env.CLAUDE_CODEX_GROK_TURN_TIMEOUT_MS,
+        60 * 60_000,
+        0,
+        24 * 60 * 60_000,
+      ),
+      startupTimeoutMs: numericEnv(
+        env.CLAUDE_CODEX_GROK_STARTUP_TIMEOUT_MS,
+        60_000,
+        1_000,
+        10 * 60_000,
+      ),
+      idleExitMs: numericEnv(env.CLAUDE_CODEX_GROK_IDLE_MS, 10 * 60_000, 0, 24 * 60 * 60_000),
+    },
   }
 }
 
@@ -157,6 +184,10 @@ export function normalizeRuntimeType(value: string | undefined): RuntimeBackendT
     case 'claude-pty':
     case 'interactive':
       return 'jinn-pty'
+    case 'grok':
+    case 'grok-agent':
+    case 'grok-acp':
+      return 'grok'
     default:
       throw new Error(`unknown CLAUDE_CODEX_RUNTIME_TYPE: ${value}`)
   }
