@@ -79,6 +79,8 @@ import {
   wrapMcpToolError,
   wrapMcpToolResult,
 } from './server-helpers.mjs'
+import { type MuxLocalServer, NativeCodexMux } from './codex-mux.mjs'
+import { CodexUpstream } from './codex-upstream.mjs'
 import type { SessionStore } from './store.mjs'
 import type {
   ClaudeRuntime,
@@ -106,6 +108,7 @@ import {
   claudeOutputFormat,
   codexCliVersion,
   codexHome,
+  codexExecRouteEnabled,
   codexProxyModelOptions,
   codexUserAgent,
   debugLog,
@@ -212,6 +215,9 @@ export class CodexClaudeAppServer {
   private readonly configPath = join(adapterHome(), 'config.json')
   private idleCheckHandler: (() => void) | null = null
   private stopped = false
+  // Native-codex multiplexer (docs/guide/backends.md). Null when no real
+  // codex binary is configured or CLAUDE_CODEX_GPT_ROUTE=exec.
+  private mux: NativeCodexMux | null = null
   private readonly store: SessionStore
   private readonly runtime: ClaudeRuntime
 
@@ -229,6 +235,7 @@ export class CodexClaudeAppServer {
         method: message.method,
         params: summarizeRpcParams(message.method, message.params),
       })
+      if (this.mux && (await this.mux.handle(peer, message))) return
       if ('id' in message) {
         await this.handleRequest(peer, message as JsonRpcRequest)
       } else {
@@ -242,12 +249,14 @@ export class CodexClaudeAppServer {
         id: message.id,
         hasError: Boolean((message as JsonRpcResponse).error),
       })
+      if (this.mux && (await this.mux.handle(peer, message))) return
       this.resolveServerRequest(message as JsonRpcResponse)
     }
   }
 
   closePeer(peer: RpcPeer): void {
     debugLog('peer.close', { peerId: peer.id })
+    this.mux?.closePeer(peer)
     for (const [threadId, activePeer] of this.activePeerByThread.entries()) {
       if (activePeer.id === peer.id) this.activePeerByThread.delete(threadId)
     }
@@ -262,8 +271,35 @@ export class CodexClaudeAppServer {
     // persisted as inProgress until a later restart recovery pass.
     this.finalizeActiveSubagentsForShutdown('server stopped')
     this.completeActiveTurns('interrupted', { message: 'server stopped' })
+    await this.mux?.stop()
     await this.runtime.stop()
     this.store.close()
+  }
+
+  // Put a REAL `codex app-server` child in front of the local layer. `args`
+  // is the desktop's argv (leading `-c` globals, `app-server`, its flags)
+  // replayed verbatim; `eager` spawns now (stdio mode, one desktop per
+  // process) instead of on the first `initialize`.
+  attachNativeCodex(options: { binary: string; args: string[]; eager: boolean }): NativeCodexMux {
+    const local: MuxLocalServer = {
+      dispatch: (peer, method, params) => this.dispatch(peer, method, params),
+      localThreadOwner: (threadId) => {
+        const thread = this.store.getThread(threadId)
+        if (!thread) return null
+        return thread.runtimeBackend === 'codex' ? 'codex-exec' : 'claude'
+      },
+    }
+    let mux: NativeCodexMux | null = null
+    const upstream = new CodexUpstream({
+      binary: options.binary,
+      args: options.args,
+      onMessage: (message) => mux?.onUpstreamMessage(message),
+    })
+    mux = new NativeCodexMux({ store: this.store, upstream, local })
+    this.mux = mux
+    debugLog('codex.mux.attach', { binary: options.binary, args: options.args, eager: options.eager })
+    if (options.eager) upstream.start()
+    return mux
   }
 
   hasActiveTurns(): boolean {
@@ -323,6 +359,19 @@ export class CodexClaudeAppServer {
         // so the App's sidebar avatar and MCP panel populate without waiting
         // for the next polling cycle. Without these the avatar stays "signed
         // out" and the MCP list never reflects current boot state.
+        // With a real codex child attached, the child emits the real
+        // account/updated and MCP startup statuses; ours would be wrong.
+        if (this.mux?.active) {
+          return {
+            userAgent: codexUserAgent(
+              stringOr(clientInfo.name, 'codex-app'),
+              stringOr(clientInfo.version, 'unknown'),
+            ),
+            codexHome: codexHome(),
+            platformFamily: platformFamily(),
+            platformOs: platformOs(),
+          }
+        }
         queueMicrotask(() => {
           this.notify(peer, {
             method: 'account/updated',
@@ -647,6 +696,22 @@ export class CodexClaudeAppServer {
       params.ephemeral === true ||
       params.threadSource === 'title_generation' ||
       params.threadSource === 'memory_consolidation'
+    // Pick the runtime backend from the chosen model. gpt-* normally never
+    // reaches here: the native-codex multiplexer forwards it to the real
+    // child. Reaching here means no child is attached (no binary) and the
+    // legacy `codex exec` proxy is not opted in (CLAUDE_CODEX_GPT_ROUTE=exec),
+    // so refuse instead of handing a gpt id to the Claude CLI. The desktop's
+    // hidden title/summary threads are the exception (CLAUDE_CODEX_TITLE_ROUTE
+    // =local): they stay on the Claude backend, whose summary path maps gpt-*
+    // to the summary model.
+    const codexBackendRequested =
+      selectedProviderLoop.runtimeType === 'codex-proxy' || isCodexOpenAiModel(model)
+    const execRoute = codexExecRouteEnabled() || process.env.CLAUDE_CODEX_MOCK === '1'
+    if (codexBackendRequested && !execRoute && !isTitleOrHelper) {
+      throw new Error(
+        `no native codex upstream for model ${model}; set CLAUDE_CODEX_REAL_CODEX or CLAUDE_CODEX_GPT_ROUTE=exec`,
+      )
+    }
     const thread: ThreadRecord = {
       id,
       sessionId: id,
@@ -687,13 +752,7 @@ export class CodexClaudeAppServer {
         typeof params.developerInstructions === 'string' ? params.developerInstructions : null,
       ),
       personality: normalizePersonality(params.personality),
-      // Pick the runtime backend from the chosen model — picking gpt-* in
-      // the App's model dropdown flips the new thread to runtimeBackend
-      // 'codex' so turns get forwarded to `codex exec`. Default 'claude'.
-      runtimeBackend:
-        selectedProviderLoop.runtimeType === 'codex-proxy' || isCodexOpenAiModel(model)
-          ? 'codex'
-          : 'claude',
+      runtimeBackend: codexBackendRequested && execRoute ? 'codex' : 'claude',
       codexSessionId: null,
     }
     this.store.upsertThread(thread)

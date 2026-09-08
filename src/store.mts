@@ -74,7 +74,46 @@ export class SessionStore {
     // Real Codex session id for runtime_backend='codex' threads (returned
     // by `codex exec` as thread.started.thread_id). NULL until first turn.
     this.ensureColumn('threads', 'codex_session_id', 'TEXT')
+    // Threads owned by the REAL `codex app-server` child behind the
+    // native-codex multiplexer. Only the id is ours; every item, turn and
+    // rollout for these lives in ~/.codex. The row exists so routing survives
+    // an adapter restart without asking the child.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS native_codex_threads (
+        id TEXT PRIMARY KEY,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `)
     this.sanitizeLegacyEnumColumns()
+  }
+
+  setNativeCodexThread(threadId: string): void {
+    const now = nowSeconds()
+    this.db
+      .prepare(`
+        INSERT INTO native_codex_threads (id, created_at, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at
+      `)
+      .run(threadId, now, now)
+  }
+
+  isNativeCodexThread(threadId: string): boolean {
+    const row = this.db
+      .prepare('SELECT 1 AS found FROM native_codex_threads WHERE id = ?')
+      .get(threadId)
+    return row != null
+  }
+
+  deleteNativeCodexThread(threadId: string): void {
+    this.db.prepare('DELETE FROM native_codex_threads WHERE id = ?').run(threadId)
+  }
+
+  listNativeCodexThreadIds(): string[] {
+    const rows = this.db
+      .prepare('SELECT id FROM native_codex_threads ORDER BY updated_at DESC')
+      .all() as Array<{ id: string }>
+    return rows.map((row) => String(row.id))
   }
 
   // Older versions of the adapter stored empty strings (and a snake_case

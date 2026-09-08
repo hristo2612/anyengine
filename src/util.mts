@@ -563,6 +563,10 @@ export function codexProxyModelOptions(): Array<{
   // unusable picker entries.
   if (process.env.CLAUDE_CODEX_MOCK === '1') return []
   if (process.env.CLAUDE_CODEX_DISABLE_CODEX_PROXY === '1') return []
+  // Retired as the default gpt-* route: the native-codex multiplexer forwards
+  // gpt-* threads to a real `codex app-server` child. `codex exec` remains
+  // opt-in for hosts without the desktop binary.
+  if (!codexExecRouteEnabled()) return []
   if (!resolveCodexBinary()) return []
   const now = Date.now()
   if (cachedCodexProxyModelOptions && cachedCodexProxyModelOptions.expiresAt > now) {
@@ -599,6 +603,14 @@ export function codexProxyModelOptions(): Array<{
     description: 'Real OpenAI Codex CLI (forwarded via `codex exec --json`).',
     isDefault: false,
   }))
+}
+
+// CLAUDE_CODEX_GPT_ROUTE=exec keeps the legacy `codex exec` proxy for gpt-*
+// threads. Anything else (default `native`) routes gpt-* to the real
+// app-server child via the multiplexer.
+export function codexExecRouteEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = (env.CLAUDE_CODEX_GPT_ROUTE ?? '').trim().toLowerCase()
+  return raw === 'exec' || raw === 'codex-exec' || raw === 'proxy'
 }
 
 // Resolve the real codex CLI binary — explicit CODEX_REAL wins; otherwise

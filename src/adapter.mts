@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { resolveNativeCodexBinary } from './codex-upstream.mjs'
 import { resolveRuntimeConfig } from './runtime-config.mjs'
 import { createRuntime } from './runtime-factory.mjs'
 import { CodexClaudeAppServer } from './server.mjs'
@@ -13,7 +14,7 @@ import {
   startWebSocketTransport,
 } from './transports.mjs'
 import type { RpcPeer } from './types.mjs'
-import { debugLog, defaultSocketPath, ensureParent } from './util.mjs'
+import { codexExecRouteEnabled, debugLog, defaultSocketPath, ensureParent } from './util.mjs'
 
 // Install global crash guards FIRST, before anything else can fail. Without
 // these, a single uncaught rejection or a synchronous EPIPE from a write to a
@@ -52,7 +53,10 @@ process.on('unhandledRejection', (reason: unknown) => {
 })
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2)
+  // The desktop spawns `codex -c key=value ... app-server <flags>`; the shim
+  // passes those leading globals through untouched so the real child can be
+  // started with the identical argv.
+  const { globals: codexGlobals, rest: args } = splitCodexGlobals(process.argv.slice(2))
   if (args[0] !== 'app-server') {
     usage(1)
     return
@@ -91,6 +95,14 @@ async function main(): Promise<void> {
   }
   const runtime = createRuntime()
   const server = new CodexClaudeAppServer(store, runtime)
+  const nativeCodexBinary = codexExecRouteEnabled() ? null : resolveNativeCodexBinary()
+  if (nativeCodexBinary) {
+    server.attachNativeCodex({
+      binary: nativeCodexBinary,
+      args: [...codexGlobals, ...stripListenArgs(args)],
+      eager: normalizeListenUrl(listen) === 'stdio://',
+    })
+  }
   let shuttingDown = false
   const shutdown = async (reason: string) => {
     if (shuttingDown) return
@@ -177,6 +189,44 @@ async function main(): Promise<void> {
     return
   }
   await startWebSocketTransport(normalized, onMessage, onClose, onConnect)
+}
+
+// Leading Codex global options (`-c key=value`, `--config`, `-m`, `-p`, `-C`)
+// that precede the `app-server` subcommand. Returned verbatim, in order.
+function splitCodexGlobals(argv: string[]): { globals: string[]; rest: string[] } {
+  const globals: string[] = []
+  let index = 0
+  while (index < argv.length) {
+    const arg = argv[index] ?? ''
+    if (/^(-c|--config|-m|--model|-p|--profile|-C|--cd)$/.test(arg)) {
+      globals.push(arg, argv[index + 1] ?? '')
+      index += 2
+      continue
+    }
+    if (/^(-c|--config|-m|--model|--profile|--cd)=/.test(arg)) {
+      globals.push(arg)
+      index += 1
+      continue
+    }
+    break
+  }
+  return { globals, rest: argv.slice(index) }
+}
+
+// The child always speaks plain stdio; drop any `--listen` the shim/daemon
+// mode added for the adapter itself.
+function stripListenArgs(args: string[]): string[] {
+  const result: string[] = []
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? ''
+    if (arg === '--listen') {
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--listen=')) continue
+    result.push(arg)
+  }
+  return result
 }
 
 function getArg(args: string[], name: string): string | null {

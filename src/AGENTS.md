@@ -14,6 +14,11 @@ Adapter internals. All files are `.mts` ESM, compiled to `dist/*.mjs`. See the
 - `util.mts` — shared helpers.
 - `mcp.mts` — MCP stdio/HTTP tool & resource calls.
 - `worktree.mts` — optional per-thread git worktree isolation.
+- `codex-upstream.mts` — the REAL `codex app-server` child (spawn with the
+  desktop's argv, JSON-RPC over stdio, request-id tables both ways, restart).
+- `codex-mux.mts` — native-codex multiplexer: thread ownership (persisted in
+  `store.mts`), default route = child, merged `thread/list` / `model/list` /
+  `config/read`. Hooked into `server.mts#handle` via `attachNativeCodex`.
 
 ## Runtime backends
 
@@ -28,7 +33,8 @@ Claude backends sit behind the `ClaudeRuntime` interface and are constructed in
   server + `--settings` writer), `jinn-pty-proxy.mts` (SSE tee proxy +
   compaction gate), `jinn-pty-screen.mts` (headless xterm + dialog parsers),
   `jinn-pty-transcript.mts`. Hook relay: `scripts/jinn-pty-hook-relay.mjs`.
-- `codex-proxy-runtime.mts` — native Codex passthrough (`codex exec`).
+- `codex-proxy-runtime.mts` — legacy `codex exec` proxy, opt-in via
+  `CLAUDE_CODEX_GPT_ROUTE=exec` (gpt-* threads default to the multiplexer).
 - `mock-runtime.mts` — credential-free protocol testing (`CLAUDE_CODEX_MOCK=1`).
 
 **Adding a backend:** create `<name>-runtime.mts` implementing `ClaudeRuntime`,
