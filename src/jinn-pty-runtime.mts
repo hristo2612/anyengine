@@ -168,6 +168,7 @@ interface ActiveTurn {
   resolve: () => void
   reject: (error: Error) => void
   gate: CompactionStreamGate
+  // Text streamed to the App that it will actually show.
   streamedChars: number
   promptSubmitted: boolean
   // Set by UserPromptSubmit (the CLI accepted the prompt), cleared by a Stop
@@ -681,7 +682,19 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         turn.promptSubmitted = true
         turn.promptAcceptedAt = Date.now()
         this.clearNotifyGrace(turn)
-        await this.onTaskNotifications(turn, parseTaskNotifications(String(payload.prompt ?? '')))
+        // Whatever the agent says next answers a new (injected) message.
+        if (turn.streamedChars > 0) turn.continuation = true
+        {
+          const notifications = parseTaskNotifications(String(payload.prompt ?? ''))
+          if (notifications.length > 0 || turn.asyncAgents.size > 0) {
+            debugLog('jinnPty.promptAccepted', {
+              threadId,
+              notifications: notifications.length,
+              held: turn.heldStop !== null,
+            })
+          }
+          await this.onTaskNotifications(turn, notifications)
+        }
         return undefined
       case 'PreToolUse':
         turn.promptSubmitted = true
@@ -871,6 +884,15 @@ export class JinnPtyRuntime implements ClaudeRuntime {
     return [...turn.asyncAgents.values()].filter((agent) => !agent.finished)
   }
 
+  // A Task/Agent tool_use has been emitted whose tool_result has not.
+  private subagentResultPending(turn: ActiveTurn): boolean {
+    if (this.asyncAgentsOutstanding(turn).length > 0) return true
+    for (const tool of turn.pendingTools.values()) {
+      if (ASYNC_SUBAGENT_TOOLS.has(tool.toolName.toLowerCase())) return true
+    }
+    return false
+  }
+
   // A Stop while launched sub-agents are still running, or have finished but
   // the main agent has not yet answered their results, ends nothing: the CLI
   // will inject the results and the agent will speak again.
@@ -1041,11 +1063,15 @@ export class JinnPtyRuntime implements ClaudeRuntime {
     for (const delta of deltas) {
       if (delta.type === 'text') {
         let content = delta.content
+        // The server hides main-agent text while a spawned sub-agent has no
+        // result yet, so only text streamed outside that window counts as
+        // shown (and deserves a paragraph break after a held Stop).
+        const shown = !this.subagentResultPending(turn)
         if (turn.continuation) {
           turn.continuation = false
-          if (turn.streamedChars > 0) content = `\n\n${content}`
+          if (shown && turn.streamedChars > 0) content = `\n\n${content}`
         }
-        turn.streamedChars += content.length
+        if (shown) turn.streamedChars += content.length
         void turn.handlers.onEvent({ type: 'text_delta', delta: content })
       } else if (delta.type === 'thinking') {
         void turn.handlers.onEvent({ type: 'reasoning_delta', delta: delta.content })
