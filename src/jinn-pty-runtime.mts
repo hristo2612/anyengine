@@ -232,6 +232,10 @@ export class JinnPtyRuntime implements ClaudeRuntime {
       resolveTurn = resolve
       rejectTurn = reject
     })
+    // The CLI can die (bad --resume id, auth error) before this method reaches
+    // `await done`; mark the rejection handled so an early failure is reported
+    // once, through the await below, instead of as an unhandled rejection.
+    done.catch(() => {})
     const turn: ActiveTurn = {
       context,
       handlers,
