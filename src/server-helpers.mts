@@ -2,6 +2,7 @@ import { type ChildProcess, execFile, spawn } from 'node:child_process'
 import { type FSWatcher, readFileSync, watch, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import { grokModelOptions } from './grok-models.mjs'
 import { callMcpTool, readMcpConfig, readMcpResource } from './mcp.mjs'
 import type { SessionStore } from './store.mjs'
 import type {
@@ -119,7 +120,7 @@ export function allSelectableModelOptions(): Array<{
   description: string
   isDefault?: boolean
 }> {
-  return [...claudeModelOptions(), ...codexProxyModelOptions()]
+  return [...claudeModelOptions(), ...codexProxyModelOptions(), ...grokModelOptions()]
 }
 
 export function defaultSelectableModelId(): string {

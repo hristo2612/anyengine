@@ -1,5 +1,6 @@
 import { ClaudePTranscriptRuntime } from './claude-p-runtime.mjs'
 import { CodexProxyRuntime } from './codex-proxy-runtime.mjs'
+import { GrokRuntime } from './grok-runtime.mjs'
 import { HttpAgentRuntime } from './http-agent-runtime.mjs'
 import { defaultRelayScript, defaultStateDir, JinnPtyRuntime } from './jinn-pty-runtime.mjs'
 import { MockRuntime } from './mock-runtime.mjs'
@@ -33,7 +34,10 @@ class SelectableRuntime implements ClaudeRuntime {
 
   async runTurn(context: RuntimeTurnContext, handlers: RuntimeHandlers): Promise<void> {
     const requestedType = context.runtimeType ?? this.config.type
-    if (shouldHandleLocally(requestedType, context) || shouldHandleLocally(this.config.type, context)) {
+    if (
+      shouldHandleLocally(requestedType, context) ||
+      shouldHandleLocally(this.config.type, context)
+    ) {
       debugLog('runtime.turn.select', {
         threadId: context.threadId,
         turnId: context.turnId,
@@ -103,7 +107,7 @@ function shouldHandleLocally(type: RuntimeBackendType, context: RuntimeTurnConte
   // codex-proxy and spend `codex exec` usage for a title.
   return (
     context.purpose === 'summary' &&
-    (type === 'agent-http' || type === 'agentapi' || type === 'jinn-pty')
+    (type === 'agent-http' || type === 'agentapi' || type === 'jinn-pty' || type === 'grok')
   )
 }
 
@@ -191,6 +195,8 @@ function instantiateRuntime(config: RuntimeConfig, type: RuntimeBackendType): Cl
         stateDir: config.jinnPty.stateDir ?? defaultStateDir(),
         relayScript: config.jinnPty.relayScript ?? defaultRelayScript(),
       })
+    case 'grok':
+      return new GrokRuntime(config.grok)
     case 'agent-sdk-sidecar':
     default:
       return new NativeClaudeRuntime()

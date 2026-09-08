@@ -53,7 +53,7 @@ Codex App ──SSH──▶ login shell ──▶ codex (shim, earlier in PATH)
 Agent text and reasoning stream into the conversation; `Bash` becomes command
 approvals; `Edit`/`Write`/`MultiEdit` become file-change approvals with live
 diffs. Runtime selection maps only to existing backend paths today: default
-in-process Claude Agent SDK, `agent-http`, `agentapi`, `claude-p`, `jinn-pty`, `codex-proxy`,
+in-process Claude Agent SDK, `agent-http`, `agentapi`, `claude-p`, `jinn-pty`, `codex-proxy`, `grok`,
 and `mock`.
 
 ### `/workflows` compatibility

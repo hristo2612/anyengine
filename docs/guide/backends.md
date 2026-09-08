@@ -12,6 +12,7 @@ default Agent SDK route.
 | `claude-p` | Experimental | None (one-shot) | No |
 | `jinn-pty` | Experimental | Full (text, reasoning, tools) via SSE tee | Yes (hook-driven) |
 | `codex` (native passthrough) | Stable | Native Codex | Native Codex |
+| `grok` (xAI Grok Build CLI, per `grok-*` model) | Experimental | Full (text, reasoning, tools) | Yes (App approvals) |
 
 ## Switching routes
 
@@ -146,3 +147,61 @@ Windows is untested.
 ```bash
 npm run smoke:jinn-pty   # real-Claude smoke: PONG turn + Bash approval round-trip
 ```
+
+## grok (xAI Grok Build CLI)
+
+Runs xAI's `grok` CLI in its agent mode (`grok agent -m <model> stdio`, the
+Agent Client Protocol over stdio) and maps the stream onto native Codex items:
+per-token answer text, reasoning, `run_terminal_command` as a command item,
+`write`/`edit` as file changes, and grok's `session/request_permission` as the
+App's own command / file-change approval. The technique is ported from
+[Jinn](https://github.com/hristo2612/jinn)'s grok engines and is self-contained in
+`src/grok-runtime.mts` + `src/grok-acp.mts` + `src/grok-models.mts`.
+
+You do not switch the whole adapter to this backend: **picking a `grok-*` model
+in the Codex App's model picker routes that thread to grok**, whatever
+`CLAUDE_CODEX_RUNTIME_TYPE` is (the same rule that sends `gpt-*` to
+`codex-proxy`). The models appear in the picker whenever a `grok` binary is
+resolvable (`CLAUDE_CODEX_GROK_BIN`, `PATH`, `~/.local/bin/grok`) and are read
+from `grok models` (currently `grok-4.6`, `grok-4.5`), shown as "Grok 4.6" and
+"Grok 4.5". Log in once with `grok login`; the adapter never handles xAI
+credentials.
+
+```bash
+# Optional: pin the binary and the picker entries.
+export CLAUDE_CODEX_GROK_BIN="$HOME/.local/bin/grok"
+export CLAUDE_CODEX_GROK_MODELS="grok-4.6,grok-4.5"   # or a JSON array of ids / {id, displayName}
+# export CLAUDE_CODEX_GROK_ARGS="--debug"              # extra `grok agent` flags
+# export CLAUDE_CODEX_GROK_IDLE_MS=600000              # reap an idle grok process (0 = keep)
+# export CLAUDE_CODEX_DISABLE_GROK=1                   # hide the Grok models
+```
+
+How a turn works:
+
+1. **Spawn.** The first turn of a thread spawns one warm `grok agent --no-leader
+   -m <model> [--reasoning-effort <effort>] [--always-approve] stdio` in the
+   thread cwd and sends `initialize` + `session/new {cwd}`. The grok session id
+   is stored on the thread as `grok:<uuid>`; when the process is gone (adapter
+   restart, idle reap, model or effort change) the next turn re-attaches with
+   `session/load`, whose history replay is ignored. The App's per-thread
+   instructions (`baseInstructions` / `developerInstructions` / personality) are
+   prepended to the first prompt of a fresh session, since `grok agent` has no
+   system-prompt flag.
+2. **Stream.** `session/prompt` streams `agent_message_chunk` → agent text,
+   `agent_thought_chunk` → reasoning, `tool_call` / `tool_call_update` → tool
+   items with their output. The prompt result's `_meta.usage` becomes the turn's
+   token usage.
+3. **Approvals.** With `approvalPolicy=never` or `sandbox=danger-full-access`
+   the process runs with `--always-approve`. Otherwise grok's
+   `session/request_permission` is answered locally for read-only tools and
+   forwarded to the App for everything else; *accept* selects grok's
+   `allow_once`, *accept for session* its `allow_always`, *decline* its
+   `reject_once`. grok also honours its own permission rules (it reads
+   `~/.claude/settings.json` allow rules), so pre-allowed tools never prompt.
+4. **Interrupt.** `turn/interrupt` sends `session/cancel`; the turn settles with
+   grok's `cancelled` stop reason. `turn/steer` is not supported (logged no-op).
+
+Known gaps: no image input (grok's agent mode declares `image: false`), no
+mid-turn steer, no cost figure (grok reports token counts only), and
+`--always-approve` is process-wide, so flipping a thread between Full access and
+on-request restarts its grok process (the session is reloaded, history kept).
