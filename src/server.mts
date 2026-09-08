@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { homedir } from 'node:os'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -502,6 +503,24 @@ export class CodexClaudeAppServer {
       // previously threw "method not implemented" on. Stubs return the
       // schema-correct empty shape so the App's call sites don't surface an
       // RPC error toast.
+      // Codex App 26.9xx sidebar sections (ThreadSection* in the v2 schema).
+      // We persist none, so list is empty and mutations are accepted no-ops.
+      case 'threadSection/list':
+        return { data: [], nextCursor: null }
+      case 'threadSection/create':
+      case 'threadSection/update': {
+        const p = asRecord(params)
+        return {
+          section: {
+            id: typeof p.sectionId === 'string' ? p.sectionId : randomUUID(),
+            name: typeof p.name === 'string' ? p.name : '',
+            appearance: null,
+          },
+        }
+      }
+      case 'threadSection/delete':
+      case 'threadSection/move':
+        return {}
       case 'plugin/share/checkout':
         // PluginShareCheckoutResponse — App polls after a share/save; nothing to checkout.
         return {}
