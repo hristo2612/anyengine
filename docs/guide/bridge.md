@@ -17,6 +17,44 @@ claude / grok / codex child ──stdio MCP──▶ jinn_bridge ──unix sock
                                    jinn-pty (Claude)                grok runtime      real codex child (gpt-*)
 ```
 
+## Natural language
+
+No tool names are needed. Every engine carries a short standing instruction
+("Other engines available", generated from the live model catalog) that says
+where it runs, which other models exist, and to act at once when the user
+names another engine or says spawn / delegate / hand off / ask X / run in
+parallel. Typed verbatim in any thread:
+
+| You type | What happens |
+| --- | --- |
+| `spawn another session with claude opus and say hi` | a new Opus thread appears in the sidebar, is greeted, and its reply is relayed back |
+| `spawn 4 sub-agents, 2 with grok and 2 with claude, each should reply with a different fruit, then list what they said` | four children under the thread (2x `grok-4.6`, 2x the default Claude model) and a final list |
+| `ask grok to review this diff` | one Grok session with the task, answer relayed |
+| `delegate this to claude sonnet` | one Sonnet session |
+| `run this in parallel with 3 grok agents` | three Grok sub-agents |
+| `hand this off to gpt` | one GPT session (the native child; its quota errors come back as-is) |
+
+Informal model names are resolved by the bridge, case-insensitively:
+`claude opus`, `opus 5`, `claude sonnet`, `sonnet`, `haiku`, `fable`, `grok`,
+`grok 4.5`, `gpt`, `gpt 5.6`, `codex`, plus any exact id or display name.
+An engine on its own (`claude`, `grok`, `gpt`) picks that engine's default
+model; an unknown name is refused with the list of valid ids.
+
+How the instruction reaches each engine (one helper, `bridgeInstructions`
+in `src/bridge-instructions.mts`):
+
+- **Claude** — appended to the per-turn `systemPromptAddendum`, i.e.
+  `--append-system-prompt` for `jinn-pty` and the SDK's `systemPrompt.append`.
+- **Grok** — the same addendum prefixed on the first prompt of a session
+  (ACP has no system-prompt field).
+- **GPT (native child)** — appended to `developerInstructions` on every
+  `thread/start` / `thread/resume` / `thread/fork` the multiplexer forwards
+  (`turn/start` has no instruction fields in the v2 schema). The desktop's
+  own instructions stay first; a resend never stacks a second copy.
+
+`CLAUDE_CODEX_BRIDGE_INSTRUCTIONS=0` turns the injection off (the tools stay
+available; the model then needs to be told about them).
+
 ## Tools
 
 | Tool | What it does |
@@ -27,8 +65,9 @@ claude / grok / codex child ──stdio MCP──▶ jinn_bridge ──unix sock
 | `send_to_session({ threadId, prompt, wait?, timeoutMs? })` | Another turn on an existing thread (spawned or not). |
 | `wait_session({ threadId, timeoutMs? })` | Waits for the running turn (after `wait:false`), or returns the last finished one. |
 
-`model` accepts an id (`grok-4.6`, `haiku`, `gpt-5.6-sol`) or a display name
-(`Claude Opus`). Unknown names are refused with the catalog.
+`model` accepts an id (`grok-4.6`, `haiku`, `gpt-5.6-sol`), a display name
+(`Claude Opus`) or an informal alias (`claude opus`, `grok`, `gpt`; see
+"Natural language"). Unknown names are refused with the catalog.
 
 ## How a spawn is routed
 
@@ -99,6 +138,8 @@ source ~/.claude-codex/runtime.env
 node scripts/smoke-bridge.mjs claude   # sonnet thread spawns a grok-4.6 session
 node scripts/smoke-bridge.mjs grok     # grok thread fans out 2 haiku + 2 grok sub-agents
 node scripts/smoke-bridge.mjs gpt      # gpt thread spawns a haiku session (records usage limits)
+node scripts/smoke-bridge.mjs natural  # the two natural-language prompts above, no tool names:
+                                       # sonnet thread -> opus session; grok thread -> 2 grok + 2 claude
 ```
 
 ## Known gaps
