@@ -6,7 +6,8 @@ Tests run with the built-in `node:test` runner against compiled output. See the
 ## Layout
 
 - `*.test.mts` — sources compiled to `dist/test/*.mjs`.
-- `fixtures/` — shared test fixtures.
+- `fixtures/` — shared test fixtures (`fake-codex-app-server.mjs` is the stdio
+  stand-in for the real `codex app-server` used by `codex-mux.test.mts`).
 
 ## Running
 

@@ -12,6 +12,7 @@ default Agent SDK route.
 | `claude-p` | Experimental | None (one-shot) | No |
 | `jinn-pty` | Experimental | Full (text, reasoning, tools) via SSE tee | Yes (hook-driven) |
 | `codex` (native passthrough) | Stable | Native Codex | Native Codex |
+| `native-codex` multiplexer (gpt-* threads) | Experimental | Native Codex | Native Codex (mid-turn approvals, steer, subagents, plan mode) |
 
 ## Switching routes
 
@@ -145,4 +146,73 @@ Windows is untested.
 
 ```bash
 npm run smoke:jinn-pty   # real-Claude smoke: PONG turn + Bash approval round-trip
+```
+
+## native-codex passthrough (multiplexer)
+
+The adapter can run in front of the REAL `codex app-server` instead of
+replacing it. gpt-* threads then get the native Codex experience (mid-turn
+approvals, `turn/steer`, subagents, plan mode, worktrees, the desktop's
+`codex_app` tools) while Claude threads keep using the configured Claude
+runtime. This replaces the older `codex exec` proxy as the default route for
+gpt-* models.
+
+How it works (`src/codex-upstream.mts`, `src/codex-mux.mts`):
+
+1. **Child.** On startup in stdio mode (lazily on the first `initialize`
+   otherwise) the adapter spawns one real app-server child with the exact argv
+   the desktop handed the shim: the leading `-c key=value` globals, then
+   `app-server` and the desktop's flags (`--analytics-default-enabled`,
+   `-c mcp_servers.codex_app=...`). The environment is inherited unchanged, so
+   the child sees `CODEX_APP_TOOLS_PIPE_PATH`, the ChatGPT login in
+   `~/.codex/auth.json` and everything else the desktop's private server would.
+   The child is restarted with backoff (1 s, 2 s, 4 s) if it exits and is
+   killed by pid when the adapter exits.
+2. **Routing.** `thread/start` picks the owner from the model id: `claude-*`,
+   `opus`, `sonnet`, `haiku`, `fable` and any id in `CLAUDE_CODEX_MODELS` stay
+   local; `gpt-*` and anything else go to the child. The owner map is
+   persisted in the adapter store (`native_codex_threads`), learned from every
+   `thread/started` / `thread/list` the child emits (subagents, `codex_app
+   create_thread`, CLI resumes), and consulted for every request that carries a
+   `threadId`. Unknown ids belong to the child.
+3. **Default route = child.** Any global method the adapter does not merge
+   (`getAuthStatus`, `process/spawn`, `fs/*`, `plugin/*`, `account/*`,
+   `config/*`, `threadSection/*`, `collaborationMode/list`, ...) is forwarded
+   verbatim, which is what keeps desktop-only calls native across app updates.
+4. **Id rewriting.** Desktop request ids are replaced on the way up and
+   restored on the way back; the child's server requests (`item/commandExecution/requestApproval`,
+   `item/fileChange/requestApproval`, `item/permissions/requestApproval`,
+   `item/tool/requestUserInput`, ...) get adapter ids on the way down, and the
+   desktop's answers plus `serverRequest/resolved` are translated back.
+5. **Merged lists.** `thread/list` page 1 is the child's page 1 with the Claude
+   threads merged in by sort key (later pages are child-only, cursors are the
+   child's); `thread/loaded/list` is the union; `model/list` is the child's
+   catalog with the Claude models appended (`isDefault: false`); `config/read`
+   is the child's config plus the `claude-code` provider entry. `initialize`
+   goes to both sides and the child's answer (real `userAgent`) wins.
+
+```bash
+# Binary resolution order for the child:
+export CLAUDE_CODEX_REAL_CODEX="/Applications/ChatGPT.app/Contents/Resources/codex"
+#   1. CLAUDE_CODEX_REAL_CODEX   2. the bundled desktop binary above, if present
+#   3. CODEX_REAL               (nothing found = multiplexer off, local-only as before)
+
+export CLAUDE_CODEX_GPT_ROUTE="native"   # default; `exec` restores the codex-exec proxy
+export CLAUDE_CODEX_TITLE_ROUTE="real"   # default; `local` answers the desktop's hidden
+                                         # title/summary threads locally (no ChatGPT quota)
+```
+
+With `CLAUDE_CODEX_MOCK=1` only an explicit `CLAUDE_CODEX_REAL_CODEX` enables
+the multiplexer (the unit tests point it at
+`test/fixtures/fake-codex-app-server.mjs`). The shim must pass the desktop's
+leading `-c` globals through (`scripts/codex-shim` does since this feature
+landed; reinstall it after upgrading).
+
+Known limits (M1): later `thread/list` pages are not merged (Claude threads
+appear on page 1 only); `thread/section/move` for Claude threads is a no-op;
+the child is stdio-only, so a desktop restart restarts it too; cross-backend
+`thread/fork` is refused.
+
+```bash
+npm run smoke:native-codex   # real smoke: gpt PONG + native command approval + Claude PONG
 ```
