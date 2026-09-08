@@ -170,6 +170,33 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   }
 
   async runTurn(context: RuntimeTurnContext, handlers: RuntimeHandlers): Promise<void> {
+    try {
+      await this.runTurnOnce(context, handlers)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      // A stored Claude session id can stop resolving (rollout pruned, thread
+      // opened from another cwd, `claude` upgraded): the CLI prints
+      // "No conversation found with session ID" and exits 1 before the prompt
+      // lands. Fall back to a fresh session once; SessionStart then reports
+      // the new id and the server replaces the stale one.
+      if (context.claudeSessionId && /No conversation found with session ID/i.test(message)) {
+        debugLog('jinnPty.resumeFallback', {
+          threadId: context.threadId,
+          staleSessionId: context.claudeSessionId,
+        })
+        await handlers.onEvent({
+          type: 'notice',
+          level: 'warning',
+          message: 'Previous Claude session could not be resumed; starting a fresh Claude session for this thread.',
+        })
+        await this.runTurnOnce({ ...context, claudeSessionId: null, forkSession: false }, handlers)
+        return
+      }
+      throw error
+    }
+  }
+
+  private async runTurnOnce(context: RuntimeTurnContext, handlers: RuntimeHandlers): Promise<void> {
     if (this.stopped) throw new Error('jinn-pty runtime is stopped')
     if (this.turns.has(context.threadId)) {
       throw new Error('jinn-pty runtime: a turn is already running for this thread')
