@@ -88,7 +88,7 @@ Drives the real **interactive** `claude` TUI inside one long-lived
 pseudo-terminal per thread. Interactive use is covered by a Claude
 subscription (Max/Pro), whereas `claude -p` and the Agent SDK bill as API
 usage, which is the reason this backend exists. The technique is ported from
-[Jinn](https://github.com/hristo-nikolov/jinn)'s interactive engine and is
+[Jinn](https://github.com/hristo2612/jinn)'s interactive engine and is
 self-contained in `src/jinn-pty-*.mts`.
 
 ```bash
