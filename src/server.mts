@@ -707,7 +707,8 @@ export class CodexClaudeAppServer {
     const codexBackendRequested =
       selectedProviderLoop.runtimeType === 'codex-proxy' || isCodexOpenAiModel(model)
     const execRoute = codexExecRouteEnabled() || process.env.CLAUDE_CODEX_MOCK === '1'
-    if (codexBackendRequested && !execRoute && !isTitleOrHelper) {
+    const gptWithoutRoute = isCodexOpenAiModel(model) && !execRoute
+    if (gptWithoutRoute && !isTitleOrHelper) {
       throw new Error(
         `no native codex upstream for model ${model}; set CLAUDE_CODEX_REAL_CODEX or CLAUDE_CODEX_GPT_ROUTE=exec`,
       )
@@ -752,7 +753,7 @@ export class CodexClaudeAppServer {
         typeof params.developerInstructions === 'string' ? params.developerInstructions : null,
       ),
       personality: normalizePersonality(params.personality),
-      runtimeBackend: codexBackendRequested && execRoute ? 'codex' : 'claude',
+      runtimeBackend: codexBackendRequested && !gptWithoutRoute ? 'codex' : 'claude',
       codexSessionId: null,
     }
     this.store.upsertThread(thread)

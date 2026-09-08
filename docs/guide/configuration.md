@@ -143,6 +143,7 @@ export CLAUDE_CODEX_NODE="/absolute/path/to/node"
 | `CLAUDE_CODEX_VERSION_SUFFIX` | Tag after the version to distinguish the adapter from real codex (default `claude-codex`; set `""` to behave exactly like upstream codex). |
 | `CODEX_REAL` | Real Codex CLI for non-app-server commands / `codex` passthrough. |
 | `CLAUDE_CODEX_REAL_CODEX` | Real `codex` binary spawned as the native-codex child (default: the bundled desktop binary, then `CODEX_REAL`). |
+| `CLAUDE_CODEX_NATIVE_CODEX` | `0` disables auto-detecting the real binary (explicit `CLAUDE_CODEX_REAL_CODEX` still applies). |
 | `CLAUDE_CODEX_GPT_ROUTE` | `native` (default, real app-server child) or `exec` (legacy `codex exec` proxy) for gpt-* threads. |
 | `CLAUDE_CODEX_TITLE_ROUTE` | `real` (default) or `local` for the desktop's hidden title/summary threads under the multiplexer. |
 | `CLAUDE_CODEX_RUNTIME_TYPE` | Active backend route. |

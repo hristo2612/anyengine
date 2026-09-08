@@ -31,7 +31,9 @@ class StdioClient {
   readonly child: ChildProcess
   readonly messages: Wire[] = []
   private waiters: Array<{ predicate: (m: Wire) => boolean; resolve: (m: Wire) => void }> = []
-  private nextId = 1
+  // Starts above the explicit ids the tests use (1, 7, 42) so waitFor never
+  // matches an earlier response by accident.
+  private nextId = 100
 
   constructor(child: ChildProcess) {
     this.child = child

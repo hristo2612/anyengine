@@ -52,9 +52,11 @@ const ANSWERED_SERVER_REQUEST_CAP = 512
 export function resolveNativeCodexBinary(env: NodeJS.ProcessEnv = process.env): string | null {
   const explicit = env.CLAUDE_CODEX_REAL_CODEX?.trim()
   if (explicit) return explicit
-  // In mock mode only an explicit binary counts: the unit tests must never
-  // spawn the bundled desktop binary that happens to exist on a dev machine.
+  // Auto-detection is off in mock mode and under CLAUDE_CODEX_NATIVE_CODEX=0
+  // (the test suite): a dev machine with the desktop installed must not have
+  // its unit tests spawn the real binary. An explicit path above still wins.
   if (env.CLAUDE_CODEX_MOCK === '1') return null
+  if ((env.CLAUDE_CODEX_NATIVE_CODEX ?? '').trim() === '0') return null
   const bundled = '/Applications/ChatGPT.app/Contents/Resources/codex'
   if (existsSync(bundled)) return bundled
   const real = env.CODEX_REAL?.trim()
