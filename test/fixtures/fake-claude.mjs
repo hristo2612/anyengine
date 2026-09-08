@@ -27,6 +27,12 @@ if (process.env.FAKE_CLAUDE_ARGS_FILE) {
   fs.appendFileSync(process.env.FAKE_CLAUDE_ARGS_FILE, `${JSON.stringify(args)}\n`)
 }
 const settings = JSON.parse(fs.readFileSync(flag('--settings'), 'utf8'))
+// FAKE_CLAUDE_STALE_RESUME=1: behave like the real CLI when the resumed
+// conversation no longer exists (prints the error and exits 1).
+if (process.env.FAKE_CLAUDE_STALE_RESUME === '1' && flag('--resume')) {
+  process.stdout.write(`No conversation found with session ID: ${flag('--resume')}\n`)
+  process.exit(1)
+}
 const sessionId = flag('--resume') ?? randomUUID()
 const transcriptDir = process.env.FAKE_CLAUDE_TRANSCRIPT_DIR ?? os.tmpdir()
 const transcriptPath = path.join(transcriptDir, `${sessionId}.jsonl`)

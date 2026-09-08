@@ -557,3 +557,25 @@ test('jinn-pty runtime: StopFailure fails the turn, interrupt settles it, stop k
     await h.close()
   }
 })
+
+test('jinn-pty runtime: a stale --resume id falls back to a fresh session', async () => {
+  const h = await harness({}, { FAKE_CLAUDE_STALE_RESUME: '1' })
+  try {
+    await h.run(turnContext({ claudeSessionId: 'sess-gone', model: 'sonnet', prompt: 'hi' }))
+    const completions = h.events.filter((e) => e.type === 'completed') as Array<
+      Extract<RuntimeEvent, { type: 'completed' }>
+    >
+    const done = completions.at(-1)!
+    assert.equal(done.success, true, 'the fresh-session attempt completed')
+    assert.notEqual(done.claudeSessionId, 'sess-gone', 'a new session id replaces the stale one')
+    assert.ok(
+      h.events.some((e) => e.type === 'notice' && /could not be resumed/.test((e as any).message)),
+      'warning notice emitted',
+    )
+    const spawns = (await readFile(h.argsFile, 'utf8')).trim().split('\n')
+    assert.equal(spawns.length, 2, 'spawned twice: resume attempt, then fresh')
+    assert.ok(!JSON.parse(spawns[1] ?? '[]').includes('--resume'), 'second spawn has no --resume')
+  } finally {
+    await h.close()
+  }
+})

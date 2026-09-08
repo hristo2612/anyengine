@@ -107,6 +107,9 @@ interface PtySession {
   threadId: string
   proc: IPty
   screen: PtyScreen
+  // Last raw bytes from the PTY (ANSI stripped at read time): the screen
+  // emulator can be empty when the CLI dies within milliseconds of spawning.
+  rawTail: string
   proxy: SsePtyProxy | null
   cwd: string
   model: string | null
@@ -179,7 +182,13 @@ export class JinnPtyRuntime implements ClaudeRuntime {
       // "No conversation found with session ID" and exits 1 before the prompt
       // lands. Fall back to a fresh session once; SessionStart then reports
       // the new id and the server replaces the stale one.
-      if (context.claudeSessionId && /No conversation found with session ID/i.test(message)) {
+      // The screen tail can be empty when the CLI dies within milliseconds, so
+      // any early exit of a resumed spawn (before the prompt was accepted) is
+      // treated the same way, once.
+      const staleResume =
+        /No conversation found with session ID/i.test(message) ||
+        /exited \(code 1\) before the turn completed/i.test(message)
+      if (context.claudeSessionId && staleResume) {
         debugLog('jinnPty.resumeFallback', {
           threadId: context.threadId,
           staleSessionId: context.claudeSessionId,
@@ -376,6 +385,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
       env,
     })
     const session: PtySession = {
+      rawTail: '',
       threadId: context.threadId,
       proc,
       screen: new PtyScreen(this.options.cols, this.options.rows),
@@ -391,6 +401,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
       lastOutputAt: Date.now(),
     }
     proc.onData((data) => {
+      session.rawTail = (session.rawTail + data).slice(-4000)
       session.lastOutputAt = Date.now()
       session.screen.write(data)
     })
@@ -403,10 +414,19 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         .viewport()
         .catch(() => [] as string[])
         .then((viewport) => {
-          const tail = viewport
+          let tail = viewport
             .filter((line) => line.trim())
             .slice(-6)
             .join('\n')
+          if (!tail) {
+            tail = session.rawTail
+              .replace(/\u001b\[[0-9;?]*[A-Za-z]|\u001b\][^\u0007]*\u0007|\r/g, '')
+              .split('\n')
+              .map((line) => line.trim())
+              .filter(Boolean)
+              .slice(-6)
+              .join('\n')
+          }
           debugLog('jinnPty.exit', { threadId: session.threadId, exitCode: event.exitCode, tail })
           this.disposeSession(session)
           const turn = this.turns.get(session.threadId)
