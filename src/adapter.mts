@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { chmodSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { BridgeControl, bridgeEnabled } from './bridge-control.mjs'
+import { runBridgeMcp } from './bridge-mcp.mjs'
 import { resolveNativeCodexBinary } from './codex-upstream.mjs'
 import { resolveRuntimeConfig } from './runtime-config.mjs'
 import { createRuntime } from './runtime-factory.mjs'
@@ -57,6 +59,11 @@ async function main(): Promise<void> {
   // passes those leading globals through untouched so the real child can be
   // started with the identical argv.
   const { globals: codexGlobals, rest: args } = splitCodexGlobals(process.argv.slice(2))
+  // The `jinn_bridge` MCP server an engine spawns (docs/guide/bridge.md).
+  if (args[0] === 'bridge-mcp') {
+    await runBridgeMcp()
+    return
+  }
   if (args[0] !== 'app-server') {
     usage(1)
     return
@@ -95,13 +102,28 @@ async function main(): Promise<void> {
   }
   const runtime = createRuntime()
   const server = new CodexClaudeAppServer(store, runtime)
+  // Cross-engine bridge: one loopback control socket per adapter; every
+  // engine gets the `jinn_bridge` MCP server pointing at it.
+  const bridge = bridgeEnabled() ? new BridgeControl(server.bridgeHost()) : null
+  server.setBridge(bridge)
   const nativeCodexBinary = codexExecRouteEnabled() ? null : resolveNativeCodexBinary()
   if (nativeCodexBinary) {
     server.attachNativeCodex({
       binary: nativeCodexBinary,
-      args: [...codexGlobals, ...stripListenArgs(args)],
+      args: [...codexGlobals, ...(bridge?.codexConfigArgs() ?? []), ...stripListenArgs(args)],
       eager: normalizeListenUrl(listen) === 'stdio://',
+      ...(bridge ? { env: bridge.codexChildEnv() } : {}),
     })
+  }
+  if (bridge) {
+    try {
+      await bridge.start()
+    } catch (error) {
+      process.stderr.write(
+        `[claude-codex-adapter] bridge disabled: ${error instanceof Error ? error.message : String(error)}\n`,
+      )
+      server.setBridge(null)
+    }
   }
   let shuttingDown = false
   const shutdown = async (reason: string) => {
@@ -109,6 +131,7 @@ async function main(): Promise<void> {
     shuttingDown = true
     debugLog('adapter.shutdown', { reason, pid: process.pid })
     await server.stop()
+    await bridge?.stop()
     if (pidFile) {
       try {
         unlinkSync(pidFile)
