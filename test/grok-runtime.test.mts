@@ -519,6 +519,7 @@ test('grok runtime: interrupt cancels the in-flight prompt', async () => {
 test('adapter routes a grok-* thread to the grok runtime and lists Grok models', async () => {
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-grok-adapter-'))
   const argsFile = join(home, 'args.jsonl')
+  const eventsFile = join(home, 'events.jsonl')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -535,6 +536,7 @@ test('adapter routes a grok-* thread to the grok runtime and lists Grok models',
       CLAUDE_CODEX_GROK_BIN: fakeGrok,
       CLAUDE_CODEX_GROK_MODELS: 'grok-4.6,grok-4.5',
       FAKE_GROK_ARGS_FILE: argsFile,
+      FAKE_GROK_EVENTS_FILE: eventsFile,
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -612,6 +614,20 @@ test('adapter routes a grok-* thread to the grok runtime and lists Grok models',
     assert.equal(argv[0]?.[0], 'agent')
     assert.equal(argv[0]?.at(-1), 'stdio')
     assert.equal(argv[0]?.[argv[0].indexOf('-m') + 1], 'grok-4.5')
+
+    // The cross-engine standing instructions reach grok as the first-prompt
+    // prefix of the fresh session (docs/guide/bridge.md), listing the
+    // catalog this adapter serves (sonnet + both grok ids).
+    const grokEvents = (await readFile(eventsFile, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    const firstPrompt = grokEvents.find((entry) => entry.method === 'session/prompt')
+    const promptText = firstPrompt.params.prompt.map((block: any) => block.text ?? '').join('')
+    assert.match(promptText, /^# Other engines available\n/)
+    assert.match(promptText, /Claude Sonnet \(`sonnet`\)/)
+    assert.match(promptText, /Grok 4\.6 \(`grok-4\.6`\), Grok 4\.5 \(`grok-4\.5`\)/)
+    assert.match(promptText, /---\n\nUse a tool to run echo hi, then reply PONG$/)
 
     // The grok session id is persisted on the thread as grok:<id>.
     write({ id: 5, method: 'thread/read', params: { threadId, includeTurns: false } })

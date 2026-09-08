@@ -7,6 +7,14 @@ import readline from 'node:readline'
 import test from 'node:test'
 import { WebSocket } from 'ws'
 import { BridgeControl, mcpServerRecord, providerFor } from '../src/bridge-control.mjs'
+import {
+  appendBridgeInstructions,
+  BRIDGE_INSTRUCTIONS_HEADING,
+  type BridgeCatalogModel,
+  bridgeInstructions,
+  bridgeInstructionsEnabled,
+  resolveModelAlias,
+} from '../src/bridge-instructions.mjs'
 import { BRIDGE_TOOLS, renderResult } from '../src/bridge-mcp.mjs'
 import { routeForModel } from '../src/codex-mux.mjs'
 import { acpMcpServers } from '../src/grok-acp.mjs'
@@ -476,6 +484,148 @@ test('bridge: spawn_subagents fans out under the calling thread across engines',
     )
   } finally {
     await bridge?.close()
+    await desktop.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+const ALIAS_CATALOG: BridgeCatalogModel[] = [
+  { id: 'fable', displayName: 'Claude Fable 5.1', provider: 'anthropic', isDefault: true },
+  { id: 'opus', displayName: 'Claude Opus', provider: 'anthropic' },
+  { id: 'sonnet', displayName: 'Claude Sonnet', provider: 'anthropic' },
+  { id: 'sonnet-1m', displayName: 'Claude Sonnet 1M', provider: 'anthropic' },
+  { id: 'haiku', displayName: 'Claude Haiku', provider: 'anthropic' },
+  { id: 'grok-4.6', displayName: 'Grok 4.6', provider: 'xai' },
+  { id: 'grok-4.5', displayName: 'Grok 4.5', provider: 'xai' },
+  { id: 'gpt-5.6-sol', displayName: 'GPT-5.6 Sol', provider: 'openai', isDefault: true },
+  { id: 'gpt-5.6-terra', displayName: 'GPT-5.6 Terra', provider: 'openai' },
+  { id: 'gpt-5.4-mini', displayName: 'GPT-5.4 Mini', provider: 'openai' },
+]
+
+test('bridge: informal model names resolve to catalog ids', () => {
+  const cases: Array<[string, string]> = [
+    ['opus', 'opus'],
+    ['Claude Opus', 'opus'],
+    ['claude opus', 'opus'],
+    ['CLAUDE OPUS 5', 'opus'],
+    ['opus 5', 'opus'],
+    ['claude-opus-4', 'opus'],
+    ['claude', 'fable'],
+    ['claude fable 5.1', 'fable'],
+    ['claude sonnet', 'sonnet'],
+    ['sonnet 1m', 'sonnet-1m'],
+    ['the claude haiku model', 'haiku'],
+    ['grok', 'grok-4.6'],
+    ['Grok 4.6', 'grok-4.6'],
+    ['grok 4.5', 'grok-4.5'],
+    ['grok-4.5', 'grok-4.5'],
+    ['gpt', 'gpt-5.6-sol'],
+    ['GPT 5.6', 'gpt-5.6-sol'],
+    ['gpt 5.6 terra', 'gpt-5.6-terra'],
+    ['gpt-5.4-mini', 'gpt-5.4-mini'],
+    ['codex', 'gpt-5.6-sol'],
+    ['openai', 'gpt-5.6-sol'],
+  ]
+  for (const [requested, expected] of cases) {
+    assert.equal(resolveModelAlias(requested, ALIAS_CATALOG), expected, `"${requested}"`)
+  }
+  assert.throws(
+    () => resolveModelAlias('llama-9', ALIAS_CATALOG),
+    /unknown model "llama-9"; available: fable \(Claude Fable 5\.1\), opus \(Claude Opus\)/,
+  )
+  assert.throws(() => resolveModelAlias('   ', ALIAS_CATALOG), /model is required/)
+  // Engine named but not attached (native child down): refused with the catalog.
+  const noGpt = ALIAS_CATALOG.filter((m) => m.provider !== 'openai')
+  assert.throws(() => resolveModelAlias('gpt', noGpt), /unknown model "gpt"; available: fable/)
+})
+
+test('bridge: standing instructions are generated from the catalog and toggled by env', () => {
+  const text = bridgeInstructions(ALIAS_CATALOG)
+  assert.ok(text.startsWith(BRIDGE_INSTRUCTIONS_HEADING))
+  assert.match(text, /- Claude: Claude Fable 5\.1 \(`fable`\), Claude Opus \(`opus`\)/)
+  assert.match(text, /- Grok: Grok 4\.6 \(`grok-4\.6`\), Grok 4\.5 \(`grok-4\.5`\)/)
+  assert.match(text, /- GPT: GPT-5\.6 Sol \(`gpt-5\.6-sol`\)/)
+  assert.match(text, /spawn, delegate, hand off, ask X, or run in parallel/)
+  assert.match(text, /no confirmation/)
+  assert.match(text, /spawn_subagents .* spawn_session/)
+  const words = text.split(/\s+/).length
+  assert.ok(words > 100 && words < 220, `addendum stays concise (${words} words)`)
+
+  const noGpt = bridgeInstructions(ALIAS_CATALOG.filter((m) => m.provider !== 'openai'))
+  assert.match(noGpt, /- GPT: not attached right now/)
+  assert.ok(!noGpt.includes('gpt-5.6-sol'))
+
+  const appended = appendBridgeInstructions('Avoid SELECT *.', ALIAS_CATALOG)
+  assert.ok(appended.startsWith('Avoid SELECT *.\n\n# Other engines available'))
+  assert.equal(appendBridgeInstructions(appended, ALIAS_CATALOG), appended, 'idempotent')
+  assert.equal(appendBridgeInstructions(null, ALIAS_CATALOG), text)
+
+  assert.equal(bridgeInstructionsEnabled({}), true)
+  assert.equal(bridgeInstructionsEnabled({ CLAUDE_CODEX_BRIDGE_INSTRUCTIONS: '0' }), false)
+  assert.equal(bridgeInstructionsEnabled({ CLAUDE_CODEX_BRIDGE_INSTRUCTIONS: '1' }), true)
+})
+
+// The same addendum reaches every engine: Claude through the per-turn
+// systemPromptAddendum (the mock runtime echoes it), GPT through
+// developerInstructions on the thread/start the mux forwards to the child
+// (the fake child echoes what it received).
+test('bridge: instructions reach Claude (system prompt) and GPT (developerInstructions)', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-bridge-'))
+  const desktop = launchAdapter(home)
+  try {
+    await initializeDesktop(desktop)
+    // The merged model/list primes the child's catalog for the addendum.
+    const models = await desktop.request('model/list', {})
+    assert.ok(models.result.data.some((m: Wire) => m.id === 'gpt-5.6-sol'))
+
+    const claude = await desktop.request('thread/start', {
+      cwd: home,
+      model: 'opus',
+      developerInstructions: 'Avoid SELECT *.',
+    })
+    const claudeId = claude.result.thread.id as string
+    await desktop.request('turn/start', {
+      threadId: claudeId,
+      input: [{ type: 'text', text: 'system prompt check', text_elements: [] }],
+    })
+    await desktop.waitFor((m) => m.method === 'turn/completed' && m.params?.threadId === claudeId)
+    const echoed = desktop.messages
+      .filter((m) => m.method === 'item/agentMessage/delta' && m.params?.threadId === claudeId)
+      .map((m) => m.params.delta)
+      .join('')
+    const addendum = JSON.parse(echoed.replace(/^systemPromptAddendum=/, ''))
+    assert.equal(typeof addendum, 'string')
+    assert.ok(addendum.startsWith('# Developer instructions\nAvoid SELECT *.'), addendum)
+    assert.match(addendum, /# Other engines available/)
+    assert.match(addendum, /Claude Opus \(`opus`\), Claude Sonnet \(`sonnet`\)/)
+    assert.match(addendum, /GPT-5\.6 Sol \(`gpt-5\.6-sol`\)/)
+
+    const gpt = await desktop.request('thread/start', {
+      cwd: home,
+      model: 'gpt-5.6-sol',
+      developerInstructions: 'Be terse.',
+    })
+    assert.equal(gpt.result.thread.id, 'fake-thread-1')
+    const received = gpt.result.receivedDeveloperInstructions as string
+    assert.ok(received.startsWith('Be terse.\n\n# Other engines available'), received)
+    assert.match(received, /Claude Opus \(`opus`\)/)
+    assert.match(received, /GPT-5\.6 Sol \(`gpt-5\.6-sol`\)/)
+    assert.equal(gpt.result.receivedBaseInstructions, null, 'baseInstructions untouched')
+
+    // The desktop resending the panel state does not stack a second copy.
+    const resumed = await desktop.request('thread/resume', {
+      threadId: 'fake-thread-1',
+      developerInstructions: received,
+    })
+    const again = resumed.result.receivedDeveloperInstructions as string
+    assert.equal(again.split('# Other engines available').length - 1, 1)
+
+    // A GPT thread started without instructions still gets the addendum.
+    const bare = await desktop.request('thread/start', { cwd: home, model: 'gpt-5.6-sol' })
+    assert.ok(
+      String(bare.result.receivedDeveloperInstructions).startsWith('# Other engines available'),
+    )
+  } finally {
     await desktop.close()
     await rm(home, { recursive: true, force: true })
   }
