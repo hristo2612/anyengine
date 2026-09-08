@@ -10,6 +10,9 @@
 //   node scripts/smoke-bridge.mjs grok     # grok thread fans out 2x haiku + 2x grok sub-agents (8798)
 //   node scripts/smoke-bridge.mjs gpt      # gpt thread (native child) spawns a haiku session (8799);
 //                                          # a usageLimitExceeded turn is recorded, not failed
+//   node scripts/smoke-bridge.mjs natural  # NO tool names: "spawn another session with claude opus
+//                                          # and say hi" in a sonnet thread, then "spawn 4 sub-agents,
+//                                          # 2 with grok and 2 with claude, ..." in a grok thread (8796)
 //   CLAUDE_CODEX_SMOKE_PORT / CLAUDE_CODEX_SMOKE_MODEL / CLAUDE_CODEX_SMOKE_CWD override.
 // The adapter process it spawns is the only pid it kills. Report + debug log
 // land under .claude-codex/bridge-smoke-<engine>-<stamp>/.
@@ -19,7 +22,9 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import WebSocket from 'ws'
 
-const engine = ['claude', 'grok', 'gpt'].includes(process.argv[2]) ? process.argv[2] : 'claude'
+const engine = ['claude', 'grok', 'gpt', 'natural'].includes(process.argv[2])
+  ? process.argv[2]
+  : 'claude'
 const repo = resolve(process.cwd())
 const cwd = resolve(
   process.env.CLAUDE_CODEX_SMOKE_CWD ?? join(repo, '.claude-codex', 'bridge-smoke'),
@@ -29,7 +34,8 @@ const home = join(repo, '.claude-codex', `bridge-smoke-${engine}-${stamp}`)
 await mkdir(cwd, { recursive: true })
 await mkdir(home, { recursive: true })
 const port = Number(
-  process.env.CLAUDE_CODEX_SMOKE_PORT ?? { claude: 8797, grok: 8798, gpt: 8799 }[engine],
+  process.env.CLAUDE_CODEX_SMOKE_PORT ??
+    { claude: 8797, grok: 8798, gpt: 8799, natural: 8796 }[engine],
 )
 const listen = `ws://127.0.0.1:${port}`
 const debugLog = join(home, 'debug.jsonl')
@@ -318,6 +324,153 @@ const EXPECT = {
   gpt: ['HAIKUPONG'],
 }
 
+// The two prompts the standing instructions must make "just work", verbatim
+// (docs/guide/bridge.md, "Natural language").
+const NATURAL_PROMPTS = {
+  session: 'spawn another session with claude opus and say hi',
+  fanout:
+    'spawn 4 sub-agents, 2 with grok and 2 with claude, each should reply with a different fruit, then list what they said',
+}
+const FRUITS = [
+  'apple',
+  'banana',
+  'cherry',
+  'date',
+  'fig',
+  'grape',
+  'kiwi',
+  'lemon',
+  'lime',
+  'mango',
+  'melon',
+  'orange',
+  'papaya',
+  'peach',
+  'pear',
+  'pineapple',
+  'plum',
+  'strawberry',
+  'watermelon',
+  'blueberry',
+  'raspberry',
+  'apricot',
+  'pomegranate',
+  'guava',
+  'lychee',
+  'coconut',
+  'blackberry',
+  'tangerine',
+  'nectarine',
+  'dragonfruit',
+  'passionfruit',
+]
+
+// Parsed debug.jsonl rows for one bridge event (what the bridge resolved,
+// e.g. `model` after alias resolution).
+function bridgeEvents(name) {
+  if (!existsSync(debugLog)) return []
+  return readFileSync(debugLog, 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line)
+      } catch {
+        return null
+      }
+    })
+    .filter((e) => e && e.event === name)
+}
+
+async function startThread(rpc, model) {
+  const started = await rpc.request('thread/start', {
+    cwd,
+    model,
+    approvalPolicy: 'never',
+    sandbox: 'danger-full-access',
+    experimentalRawEvents: false,
+    persistExtendedHistory: false,
+  })
+  log(
+    `thread ${started.thread.id} model=${started.model} provider=${started.modelProvider} cwd=${cwd}`,
+  )
+  return started.thread.id
+}
+
+// Prompt 1 in a sonnet thread, prompt 2 in a grok thread; neither names a
+// tool. Asserts the children the bridge actually spawned (from debug.jsonl)
+// and the relayed text.
+async function naturalMode(rpc, models) {
+  const grokModel = models.find((id) => /^grok/i.test(id)) ?? 'grok-4.6'
+  const claudeIds = new Set(models.filter((id) => !/^(grok|gpt|o[0-9]|codex)/i.test(id)))
+  const problems = []
+  const natural = { session: null, fanout: null }
+
+  const sonnetThread = await startThread(rpc, 'sonnet')
+  const t1 = await runTurn(rpc, sonnetThread, NATURAL_PROMPTS.session, 'natural1-claude')
+  const spawned = bridgeEvents('bridge.spawnSession').filter(
+    (e) => e.callerThreadId === sonnetThread,
+  )
+  const t1Text = `${t1.finalMessages.join('\n')}\n${t1.streamedText}`
+  natural.session = {
+    threadId: sonnetThread,
+    status: t1.status,
+    spawned: spawned.map((e) => ({ threadId: e.threadId, model: e.model })),
+    childTexts: t1.childTexts,
+    final: t1.finalMessages.map((t) => t.trim().slice(0, 300)),
+  }
+  if (t1.status !== 'completed') problems.push(`prompt 1: turn status ${t1.status}`)
+  if (spawned.length !== 1)
+    problems.push(`prompt 1: expected 1 spawned session, got ${spawned.length}`)
+  if (spawned[0] && spawned[0].model !== 'opus')
+    problems.push(`prompt 1: spawned model ${spawned[0].model}, expected opus`)
+  if (!/\b(hi|hello|hey|greetings)\b/i.test(t1Text)) problems.push('prompt 1: no greeting relayed')
+  log(
+    `prompt 1: spawned=${JSON.stringify(natural.session.spawned)} final=${JSON.stringify(natural.session.final)}`,
+  )
+
+  const grokThread = await startThread(rpc, grokModel)
+  const t2 = await runTurn(rpc, grokThread, NATURAL_PROMPTS.fanout, 'natural2-grok')
+  const children = bridgeEvents('bridge.spawnSubagent').filter(
+    (e) => e.parentThreadId === grokThread,
+  )
+  const t2Text = `${t2.finalMessages.join('\n')}\n${t2.streamedText}`.toLowerCase()
+  const fruits = FRUITS.filter((fruit) => new RegExp(`\\b${fruit}s?\\b`).test(t2Text))
+  const grokChildren = children.filter((e) => /^grok/i.test(e.model))
+  const claudeChildren = children.filter((e) => claudeIds.has(e.model))
+  natural.fanout = {
+    threadId: grokThread,
+    status: t2.status,
+    children: children.map((e) => ({ name: e.name, threadId: e.childThreadId, model: e.model })),
+    childTexts: t2.childTexts,
+    fruits,
+    final: t2.finalMessages.map((t) => t.trim().slice(0, 400)),
+  }
+  if (t2.status !== 'completed') problems.push(`prompt 2: turn status ${t2.status}`)
+  if (children.length !== 4)
+    problems.push(`prompt 2: expected 4 sub-agents, got ${children.length}`)
+  if (grokChildren.length !== 2 || grokChildren.some((e) => e.model !== grokModel))
+    problems.push(
+      `prompt 2: expected 2x ${grokModel}, got ${JSON.stringify(grokChildren.map((e) => e.model))}`,
+    )
+  if (claudeChildren.length !== 2)
+    problems.push(
+      `prompt 2: expected 2 Claude sub-agents, got ${JSON.stringify(claudeChildren.map((e) => e.model))}`,
+    )
+  if (fruits.length < 3)
+    problems.push(`prompt 2: only ${fruits.length} distinct fruits in the final text`)
+  log(
+    `prompt 2: children=${JSON.stringify(natural.fanout.children)} fruits=${JSON.stringify(fruits)}`,
+  )
+  log(`prompt 2: final=${JSON.stringify(natural.fanout.final)}`)
+
+  report.natural = natural
+  report.problems = problems
+  report.verdict = problems.length === 0 ? 'pass' : 'fail'
+  log(`verdict=${report.verdict} problems=${JSON.stringify(problems)}`)
+  return grokThread
+}
+
 try {
   const ws = await connect()
   const rpc = new Rpc(ws)
@@ -331,7 +484,7 @@ try {
   log(`model/list: ${report.models.join(', ')}`)
   let model = process.env.CLAUDE_CODEX_SMOKE_MODEL
   if (!model) {
-    if (engine === 'claude') model = 'sonnet'
+    if (engine === 'claude' || engine === 'natural') model = 'sonnet'
     else if (engine === 'grok') model = report.models.find((id) => /^grok/i.test(id)) ?? 'grok-4.6'
     else model = report.models.find((id) => /^gpt/i.test(id)) ?? 'gpt-5.6-sol'
   }
@@ -362,35 +515,31 @@ try {
     }
   }
 
-  const started = await rpc.request('thread/start', {
-    cwd,
-    model,
-    approvalPolicy: 'never',
-    sandbox: 'danger-full-access',
-    experimentalRawEvents: false,
-    persistExtendedHistory: false,
-  })
-  const threadId = started.thread.id
-  report.threadId = threadId
-  log(`thread ${threadId} model=${started.model} provider=${started.modelProvider} cwd=${cwd}`)
-
-  const turn = await runTurn(rpc, threadId, PROMPTS[engine], 'turn1-bridge')
-  const usageLimited =
-    engine === 'gpt' &&
-    (turn.startError?.data === 'usageLimitExceeded' ||
-      /usage ?limit|usageLimitExceeded|quota/i.test(JSON.stringify(turn.errors)))
-  if (usageLimited) {
-    report.verdict = 'usage-limited'
-    log('GPT turn hit the usage limit; recorded, skipping the assertion')
+  let threadId
+  if (engine === 'natural') {
+    threadId = await naturalMode(rpc, report.models)
+    report.threadId = threadId
   } else {
-    const text = `${turn.finalMessages.join('\n')}\n${turn.streamedText}`
-    const missing = EXPECT[engine].filter((word) => !text.includes(word))
-    report.expected = EXPECT[engine]
-    report.missing = missing
-    report.verdict = turn.status === 'completed' && missing.length === 0 ? 'pass' : 'fail'
-    log(
-      `verdict=${report.verdict} missing=${JSON.stringify(missing)} children=${JSON.stringify(turn.childThreads)}`,
-    )
+    threadId = await startThread(rpc, model)
+    report.threadId = threadId
+    const turn = await runTurn(rpc, threadId, PROMPTS[engine], 'turn1-bridge')
+    const usageLimited =
+      engine === 'gpt' &&
+      (turn.startError?.data === 'usageLimitExceeded' ||
+        /usage ?limit|usageLimitExceeded|quota/i.test(JSON.stringify(turn.errors)))
+    if (usageLimited) {
+      report.verdict = 'usage-limited'
+      log('GPT turn hit the usage limit; recorded, skipping the assertion')
+    } else {
+      const text = `${turn.finalMessages.join('\n')}\n${turn.streamedText}`
+      const missing = EXPECT[engine].filter((word) => !text.includes(word))
+      report.expected = EXPECT[engine]
+      report.missing = missing
+      report.verdict = turn.status === 'completed' && missing.length === 0 ? 'pass' : 'fail'
+      log(
+        `verdict=${report.verdict} missing=${JSON.stringify(missing)} children=${JSON.stringify(turn.childThreads)}`,
+      )
+    }
   }
   try {
     const read = await rpc.request('thread/read', { threadId, includeTurns: true })
