@@ -99,6 +99,37 @@ export function normalizeGrokEffort(value: string | null | undefined): string | 
 
 // `grok agent [-m model] [--reasoning-effort e] [--always-approve] stdio`.
 // The model/effort flags belong to the `agent` subcommand, not `stdio`.
+// ACP `session/new` / `session/load` mcpServers: the stdio entries of the
+// adapter's MCP record (CLAUDE_CODEX_MCP_SERVERS plus the bridge server),
+// env as ACP's [{name, value}] list. Verified against grok 1.0.x: the server
+// is spawned by grok and its tools reach the model through search_tool /
+// use_tool.
+export function acpMcpServers(mcpServers: unknown): Array<Record<string, unknown>> {
+  if (!mcpServers || typeof mcpServers !== 'object' || Array.isArray(mcpServers)) return []
+  const record = mcpServers as Record<string, unknown>
+  const source =
+    record.mcpServers && typeof record.mcpServers === 'object' && !Array.isArray(record.mcpServers)
+      ? (record.mcpServers as Record<string, unknown>)
+      : record
+  const result: Array<Record<string, unknown>> = []
+  for (const [name, raw] of Object.entries(source)) {
+    if (!raw || typeof raw !== 'object') continue
+    const spec = raw as Record<string, unknown>
+    if (typeof spec.command !== 'string' || !spec.command) continue
+    const env =
+      spec.env && typeof spec.env === 'object' ? (spec.env as Record<string, unknown>) : {}
+    result.push({
+      name,
+      command: spec.command,
+      args: Array.isArray(spec.args) ? spec.args.map(String) : [],
+      env: Object.entries(env)
+        .filter(([, value]) => typeof value === 'string')
+        .map(([key, value]) => ({ name: key, value })),
+    })
+  }
+  return result
+}
+
 export function buildGrokAgentArgs(spec: GrokAgentSpec, extraArgs: string[] = []): string[] {
   const args = ['agent', '--no-leader']
   if (spec.model) args.push('-m', spec.model)

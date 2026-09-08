@@ -23,6 +23,7 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { createInterface, type Interface } from 'node:readline'
 import {
+  acpMcpServers,
   asRecord,
   buildGrokAgentArgs,
   type GrokAgentSpec,
@@ -254,19 +255,19 @@ export class GrokRuntime implements ClaudeRuntime {
     let freshSession = false
     if (!wantedSessionId) {
       if (!gp.sessionId || context.forkSession) {
-        await this.newSession(gp, context.cwd)
+        await this.newSession(gp, context)
         freshSession = true
       }
     } else if (gp.sessionId !== wantedSessionId) {
       try {
-        await this.loadSession(gp, wantedSessionId, context.cwd)
+        await this.loadSession(gp, wantedSessionId, context)
       } catch (error) {
         await handlers.onEvent({
           type: 'notice',
           level: 'warning',
           message: `grok could not resume session ${wantedSessionId} (${errorMessage(error)}); starting a new one.`,
         })
-        await this.newSession(gp, context.cwd)
+        await this.newSession(gp, context)
         freshSession = true
       }
     }
@@ -326,11 +327,12 @@ export class GrokRuntime implements ClaudeRuntime {
     return gp
   }
 
-  private async newSession(gp: GrokProcess, cwd: string): Promise<void> {
+  private async newSession(gp: GrokProcess, context: RuntimeTurnContext): Promise<void> {
+    const cwd = context.cwd
     const result = await this.request(
       gp,
       'session/new',
-      { cwd, mcpServers: [] },
+      { cwd, mcpServers: acpMcpServers(context.mcpServers) },
       this.options.startupTimeoutMs,
     )
     const sessionId = stringOr(result.sessionId)
@@ -339,13 +341,18 @@ export class GrokRuntime implements ClaudeRuntime {
     debugLog('grok.session.new', { threadId: gp.threadId, sessionId, cwd })
   }
 
-  private async loadSession(gp: GrokProcess, sessionId: string, cwd: string): Promise<void> {
+  private async loadSession(
+    gp: GrokProcess,
+    sessionId: string,
+    context: RuntimeTurnContext,
+  ): Promise<void> {
+    const cwd = context.cwd
     gp.loading = true
     try {
       await this.request(
         gp,
         'session/load',
-        { sessionId, cwd, mcpServers: [] },
+        { sessionId, cwd, mcpServers: acpMcpServers(context.mcpServers) },
         this.options.startupTimeoutMs,
       )
     } finally {
