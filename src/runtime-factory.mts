@@ -33,7 +33,7 @@ class SelectableRuntime implements ClaudeRuntime {
 
   async runTurn(context: RuntimeTurnContext, handlers: RuntimeHandlers): Promise<void> {
     const requestedType = context.runtimeType ?? this.config.type
-    if (shouldHandleLocally(requestedType, context)) {
+    if (shouldHandleLocally(requestedType, context) || shouldHandleLocally(this.config.type, context)) {
       debugLog('runtime.turn.select', {
         threadId: context.threadId,
         turnId: context.turnId,
@@ -98,6 +98,9 @@ class SelectableRuntime implements ClaudeRuntime {
 function shouldHandleLocally(type: RuntimeBackendType, context: RuntimeTurnContext): boolean {
   // A summary (title) turn through a warm PTY would pollute the real Claude
   // session's conversation, so jinn-pty answers those locally like the HTTP bridges.
+  // Checked against the CONFIGURED type as well: the App creates its hidden
+  // title thread with its own default gpt-* model, which would otherwise select
+  // codex-proxy and spend `codex exec` usage for a title.
   return (
     context.purpose === 'summary' &&
     (type === 'agent-http' || type === 'agentapi' || type === 'jinn-pty')
