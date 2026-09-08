@@ -90,6 +90,59 @@ export function sumTranscriptUsage(transcriptPath: string, afterMs?: number): Tr
   return usage
 }
 
+// Background (async) Task sub-agents report back through a user-role message
+// Claude Code injects into the main conversation:
+//   <task-notification><task-id>ID</task-id>…<status>completed</status>
+//   <result>…</result></task-notification>
+// One message can carry several blocks.
+export interface TaskNotification {
+  taskId: string
+  status: string
+  result: string
+}
+
+const TASK_NOTIFICATION_RE = /<task-notification>([\s\S]*?)<\/task-notification>/gi
+
+export function parseTaskNotifications(text: string): TaskNotification[] {
+  const out: TaskNotification[] = []
+  if (!text || !/<task-notification>/i.test(text)) return out
+  for (const match of text.matchAll(TASK_NOTIFICATION_RE)) {
+    const block = match[1] ?? ''
+    const taskId = /<task-id>\s*([^<\s]+)\s*<\/task-id>/i.exec(block)?.[1]
+    if (!taskId) continue
+    out.push({
+      taskId,
+      status: /<status>\s*([^<\s]*)\s*<\/status>/i.exec(block)?.[1] ?? '',
+      result: (/<result>([\s\S]*?)<\/result>/i.exec(block)?.[1] ?? '').trim(),
+    })
+  }
+  return out
+}
+
+function userText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .filter((block) => (block as { type?: string })?.type === 'text')
+    .map((block) => String((block as { text?: unknown }).text ?? ''))
+    .join('\n')
+}
+
+// Task notifications the main agent has already consumed this turn — the CLI
+// delivers them mid-turn without a UserPromptSubmit, so the transcript is the
+// only witness.
+export function taskNotificationsFromTranscript(
+  transcriptPath: string,
+  afterMs?: number,
+): TaskNotification[] {
+  const out: TaskNotification[] = []
+  for (const line of readLines(transcriptPath)) {
+    if (line.type !== 'user' || !inWindow(line, afterMs)) continue
+    out.push(...parseTaskNotifications(userText(line.message?.content)))
+  }
+  return out
+}
+
 export function stripReasoningBlocks(text: string): string {
   return text
     .replace(/<\s*(thinking|reasoning|thought)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '')

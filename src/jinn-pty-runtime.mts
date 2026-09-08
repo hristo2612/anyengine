@@ -16,6 +16,7 @@ import {
   MAIN_AGENT_SENTINEL,
   type SseDataEvent,
   SsePtyProxy,
+  type SseStreamInfo,
   sseEventToDeltas,
 } from './jinn-pty-proxy.mjs'
 import {
@@ -30,8 +31,11 @@ import {
 } from './jinn-pty-screen.mjs'
 import {
   lastAssistantTextFromTranscript,
+  parseTaskNotifications,
   sanitizeAssistantText,
   sumTranscriptUsage,
+  type TaskNotification,
+  taskNotificationsFromTranscript,
 } from './jinn-pty-transcript.mjs'
 import type {
   ClaudeRuntime,
@@ -55,6 +59,10 @@ export interface JinnPtyRuntimeOptions {
   // Wall-clock cap for one turn; 0 disables. On expiry the transcript is
   // consulted before the turn is failed.
   turnTimeoutMs: number
+  // How long a turn stays open waiting for background (async) Task sub-agents
+  // to report back after the main agent has gone idle; on expiry the turn
+  // completes with what it has. 0 disables the wait.
+  asyncSubagentTimeoutMs: number
   // How long to wait for the composer after a cold spawn (trust dialog etc).
   startupTimeoutMs: number
   streamProxy: boolean
@@ -102,6 +110,11 @@ const NATIVE_COMMANDS = new Set(['/compact', '/clear', '/model', '/cost', '/stat
 const NATIVE_COMMAND_MIN_MS = 3000
 const NATIVE_COMMAND_QUIET_MS = 1800
 const NATIVE_COMMAND_MAX_MS = 90_000
+// Once every background sub-agent has stopped, the CLI injects their results
+// into the idle main agent as a user message within ~1.5 s; wait this long for
+// that before completing the turn on the Stop already in hand.
+const ASYNC_NOTIFY_GRACE_MS = 6000
+const ASYNC_SUBAGENT_TOOLS = new Set(['task', 'agent'])
 
 interface PtySession {
   threadId: string
@@ -128,6 +141,24 @@ interface PendingTool {
   decision: 'allow' | 'deny' | null
 }
 
+// A Task/Agent call the CLI answered with `async_launched`: the tool_result
+// is withheld until the sub-agent stops (SubagentStop hook) or the wait times
+// out, and the turn stays open until the main agent has consumed the result.
+interface AsyncSubagent {
+  agentId: string
+  toolUseId: string
+  description: string
+  finished: boolean
+  delivered: boolean
+}
+
+// What the SSE proxy records at request start; compared against the turn on
+// every event so only streams that began inside the accepted prompt pass.
+export interface StreamTag {
+  turnId: string
+  acceptedAt: number | null
+}
+
 interface ActiveTurn {
   context: RuntimeTurnContext
   handlers: RuntimeHandlers
@@ -139,6 +170,10 @@ interface ActiveTurn {
   gate: CompactionStreamGate
   streamedChars: number
   promptSubmitted: boolean
+  // Set by UserPromptSubmit (the CLI accepted the prompt), cleared by a Stop
+  // the turn survives; SSE streams that started outside such a window are
+  // not this turn's text.
+  promptAcceptedAt: number | null
   pendingTools: Map<string, PendingTool>
   lastToolUseId: string | null
   cancelSubmit: (() => void) | null
@@ -147,6 +182,14 @@ interface ActiveTurn {
   timeoutTimer: NodeJS.Timeout | null
   nativeTimer: NodeJS.Timeout | null
   approvingPrompt: boolean
+  asyncAgents: Map<string, AsyncSubagent>
+  // The Stop that was held back because sub-agents were still outstanding.
+  heldStop: HookPayload | null
+  asyncTimer: NodeJS.Timeout | null
+  notifyTimer: NodeJS.Timeout | null
+  // The next streamed text follows a held Stop: separate it from the text
+  // already delivered.
+  continuation: boolean
 }
 
 export class JinnPtyRuntime implements ClaudeRuntime {
@@ -196,7 +239,8 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         await handlers.onEvent({
           type: 'notice',
           level: 'warning',
-          message: 'Previous Claude session could not be resumed; starting a fresh Claude session for this thread.',
+          message:
+            'Previous Claude session could not be resumed; starting a fresh Claude session for this thread.',
         })
         await this.runTurnOnce({ ...context, claudeSessionId: null, forkSession: false }, handlers)
         return
@@ -247,6 +291,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
       gate: new CompactionStreamGate(),
       streamedChars: 0,
       promptSubmitted: false,
+      promptAcceptedAt: null,
       pendingTools: new Map(),
       lastToolUseId: null,
       cancelSubmit: null,
@@ -255,6 +300,11 @@ export class JinnPtyRuntime implements ClaudeRuntime {
       timeoutTimer: null,
       nativeTimer: null,
       approvingPrompt: false,
+      asyncAgents: new Map(),
+      heldStop: null,
+      asyncTimer: null,
+      notifyTimer: null,
+      continuation: false,
     }
     this.turns.set(context.threadId, turn)
 
@@ -351,8 +401,10 @@ export class JinnPtyRuntime implements ClaudeRuntime {
 
     let proxy: SsePtyProxy | null = null
     if (this.options.streamProxy) {
-      const candidate = new SsePtyProxy(context.threadId, (event) =>
-        this.onSseEvent(context.threadId, event),
+      const candidate = new SsePtyProxy(
+        context.threadId,
+        (event, stream) => this.onSseEvent(context.threadId, event, stream),
+        { tagStream: () => this.streamTag(context.threadId) },
       )
       try {
         await candidate.start()
@@ -627,6 +679,9 @@ export class JinnPtyRuntime implements ClaudeRuntime {
     switch (event) {
       case 'UserPromptSubmit':
         turn.promptSubmitted = true
+        turn.promptAcceptedAt = Date.now()
+        this.clearNotifyGrace(turn)
+        await this.onTaskNotifications(turn, parseTaskNotifications(String(payload.prompt ?? '')))
         return undefined
       case 'PreToolUse':
         turn.promptSubmitted = true
@@ -635,10 +690,14 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         turn.promptSubmitted = true
         await this.onPostToolUse(turn, payload)
         return undefined
+      case 'SubagentStop':
+        await this.onSubagentStop(turn, payload)
+        return undefined
       case 'Stop':
         turn.promptSubmitted = true
         this.clearGrace(turn)
         turn.stopFailure = null
+        if (await this.holdForAsyncSubagents(turn, payload)) return undefined
         await this.completeTurn(turn, payload)
         return undefined
       case 'StopFailure':
@@ -714,8 +773,184 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         ? payload.tool_use_id
         : (turn.lastToolUseId ?? `pty-${randomUUID()}`)
     turn.pendingTools.delete(toolUseId)
+    const launch = asyncLaunch(payload.tool_name, payload.tool_response)
+    if (launch) {
+      // Claude Code 2.1.x runs Task/Agent in the background: the tool returns
+      // `async_launched` at once and the result arrives later. Leave the
+      // App's wait item open (the child shows as running) and keep the turn
+      // alive until the sub-agent reports back.
+      turn.asyncAgents.set(launch.agentId, {
+        agentId: launch.agentId,
+        toolUseId,
+        description: launch.description,
+        finished: false,
+        delivered: false,
+      })
+      this.armAsyncTimeout(turn)
+      debugLog('jinnPty.subagent.launched', {
+        threadId: turn.context.threadId,
+        agentId: launch.agentId,
+        toolUseId,
+      })
+      return
+    }
     const { content, isError } = shapeToolResult(payload.tool_name, payload.tool_response)
     await turn.handlers.onEvent({ type: 'tool_result', toolUseId, content, isError })
+  }
+
+  // -------------------------------------------------------------------------
+  // Background (async) Task sub-agents
+
+  private async onSubagentStop(turn: ActiveTurn, payload: HookPayload): Promise<void> {
+    const agentId = typeof payload.agent_id === 'string' ? payload.agent_id : ''
+    const agent = agentId ? turn.asyncAgents.get(agentId) : undefined
+    // Synchronous sub-agents and the CLI's own helper agents (title, follow-up
+    // suggestions) stop through the same hook; only launched ones matter.
+    if (!agent || agent.finished) return
+    let text = sanitizeAssistantText(String(payload.last_assistant_message ?? ''))
+    if (!text && typeof payload.agent_transcript_path === 'string') {
+      text = sanitizeAssistantText(
+        lastAssistantTextFromTranscript(payload.agent_transcript_path) ?? '',
+      )
+    }
+    await this.finishAsyncSubagent(turn, agent, text, false)
+  }
+
+  private async finishAsyncSubagent(
+    turn: ActiveTurn,
+    agent: AsyncSubagent,
+    text: string,
+    isError: boolean,
+  ): Promise<void> {
+    if (agent.finished) return
+    agent.finished = true
+    debugLog('jinnPty.subagent.finished', {
+      threadId: turn.context.threadId,
+      agentId: agent.agentId,
+      chars: text.length,
+      isError,
+    })
+    // The trailer mirrors the Agent SDK's result shape so the server adopts
+    // the CLI's agent id as the child thread's handle.
+    const body = text || `Sub-agent "${agent.description}" finished without a final message.`
+    await turn.handlers.onEvent({
+      type: 'tool_result',
+      toolUseId: agent.toolUseId,
+      content: `${body}\n\nagentId: ${agent.agentId}`,
+      isError,
+    })
+    if (turn.heldStop && this.asyncAgentsOutstanding(turn).length === 0) {
+      this.armNotifyGrace(turn)
+    }
+  }
+
+  // Results the main agent has consumed. Idle-time delivery arrives as an
+  // injected prompt (UserPromptSubmit); mid-turn delivery only shows in the
+  // transcript. A notification for an agent whose SubagentStop never reached
+  // us closes it here.
+  private async onTaskNotifications(
+    turn: ActiveTurn,
+    notifications: TaskNotification[],
+  ): Promise<void> {
+    for (const notification of notifications) {
+      const agent = turn.asyncAgents.get(notification.taskId)
+      if (!agent) continue
+      if (!agent.finished) {
+        await this.finishAsyncSubagent(
+          turn,
+          agent,
+          sanitizeAssistantText(notification.result),
+          notification.status !== '' && notification.status !== 'completed',
+        )
+      }
+      agent.delivered = true
+    }
+  }
+
+  private asyncAgentsOutstanding(turn: ActiveTurn): AsyncSubagent[] {
+    return [...turn.asyncAgents.values()].filter((agent) => !agent.finished)
+  }
+
+  // A Stop while launched sub-agents are still running, or have finished but
+  // the main agent has not yet answered their results, ends nothing: the CLI
+  // will inject the results and the agent will speak again.
+  private async holdForAsyncSubagents(turn: ActiveTurn, payload: HookPayload): Promise<boolean> {
+    if (turn.asyncAgents.size === 0) return false
+    const outstanding = this.asyncAgentsOutstanding(turn)
+    if (outstanding.length === 0) {
+      const transcriptPath =
+        typeof payload.transcript_path === 'string' ? payload.transcript_path : null
+      if (transcriptPath) {
+        await this.onTaskNotifications(
+          turn,
+          taskNotificationsFromTranscript(transcriptPath, turn.startedAt - 1000),
+        )
+      }
+      const undelivered = [...turn.asyncAgents.values()].filter((agent) => !agent.delivered)
+      if (undelivered.length === 0) return false
+    }
+    turn.heldStop = payload
+    // Nothing the CLI requests from here until the next accepted prompt is
+    // this turn's text (the follow-up-suggestion call, most notably).
+    turn.promptAcceptedAt = null
+    turn.continuation = true
+    if (outstanding.length === 0) this.armNotifyGrace(turn)
+    debugLog('jinnPty.stop.held', {
+      threadId: turn.context.threadId,
+      outstanding: outstanding.length,
+      launched: turn.asyncAgents.size,
+    })
+    return true
+  }
+
+  private armAsyncTimeout(turn: ActiveTurn): void {
+    if (turn.asyncTimer || this.options.asyncSubagentTimeoutMs <= 0) return
+    turn.asyncTimer = setTimeout(() => {
+      turn.asyncTimer = null
+      void this.expireAsyncSubagents(turn)
+    }, this.options.asyncSubagentTimeoutMs)
+    turn.asyncTimer.unref()
+  }
+
+  private async expireAsyncSubagents(turn: ActiveTurn): Promise<void> {
+    if (turn.settled) return
+    const outstanding = this.asyncAgentsOutstanding(turn)
+    debugLog('jinnPty.subagent.timeout', {
+      threadId: turn.context.threadId,
+      outstanding: outstanding.length,
+    })
+    for (const agent of outstanding) {
+      await this.finishAsyncSubagent(
+        turn,
+        agent,
+        `Sub-agent "${agent.description}" did not report back within ${this.options.asyncSubagentTimeoutMs}ms.`,
+        true,
+      )
+    }
+    // Complete only when the main agent is idle; while it is still working
+    // the next Stop completes the turn as usual.
+    if (turn.heldStop) await this.completeHeldStop(turn)
+  }
+
+  private armNotifyGrace(turn: ActiveTurn): void {
+    this.clearNotifyGrace(turn)
+    turn.notifyTimer = setTimeout(() => {
+      turn.notifyTimer = null
+      void this.completeHeldStop(turn)
+    }, ASYNC_NOTIFY_GRACE_MS)
+    turn.notifyTimer.unref()
+  }
+
+  private clearNotifyGrace(turn: ActiveTurn): void {
+    if (turn.notifyTimer) clearTimeout(turn.notifyTimer)
+    turn.notifyTimer = null
+  }
+
+  private async completeHeldStop(turn: ActiveTurn): Promise<void> {
+    if (turn.settled || !turn.heldStop) return
+    const payload = turn.heldStop
+    turn.heldStop = null
+    await this.completeTurn(turn, payload)
   }
 
   // Claude Code's hardcoded safety prompts ignore hook decisions; answer the
@@ -790,16 +1025,28 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   // -------------------------------------------------------------------------
   // Streaming
 
-  private onSseEvent(threadId: string, event: SseDataEvent): void {
+  private streamTag(threadId: string): StreamTag | null {
+    const turn = this.turns.get(threadId)
+    if (!turn || turn.settled) return null
+    return { turnId: turn.context.turnId, acceptedAt: turn.promptAcceptedAt }
+  }
+
+  private onSseEvent(threadId: string, event: SseDataEvent, stream: SseStreamInfo): void {
     const turn = this.turns.get(threadId)
     if (!turn || turn.settled) return
+    if (!streamIsCurrent(stream, turn.context.turnId, turn.promptAcceptedAt)) return
     if (event.type === 'message_start') turn.gate.reset()
     const deltas = turn.gate.accept(sseEventToDeltas(event))
     if (event.type === 'message_stop') deltas.push(...turn.gate.end())
     for (const delta of deltas) {
       if (delta.type === 'text') {
-        turn.streamedChars += delta.content.length
-        void turn.handlers.onEvent({ type: 'text_delta', delta: delta.content })
+        let content = delta.content
+        if (turn.continuation) {
+          turn.continuation = false
+          if (turn.streamedChars > 0) content = `\n\n${content}`
+        }
+        turn.streamedChars += content.length
+        void turn.handlers.onEvent({ type: 'text_delta', delta: content })
       } else if (delta.type === 'thinking') {
         void turn.handlers.onEvent({ type: 'reasoning_delta', delta: delta.content })
       }
@@ -956,6 +1203,9 @@ export class JinnPtyRuntime implements ClaudeRuntime {
 
   private clearTurnTimers(turn: ActiveTurn): void {
     this.clearGrace(turn)
+    this.clearNotifyGrace(turn)
+    if (turn.asyncTimer) clearTimeout(turn.asyncTimer)
+    turn.asyncTimer = null
     if (turn.timeoutTimer) clearTimeout(turn.timeoutTimer)
     turn.timeoutTimer = null
     if (turn.nativeTimer) clearInterval(turn.nativeTimer)
@@ -998,6 +1248,35 @@ export function buildInteractiveArgs(input: InteractiveArgsInput): string[] {
   }
   args.push(...input.extraArgs)
   return args
+}
+
+// An SSE stream is this turn's only if it began after the turn's prompt was
+// accepted and no Stop / further prompt acceptance has happened since: the
+// acceptance timestamp doubles as the epoch the stream was tagged with.
+export function streamIsCurrent(
+  stream: SseStreamInfo,
+  turnId: string,
+  promptAcceptedAt: number | null,
+): boolean {
+  const tag = stream.tag as StreamTag | null | undefined
+  if (!tag || tag.turnId !== turnId) return false
+  if (tag.acceptedAt === null || promptAcceptedAt === null) return false
+  if (tag.acceptedAt !== promptAcceptedAt) return false
+  return stream.startedAt >= tag.acceptedAt
+}
+
+export function asyncLaunch(
+  toolName: unknown,
+  response: unknown,
+): { agentId: string; description: string } | null {
+  if (typeof toolName !== 'string' || !ASYNC_SUBAGENT_TOOLS.has(toolName.toLowerCase())) {
+    return null
+  }
+  const record = asRecord(response)
+  if (record.isAsync !== true && record.status !== 'async_launched') return null
+  const agentId = typeof record.agentId === 'string' ? record.agentId : ''
+  if (!agentId) return null
+  return { agentId, description: String(record.description ?? '') }
 }
 
 export function isNativeClaudeCommand(prompt: string): boolean {

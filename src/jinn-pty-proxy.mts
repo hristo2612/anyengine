@@ -24,10 +24,24 @@ type UpstreamRequestFn = (
   callback: (res: http.IncomingMessage) => void,
 ) => http.ClientRequest
 
+// Identity of the upstream request an SSE event came from. `startedAt` is
+// when the CLI's request reached the proxy and `tag` is whatever `tagStream`
+// returned at that instant, so the consumer can tell a stream that began
+// inside the current turn from one that began before it (Claude Code's
+// post-Stop follow-up-suggestion request carries the sentinel too).
+export interface SseStreamInfo {
+  startedAt: number
+  tag: unknown
+}
+
+export type SseEventHandler = (event: SseDataEvent, stream: SseStreamInfo) => void
+
 export interface SsePtyProxyOptions {
   requestFn?: UpstreamRequestFn
   upstream?: { hostname: string; port: number; protocol?: 'http:' | 'https:' }
   onActivity?: (activeStreams: number) => void
+  // Called once per teed request, at request start.
+  tagStream?: () => unknown
 }
 
 interface Inflight {
@@ -49,20 +63,18 @@ export class SsePtyProxy {
   private readonly upstreamHost: string
   private readonly upstreamPort: number
   private readonly agent: http.Agent
-  private readonly onEvent: (event: SseDataEvent) => void
+  private readonly onEvent: SseEventHandler
   private readonly onActivity: ((activeStreams: number) => void) | undefined
+  private readonly tagStream: (() => unknown) | undefined
   private readonly label: string
   port = 0
   activeStreams = 0
 
-  constructor(
-    label: string,
-    onEvent: (event: SseDataEvent) => void,
-    options: SsePtyProxyOptions = {},
-  ) {
+  constructor(label: string, onEvent: SseEventHandler, options: SsePtyProxyOptions = {}) {
     this.label = label
     this.onEvent = onEvent
     this.onActivity = options.onActivity
+    this.tagStream = options.tagStream
     this.requestFn =
       options.requestFn ?? (options.upstream?.protocol === 'http:' ? http.request : https.request)
     this.upstreamHost = options.upstream?.hostname ?? 'api.anthropic.com'
@@ -133,6 +145,8 @@ export class SsePtyProxy {
     req.on('end', () => {
       const body = Buffer.concat(chunks)
       const tee = this.shouldTee(req.url, body)
+        ? { startedAt: Date.now(), tag: this.tagStream?.() }
+        : null
       const headers: Record<string, unknown> = { ...req.headers, host: this.upstreamHost }
       delete headers['accept-encoding']
       finish = this.streamStarted()
@@ -144,7 +158,7 @@ export class SsePtyProxy {
     req: http.IncomingMessage,
     res: http.ServerResponse,
     body: Buffer,
-    tee: boolean,
+    tee: SseStreamInfo | null,
     headers: Record<string, unknown>,
     inflight: Inflight,
     attempt: number,
@@ -171,10 +185,10 @@ export class SsePtyProxy {
               res.once('drain', () => uRes.resume())
             }
           } catch {}
-          if (decoder) sseBuf = this.parseSse(sseBuf + decoder.write(chunk))
+          if (decoder && tee) sseBuf = this.parseSse(sseBuf + decoder.write(chunk), tee)
         })
         uRes.on('end', () => {
-          if (decoder) sseBuf = this.parseSse(sseBuf + decoder.end())
+          if (decoder && tee) sseBuf = this.parseSse(sseBuf + decoder.end(), tee)
           inflight.current = undefined
           finish()
           try {
@@ -244,7 +258,7 @@ export class SsePtyProxy {
     return systemHasSentinel(json.system)
   }
 
-  private parseSse(input: string): string {
+  private parseSse(input: string, stream: SseStreamInfo): string {
     let buf = input
     let idx = indexOfFrameEnd(buf)
     while (idx !== -1) {
@@ -256,7 +270,7 @@ export class SsePtyProxy {
       }
       if (data && data !== '[DONE]') {
         try {
-          this.onEvent(JSON.parse(data) as SseDataEvent)
+          this.onEvent(JSON.parse(data) as SseDataEvent, stream)
         } catch {}
       }
       idx = indexOfFrameEnd(buf)

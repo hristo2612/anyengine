@@ -44,6 +44,7 @@ export interface RuntimeConfig {
     cols: number
     rows: number
     turnTimeoutMs: number
+    asyncSubagentTimeoutMs: number
     startupTimeoutMs: number
     streamProxy: boolean
     extraArgs: string[]
@@ -106,6 +107,12 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
       turnTimeoutMs: numericEnv(
         env.CLAUDE_CODEX_PTY_TURN_TIMEOUT_MS,
         60 * 60_000,
+        0,
+        24 * 60 * 60_000,
+      ),
+      asyncSubagentTimeoutMs: numericEnv(
+        env.CLAUDE_CODEX_PTY_ASYNC_SUBAGENT_TIMEOUT_MS,
+        10 * 60_000,
         0,
         24 * 60 * 60_000,
       ),

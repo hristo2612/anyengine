@@ -18,6 +18,13 @@ export interface HookPayload {
   tool_use_id?: string
   tool_response?: unknown
   last_assistant_message?: string
+  // UserPromptSubmit: the submitted text (system-injected task notifications
+  // for background sub-agents arrive through the same hook).
+  prompt?: string
+  // SubagentStop (2.1.x): id/type of the sub-agent and its own transcript.
+  agent_id?: string
+  agent_type?: string
+  agent_transcript_path?: string
   // StopFailure: rate_limit | authentication_failed | billing_error |
   // invalid_request | server_error | max_output_tokens | unknown
   error?: string
@@ -34,6 +41,7 @@ export const PTY_HOOK_EVENTS = [
   'PostToolUse',
   'Stop',
   'StopFailure',
+  'SubagentStop',
   'Notification',
   'SessionEnd',
 ] as const
