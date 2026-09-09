@@ -84,11 +84,11 @@ logged the identical `authentication_failed` on 2026-09-09T07:55:03Z, so this
 predates the flip and a rollback would not fix it. The local (stdio) host is
 spawned by the app inside the GUI session and reads the keychain normally.
 
-**Claude on the local-host configuration — pass, outside the GUI.** The app's
-local project cannot select Claude at all right now: the account's Codex usage
-is 100 % spent (resets 15 Sept), so the desktop forces reserve mode and hides
-the whole model picker on a host that reports a ChatGPT account. Claude was
-therefore verified with the adapter's own smokes against the live
+**Claude on the local host — pass in the app, after two reversible flags (see
+below).** Before them the app's local project could not select Claude at all:
+the account's Codex usage is 100 % spent (resets 15 Sept), so the desktop forced
+reserve mode and hid the whole model picker on a host that reports a ChatGPT
+account. Claude was also verified with the adapter's own smokes against the live
 `~/.anyengine/runtime.env`, all four green
 ([a3-smokes.txt](a3-smokes.txt)):
 
@@ -102,18 +102,47 @@ therefore verified with the adapter's own smokes against the live
 Native GPT is therefore unverified end-to-end: it is quota-blocked, not broken.
 Re-run `npm run smoke:native-codex` after 15 Sept.
 
+## Follow-up, 02:31–02:38 local — Claude answering in the app
+
+Two reversible flags were added to `~/.anyengine/runtime.env` (the pre-flag file
+is backed up beside the others as `runtime.env.pre-flags`), with a dated comment
+in the file:
+
+```bash
+export ANYENGINE_HIDE_RATE_LIMIT_UPSELL="1"
+export ANYENGINE_NATIVE_CODEX="0"
+# revert these two on/after 2026-09-15 to restore native GPT passthrough
+```
+
+Together they make the local host report an apikey account, which is what the
+desktop's reserve gating keys off, so the full model list comes back on local
+projects. The cost is native GPT passthrough — the local adapter no longer
+spawns a real Codex child — and GPT has no quota until 15 Sept anyway.
+
+After a clean restart (no active turn; stdio handshake 887 ms, websocket 11 ms,
+both first try) the local project's picker lists Claude Fable 5.1 / Opus /
+Sonnet / Haiku and Grok 4.6 / 4.5, and the "out of Codex usage" banner is gone.
+In a new local thread:
+
+- **Claude Sonnet → `PONG`** — [a3-claude-pong.png](a3-claude-pong.png)
+- **Grok 4.6 → `PONG`**, "Worked for 2s" — re-checked after the restart, unchanged
+
+The keychain limit is untouched and unchanged: Claude still cannot run under the
+SSH twin, and that is pre-existing (see above). Claude in the app now runs on the
+local host, where the adapter is a child of ChatGPT.app inside the GUI session
+and reads the keychain normally.
+
 ## Open items
 
-1. **Claude over the SSH twin is unusable while the keychain is unreachable.**
-   Either use Claude on the local host (needs the reserve-mode picker back), or
-   teach the shim to re-enter the user's GUI session (`launchctl asuser`) before
-   spawning the adapter, or hand the CLI a token through the environment. The
-   third option puts a credential in a file and was not taken.
-2. **Reserve mode hides the picker on the local host** while Codex usage is
-   spent. `ANYENGINE_HIDE_RATE_LIMIT_UPSELL=1` together with
-   `ANYENGINE_NATIVE_CODEX=0` restores the full Claude+Grok list (the host then
-   reports an apikey account) at the cost of native GPT passthrough — a
-   reasonable trade only while GPT has no quota. Left at the defaults.
+1. **Revert the two flags on or after 2026-09-15**, when Codex usage resets, to
+   get native GPT passthrough back: restore
+   `~/.anyengine/rollback-20260909T231247Z/runtime.env.pre-flags` (or set the
+   two variables back to `0` / unset) and restart the app.
+2. **Claude over the SSH twin stays unusable while the keychain is unreachable.**
+   Either keep Claude on the local host (now the case), teach the shim to
+   re-enter the user's GUI session (`launchctl asuser`) before spawning the
+   adapter, or hand the CLI a token through the environment. The last option
+   puts a credential in a file and was not taken.
 3. **Bootstrap race during a flip.** Between stopping the old daemon and
    installing the new shim, an SSH bootstrap started the *old* adapter again and
    it took the control socket. Install the shim *first*, then stop the daemon.
