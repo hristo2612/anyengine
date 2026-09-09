@@ -68,5 +68,5 @@ npm run docs:build     # static build -> docs/.vitepress/dist
 npm run docs:preview   # serve the built site
 ```
 
-It deploys to GitHub Pages automatically on push to `main` via
-`.github/workflows/deploy-docs.yml`.
+The site is not published anywhere yet; build it locally when you change
+`docs/`.
