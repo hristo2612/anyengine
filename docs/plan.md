@@ -22,6 +22,8 @@ two pre-existing duplicate-`case` lint errors inherited from upstream.
 
 Install the rebranded build alongside the current one, point the `codex` shim
 at it, and confirm one Claude thread, one Grok thread and one GPT passthrough
-thread in the desktop app. Rollback is a single path change back to the previous
+thread in the desktop app. The existing `runtime.env` needs one edit: the
+route value `jinn-pty` becomes `anyengine` (the compatibility shim renames
+variables, not their values). Rollback is a single path change back to the previous
 adapter; the legacy `CLAUDE_CODEX_*` names keep working throughout, so the old
 runtime.env needs no edit to roll back.

@@ -198,8 +198,8 @@ test('workflow transcript roots follow CLAUDE_CONFIG_DIR and HOME deterministica
     ),
     ['/workspace/profiles/claude'],
   )
-  assert.deepEqual(defaultWorkflowTranscriptRoots({ HOME: '/users/tester' }, '/workspace'), [
-    '/users/tester/.claude',
+  assert.deepEqual(defaultWorkflowTranscriptRoots({ HOME: '/home/tester' }, '/workspace'), [
+    '/home/tester/.claude',
   ])
 })
 

@@ -7,6 +7,28 @@ versioning or publishing metadata.
 
 ## Unreleased
 
+### Rebrand: claude-codex / jinn-pty -> anyengine
+
+- The project is now **anyengine**. The package, the binary, the Rust protocol
+  crate, the state directory (`~/.anyengine`), the adapter home
+  (`~/.codex/anyengine`), the host helper (`scripts/anyengine-mode`) and the
+  cross-engine MCP server all carry the new name. The interactive-PTY runtime
+  formerly called `jinn-pty` is now the `anyengine` route; its earlier route
+  values (`jinn-pty`, `jinn`) are gone, while `pty`, `claude-pty` and
+  `interactive` still resolve to it.
+- Every environment variable moved from `CLAUDE_CODEX_*` to `ANYENGINE_*`. For
+  one release the old spelling is still accepted: each `CLAUDE_CODEX_X` is
+  copied onto `ANYENGINE_X` unless the new name is already set, so the new name
+  always wins and nothing is removed from the environment. The shim also falls
+  back to `~/.claude-codex/runtime.env` while `~/.anyengine/runtime.env` does
+  not exist. Both compatibility paths are removed one release later.
+- Upgrading an existing install: the value of `ANYENGINE_RUNTIME_TYPE` (or
+  `ANYENGINE_ROUTE`) must be changed from `jinn-pty` to `anyengine`; the name
+  compatibility shim does not translate route *values*.
+- anyengine remains a fork of
+  [claude-codex](https://github.com/fuergaosi233/claude-codex) by fuergaosi233
+  (MIT); see the Credits section of the README.
+
 ### App-server and protocol compatibility
 
 - Updated the adapter to advertise Codex app-server protocol v2 compatibility at
