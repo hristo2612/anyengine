@@ -115,6 +115,11 @@ function launch(home: string, extraEnv: NodeJS.ProcessEnv = {}, viaShim = false)
   }
   delete env.ANYENGINE_GPT_ROUTE
   delete env.ANYENGINE_RUNTIME_ENV
+  // These tests ARE the native-codex passthrough, against a fake child, so the
+  // suite-wide kill switch in `npm test` (and its legacy spelling) must not
+  // reach the adapter here.
+  delete env.ANYENGINE_NATIVE_CODEX
+  delete env.CLAUDE_CODEX_NATIVE_CODEX
   const child = viaShim
     ? spawn(shim, DESKTOP_ARGV, {
         env: {
