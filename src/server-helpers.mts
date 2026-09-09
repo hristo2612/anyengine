@@ -125,7 +125,7 @@ export function allSelectableModelOptions(): Array<{
 
 export function defaultSelectableModelId(): string {
   const options = allSelectableModelOptions()
-  const defaultModel = process.env.CLAUDE_CODEX_DEFAULT_MODEL
+  const defaultModel = process.env.ANYENGINE_DEFAULT_MODEL
   if (defaultModel && options.some((option) => option.id === defaultModel)) return defaultModel
   return options.find((option) => option.isDefault === true)?.id ?? options[0]?.id ?? 'sonnet'
 }

@@ -14,7 +14,7 @@ const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio:
   env: {
     ...process.env,
     CODEX_HOME: home,
-    CLAUDE_CODEX_MOCK: process.env.CLAUDE_CODEX_MOCK ?? '1',
+    ANYENGINE_MOCK: process.env.ANYENGINE_MOCK ?? '1',
     NODE_NO_WARNINGS: '1',
   },
 })

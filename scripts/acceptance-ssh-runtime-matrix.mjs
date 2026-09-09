@@ -21,7 +21,7 @@ const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS || 180_000)
 const RESTORE_ENV = process.env.MODE_MATRIX_RESTORE_ENV !== '0'
 
 async function runOverSsh(args) {
-  const host = args[0] || process.env.CLAUDE_CODEX_MATRIX_SSH_HOST
+  const host = args[0] || process.env.ANYENGINE_MATRIX_SSH_HOST
   if (!host) throw new Error('usage: acceptance-ssh-runtime-matrix.mjs <ssh-host> <cwd-a> <cwd-b>')
   const cwds = args.slice(1)
   if (cwds.length < 2)
@@ -45,7 +45,7 @@ async function runOverSsh(args) {
     const command = [
       'set -e',
       '. "$HOME/.claude-codex/runtime.env"',
-      'node_bin="${CLAUDE_CODEX_NODE:-node}"',
+      'node_bin="${ANYENGINE_NODE:-node}"',
       `${env} "$node_bin" ${shQuote(remoteScript)} --runner ${cwdArgs}`,
     ].join('; ')
     const proc = spawn('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=12', host, command], {
@@ -78,13 +78,12 @@ async function runMatrix(cwds) {
   const fromModes = modesFromEnv('MODE_MATRIX_FROM_MODES', modes)
   const toModes = modesFromEnv('MODE_MATRIX_TO_MODES', modes)
   const envFile =
-    process.env.CLAUDE_CODEX_RUNTIME_ENV ||
-    join(process.env.HOME || '', '.claude-codex/runtime.env')
+    process.env.ANYENGINE_RUNTIME_ENV || join(process.env.HOME || '', '.claude-codex/runtime.env')
   const originalEnv = existsSync(envFile) ? readFileSync(envFile, 'utf8') : null
-  const helper = process.env.CLAUDE_CODEX_MODE_COMMAND || 'claude-codex-mode'
+  const helper = process.env.ANYENGINE_MODE_COMMAND || 'claude-codex-mode'
   const codexReal = requireEnv('CODEX_REAL')
-  const nodeBin = process.env.CLAUDE_CODEX_NODE || process.execPath
-  const adapter = requireEnv('CLAUDE_CODEX_ADAPTER')
+  const nodeBin = process.env.ANYENGINE_NODE || process.execPath
+  const adapter = requireEnv('ANYENGINE_ADAPTER')
   const scratch = mkdtempSync(join(tmpdir(), 'claude-codex-runtime-matrix-'))
   const results = []
   const runId = Date.now().toString(36)
@@ -244,7 +243,7 @@ async function ensureBridgeIfNeeded(helper, mode, cwd) {
   if (mode !== 'agent-http' && mode !== 'agentapi') return
   const ready = runHelper(helper, ['ensure-bridge', mode, MODEL, cwd], 180_000)
   if (mode !== 'agentapi') return
-  const baseUrl = ready.stdout.match(/CLAUDE_CODEX_BRIDGE_URL=(\S+)/)?.[1]
+  const baseUrl = ready.stdout.match(/ANYENGINE_BRIDGE_URL=(\S+)/)?.[1]
   if (baseUrl) runHelper(helper, ['trust', baseUrl], 60_000, true)
 }
 
@@ -278,8 +277,7 @@ function runCodex(codexReal, cwd, expected, scratch) {
 
 async function runAdapter({ nodeBin, adapter, cwd, expected, mode }) {
   const envFile =
-    process.env.CLAUDE_CODEX_RUNTIME_ENV ||
-    join(process.env.HOME || '', '.claude-codex/runtime.env')
+    process.env.ANYENGINE_RUNTIME_ENV || join(process.env.HOME || '', '.claude-codex/runtime.env')
   const proc = spawn(
     'bash',
     [
@@ -375,9 +373,9 @@ async function runAdapter({ nodeBin, adapter, cwd, expected, mode }) {
 
 function adapterEnv() {
   const env = { ...process.env, NODE_NO_WARNINGS: '1' }
-  if (!env.CLAUDE_CODEX_CLAUDE_P_TIMEOUT_MS) {
+  if (!env.ANYENGINE_CLAUDE_P_TIMEOUT_MS) {
     const timeout = Math.max(30_000, Math.min(120_000, TURN_TIMEOUT_MS - 60_000))
-    env.CLAUDE_CODEX_CLAUDE_P_TIMEOUT_MS = String(timeout)
+    env.ANYENGINE_CLAUDE_P_TIMEOUT_MS = String(timeout)
   }
   return env
 }

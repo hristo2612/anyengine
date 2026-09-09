@@ -13,7 +13,7 @@
 //   node scripts/smoke-bridge.mjs natural  # NO tool names: "spawn another session with claude opus
 //                                          # and say hi" in a sonnet thread, then "spawn 4 sub-agents,
 //                                          # 2 with grok and 2 with claude, ..." in a grok thread (8796)
-//   CLAUDE_CODEX_SMOKE_PORT / CLAUDE_CODEX_SMOKE_MODEL / CLAUDE_CODEX_SMOKE_CWD override.
+//   ANYENGINE_SMOKE_PORT / ANYENGINE_SMOKE_MODEL / ANYENGINE_SMOKE_CWD override.
 // The adapter process it spawns is the only pid it kills. Report + debug log
 // land under .claude-codex/bridge-smoke-<engine>-<stamp>/.
 import { spawn } from 'node:child_process'
@@ -26,15 +26,13 @@ const engine = ['claude', 'grok', 'gpt', 'natural'].includes(process.argv[2])
   ? process.argv[2]
   : 'claude'
 const repo = resolve(process.cwd())
-const cwd = resolve(
-  process.env.CLAUDE_CODEX_SMOKE_CWD ?? join(repo, '.claude-codex', 'bridge-smoke'),
-)
+const cwd = resolve(process.env.ANYENGINE_SMOKE_CWD ?? join(repo, '.claude-codex', 'bridge-smoke'))
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
 const home = join(repo, '.claude-codex', `bridge-smoke-${engine}-${stamp}`)
 await mkdir(cwd, { recursive: true })
 await mkdir(home, { recursive: true })
 const port = Number(
-  process.env.CLAUDE_CODEX_SMOKE_PORT ??
+  process.env.ANYENGINE_SMOKE_PORT ??
     { claude: 8797, grok: 8798, gpt: 8799, natural: 8796 }[engine],
 )
 const listen = `ws://127.0.0.1:${port}`
@@ -47,17 +45,17 @@ const ms = () => Date.now() - t0
 
 const env = {
   ...process.env,
-  CLAUDE_CODEX_MOCK: '',
+  ANYENGINE_MOCK: '',
   // The adapter's own store/log are isolated; CODEX_HOME stays the real one
   // so the native child (gpt) finds the ChatGPT login.
-  CLAUDE_CODEX_HOME: join(home, 'adapter-home'),
-  CLAUDE_CODEX_DEBUG_LOG: debugLog,
-  CLAUDE_CODEX_RUNTIME_TYPE: 'anyengine',
-  CLAUDE_CODEX_SUBAGENT_COMPLETED: '1',
+  ANYENGINE_HOME: join(home, 'adapter-home'),
+  ANYENGINE_DEBUG_LOG: debugLog,
+  ANYENGINE_RUNTIME_TYPE: 'anyengine',
+  ANYENGINE_SUBAGENT_COMPLETED: '1',
   NODE_NO_WARNINGS: '1',
 }
-if (engine !== 'gpt') env.CLAUDE_CODEX_NATIVE_CODEX = '0'
-else delete env.CLAUDE_CODEX_NATIVE_CODEX
+if (engine !== 'gpt') env.ANYENGINE_NATIVE_CODEX = '0'
+else delete env.ANYENGINE_NATIVE_CODEX
 
 const adapter = spawn(
   process.execPath,
@@ -482,7 +480,7 @@ try {
   const models = await rpc.request('model/list', {})
   report.models = models.data.map((m) => m.id)
   log(`model/list: ${report.models.join(', ')}`)
-  let model = process.env.CLAUDE_CODEX_SMOKE_MODEL
+  let model = process.env.ANYENGINE_SMOKE_MODEL
   if (!model) {
     if (engine === 'claude' || engine === 'natural') model = 'sonnet'
     else if (engine === 'grok') model = report.models.find((id) => /^grok/i.test(id)) ?? 'grok-4.6'

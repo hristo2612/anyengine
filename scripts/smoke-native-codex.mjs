@@ -16,11 +16,11 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import readline from 'node:readline'
 
-const root = resolve(process.env.CLAUDE_CODEX_SMOKE_ROOT ?? tmpdir())
+const root = resolve(process.env.ANYENGINE_SMOKE_ROOT ?? tmpdir())
 const home = await mkdtemp(join(root, 'claude-codex-native-smoke-'))
 const workspace = join(home, 'workspace')
 await mkdir(workspace, { recursive: true })
-const claudeModel = process.env.CLAUDE_CODEX_SMOKE_CLAUDE_MODEL ?? 'opus'
+const claudeModel = process.env.ANYENGINE_SMOKE_CLAUDE_MODEL ?? 'opus'
 
 const adapter = spawn(
   process.execPath,
@@ -37,8 +37,8 @@ const adapter = spawn(
       ...process.env,
       // The adapter's own store/log are isolated; CODEX_HOME stays the real
       // one so the child shares the ChatGPT login.
-      CLAUDE_CODEX_HOME: join(home, 'adapter-home'),
-      CLAUDE_CODEX_DEBUG_LOG: join(home, 'debug.jsonl'),
+      ANYENGINE_HOME: join(home, 'adapter-home'),
+      ANYENGINE_DEBUG_LOG: join(home, 'debug.jsonl'),
       NODE_NO_WARNINGS: '1',
     },
   },

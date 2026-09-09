@@ -28,11 +28,11 @@ test('run registry redacts prompt-like fields and secret-like values', () => {
 })
 
 test('run registry can be disabled without touching the filesystem', () => {
-  const path = runRegistryPath({ CLAUDE_CODEX_RUN_LOG: '0' })
+  const path = runRegistryPath({ ANYENGINE_RUN_LOG: '0' })
   const result = recordRunEvent(
     'thread.started',
     { threadId: 'thread-a' },
-    { CLAUDE_CODEX_RUN_LOG: '0' },
+    { ANYENGINE_RUN_LOG: '0' },
   )
 
   assert.equal(path, null)
@@ -46,7 +46,7 @@ test('run registry appends redacted JSONL entries', async () => {
   const result = recordRunEvent(
     'turn.completed',
     { threadId: 'thread-a', responseText: 'raw answer', note: 'api_key=secret123456789' },
-    { CLAUDE_CODEX_RUN_LOG: path },
+    { ANYENGINE_RUN_LOG: path },
   )
   const lines = (await readFile(path, 'utf8')).trim().split('\n')
   const entry = JSON.parse(lines[0] ?? '{}') as Record<string, unknown>

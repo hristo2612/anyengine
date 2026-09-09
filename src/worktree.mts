@@ -12,10 +12,10 @@ export interface WorktreeResult {
 }
 
 export function maybeCreateThreadWorktree(threadId: string, cwd: string): WorktreeResult {
-  if (process.env.CLAUDE_CODEX_AUTO_WORKTREE !== '1') {
+  if (process.env.ANYENGINE_AUTO_WORKTREE !== '1') {
     return { cwd, created: false }
   }
-  const root = resolve(process.env.CLAUDE_CODEX_WORKTREE_ROOT || join(adapterHome(), 'worktrees'))
+  const root = resolve(process.env.ANYENGINE_WORKTREE_ROOT || join(adapterHome(), 'worktrees'))
   mkdirSync(root, { recursive: true })
   const label = worktreeLabel(threadId)
   const worktreePath = join(root, label)

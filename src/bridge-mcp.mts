@@ -15,7 +15,7 @@ import { MODEL_ALIAS_TABLE } from './bridge-instructions.mjs'
 // handshake and tool surface, and one WebSocket to the adapter's bridge
 // control socket (src/bridge-control.mts) for the actual work. The calling
 // thread is passed by the runtime that spawned the engine in
-// CLAUDE_CODEX_BRIDGE_THREAD; when absent (the codex child runs one bridge per
+// ANYENGINE_BRIDGE_THREAD; when absent (the codex child runs one bridge per
 // process) the adapter infers it from the single thread with a turn in flight.
 
 const PROTOCOL_VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18'])

@@ -38,10 +38,10 @@ async function main() {
     ...process.env,
     PATH: `${bin}:${process.env.PATH ?? ''}`,
     CODEX_HOME: home,
-    CLAUDE_CODEX_ADAPTER: adapter,
+    ANYENGINE_ADAPTER: adapter,
     NODE_NO_WARNINGS: '1',
   }
-  delete env.CLAUDE_CODEX_MOCK
+  delete env.ANYENGINE_MOCK
 
   const version = run('codex', ['--version'], env)
   assert.match(version.stdout, /codex-cli/)

@@ -4,17 +4,41 @@
 # subcommand is not argv[1]. Strip leading global options before deciding.
 set -euo pipefail
 
-RUNTIME_ENV="${CLAUDE_CODEX_RUNTIME_ENV:-$HOME/.claude-codex/runtime.env}"
+# One-release compatibility: accept the pre-rebrand CLAUDE_CODEX_* spellings.
+# Each legacy name is copied onto its ANYENGINE_* equivalent unless that is
+# already set (the new name always wins). Drop this block one release after
+# the rename; see src/env-compat.mts for the adapter-side twin.
+anyengine_adopt_legacy_env() {
+  local legacy new
+  while IFS= read -r legacy; do
+    [ -n "$legacy" ] || continue
+    new="ANYENGINE_${legacy#CLAUDE_CODEX_}"
+    eval ": \"\${$new:=\$$legacy}\"" 2>/dev/null || continue
+    eval "export $new"
+  done <<EOF
+$(env | sed -n 's/^\(CLAUDE_CODEX_[A-Za-z0-9_]*\)=.*/\1/p')
+EOF
+}
+anyengine_adopt_legacy_env
+
+RUNTIME_ENV="${ANYENGINE_RUNTIME_ENV:-${CLAUDE_CODEX_RUNTIME_ENV:-}}"
+if [ -z "$RUNTIME_ENV" ]; then
+  RUNTIME_ENV="$HOME/.anyengine/runtime.env"
+  # Legacy state directory, honoured while the old one is the only one there.
+  [ -f "$RUNTIME_ENV" ] || [ ! -f "$HOME/.claude-codex/runtime.env" ] || \
+    RUNTIME_ENV="$HOME/.claude-codex/runtime.env"
+fi
 if [ -f "$RUNTIME_ENV" ]; then
   # shellcheck source=/dev/null
   source "$RUNTIME_ENV"
+  anyengine_adopt_legacy_env
 fi
 
-ADAPTER="${CLAUDE_CODEX_ADAPTER:-/opt/claude-codex-adapter/dist/src/adapter.mjs}"
-NODE_BIN="${CLAUDE_CODEX_NODE:-node}"
-COMPAT_VERSION="${CLAUDE_CODEX_COMPAT_VERSION:-${CODEX_SHIM_COMPAT_VERSION:-0.142.3}}"
-VERSION_SUFFIX="${CLAUDE_CODEX_VERSION_SUFFIX-claude-codex}"
-MODE="${CLAUDE_CODEX_ROUTE:-${CLAUDE_CODEX_RUNTIME_TYPE:-agent-sdk-sidecar}}"
+ADAPTER="${ANYENGINE_ADAPTER:-/opt/claude-codex-adapter/dist/src/adapter.mjs}"
+NODE_BIN="${ANYENGINE_NODE:-node}"
+COMPAT_VERSION="${ANYENGINE_COMPAT_VERSION:-${CODEX_SHIM_COMPAT_VERSION:-0.142.3}}"
+VERSION_SUFFIX="${ANYENGINE_VERSION_SUFFIX-claude-codex}"
+MODE="${ANYENGINE_ROUTE:-${ANYENGINE_RUNTIME_TYPE:-agent-sdk-sidecar}}"
 
 resolve_real_codex() {
   if [ -n "${CODEX_REAL:-}" ] && [ -x "$CODEX_REAL" ]; then
@@ -80,7 +104,7 @@ case "$SUBCMD" in
           # The SSH/Remote twin serves Claude + Grok only; the desktop LOCAL host
           # (stdio) owns the native GPT passthrough. Keeps the twin free of the
           # account rate-limit state that hides the App model picker.
-          CLAUDE_CODEX_NATIVE_CODEX="${CLAUDE_CODEX_REMOTE_NATIVE_CODEX:-0}" \
+          ANYENGINE_NATIVE_CODEX="${ANYENGINE_REMOTE_NATIVE_CODEX:-0}" \
           "$NODE_BIN" "$ADAPTER" ${GLOBAL_OPTS[@]+"${GLOBAL_OPTS[@]}"} "${REST[@]}" </dev/null &
           disown 2>/dev/null || true
           for _ in $(seq 1 100); do [ -S "$SOCK" ] && exit 0; sleep 0.1; done

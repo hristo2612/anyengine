@@ -14,11 +14,11 @@ import {
   sseEventToDeltas,
 } from '../src/anyengine-proxy.mjs'
 import {
+  AnyengineRuntime,
+  type AnyengineRuntimeOptions,
   asyncLaunch,
   buildInteractiveArgs,
   isNativeClaudeCommand,
-  AnyengineRuntime,
-  type AnyengineRuntimeOptions,
   shapeToolResult,
   streamIsCurrent,
 } from '../src/anyengine-runtime.mjs'
@@ -161,16 +161,16 @@ function completed(events: RuntimeEvent[]): Extract<RuntimeEvent, { type: 'compl
 }
 
 test('runtime config resolves anyengine and its aliases', () => {
-  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'anyengine' }).type, 'anyengine')
-  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'pty' }).type, 'anyengine')
-  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'claude-pty' }).type, 'anyengine')
+  assert.equal(resolveRuntimeConfig({ ANYENGINE_RUNTIME_TYPE: 'anyengine' }).type, 'anyengine')
+  assert.equal(resolveRuntimeConfig({ ANYENGINE_RUNTIME_TYPE: 'pty' }).type, 'anyengine')
+  assert.equal(resolveRuntimeConfig({ ANYENGINE_RUNTIME_TYPE: 'claude-pty' }).type, 'anyengine')
   const config = resolveRuntimeConfig({
-    CLAUDE_CODEX_RUNTIME_TYPE: 'anyengine',
-    CLAUDE_CODEX_CLI: '/opt/bin/claude',
-    CLAUDE_CODEX_PTY_COLS: '150',
-    CLAUDE_CODEX_PTY_ROWS: '50',
-    CLAUDE_CODEX_PTY_TURN_TIMEOUT_MS: '1234',
-    CLAUDE_CODEX_PTY_STREAM_PROXY: '0',
+    ANYENGINE_RUNTIME_TYPE: 'anyengine',
+    ANYENGINE_CLI: '/opt/bin/claude',
+    ANYENGINE_PTY_COLS: '150',
+    ANYENGINE_PTY_ROWS: '50',
+    ANYENGINE_PTY_TURN_TIMEOUT_MS: '1234',
+    ANYENGINE_PTY_STREAM_PROXY: '0',
   })
   assert.equal(config.anyengine.cli, '/opt/bin/claude')
   assert.equal(config.anyengine.cols, 150)

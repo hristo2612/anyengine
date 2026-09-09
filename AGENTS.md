@@ -30,7 +30,7 @@ npm run doctor         # environment self-check
 
 **Build constraint: Node.js 24+ is required.** The store uses `node:sqlite`,
 which Node 22 hides behind `--experimental-sqlite` (not passed), so it crashes
-at runtime on 22. Pin a binary with `CLAUDE_CODEX_NODE` if the default `node`
+at runtime on 22. Pin a binary with `ANYENGINE_NODE` if the default `node`
 is older. `engines.node` enforces `>=24`.
 
 The fast dev loop is `npm run dev` (tsx runs `.mts` directly). The code is kept
@@ -50,8 +50,8 @@ so a remote host needs only `node` — no TS toolchain.
   `npm run build` and `npm run generate:schema`.
 - Formatting/linting is **Biome** (`biome.json`): 2-space, single quotes, no
   semicolons, lineWidth 100. Run `npm run check:fix` before committing.
-- Config is env-driven (`CLAUDE_CODEX_*`); the full list lives in the README.
-- `CLAUDE_CODEX_MOCK=1` runs the protocol without Claude credentials.
+- Config is env-driven (`ANYENGINE_*`); the full list lives in the README.
+- `ANYENGINE_MOCK=1` runs the protocol without Claude credentials.
 - Match the comment density and naming of surrounding code. Keep modules
   focused — see the file-length nudge below.
 

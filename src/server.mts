@@ -1,12 +1,30 @@
-import { randomUUID } from 'node:crypto'
-import { homedir } from 'node:os'
-import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { type ChildProcess, execFile, spawn } from 'node:child_process'
-import { type FSWatcher, readFileSync, watch, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { existsSync, type FSWatcher, readFileSync, watch, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
+import {
+  type BridgeControl,
+  type BridgeHost,
+  type BridgeSubagentThreadInput,
+  type BridgeThreadInfo,
+  isBridgePeer,
+  nicknameFor,
+  type ParentItemPhase,
+} from './bridge-control.mjs'
+import {
+  appendBridgeInstructions,
+  type BridgeCatalogModel,
+  bridgeInstructionsEnabled,
+  providerFor,
+} from './bridge-instructions.mjs'
 import { listClaudeHooks, listClaudeSkills } from './claude-capabilities.mjs'
+import { type MuxLocalServer, NativeCodexMux, routeForModel } from './codex-mux.mjs'
+import { CodexUpstream } from './codex-upstream.mjs'
+import { isGrokModel } from './grok-acp.mjs'
+import { grokModelOptions } from './grok-models.mjs'
 import { callMcpTool, listMcpServerStatuses, readMcpConfig, readMcpResource } from './mcp.mjs'
 import { projectProviderLoopConfig } from './provider-loop-config.mjs'
 import {
@@ -19,8 +37,6 @@ import {
 } from './provider-loop-selection.mjs'
 import { recordRunEvent } from './run-registry.mjs'
 import { normalizeRuntimeType } from './runtime-config.mjs'
-import { isGrokModel } from './grok-acp.mjs'
-import { grokModelOptions } from './grok-models.mjs'
 import {
   addedFileDiff,
   asRecord,
@@ -81,23 +97,6 @@ import {
   wrapMcpToolError,
   wrapMcpToolResult,
 } from './server-helpers.mjs'
-import {
-  type BridgeControl,
-  type BridgeHost,
-  type BridgeSubagentThreadInput,
-  type BridgeThreadInfo,
-  isBridgePeer,
-  nicknameFor,
-  type ParentItemPhase,
-} from './bridge-control.mjs'
-import {
-  appendBridgeInstructions,
-  type BridgeCatalogModel,
-  bridgeInstructionsEnabled,
-  providerFor,
-} from './bridge-instructions.mjs'
-import { type MuxLocalServer, NativeCodexMux, routeForModel } from './codex-mux.mjs'
-import { CodexUpstream } from './codex-upstream.mjs'
 import type { SessionStore } from './store.mjs'
 import type {
   ClaudeRuntime,
@@ -124,8 +123,8 @@ import {
   claudeModelOptions,
   claudeOutputFormat,
   codexCliVersion,
-  codexHome,
   codexExecRouteEnabled,
+  codexHome,
   codexProxyModelOptions,
   codexUserAgent,
   debugLog,
@@ -161,7 +160,7 @@ function isWorkflowToolName(value: string): boolean {
 }
 
 function subagentWatchdogTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env.CLAUDE_CODEX_SUBAGENT_TIMEOUT_MS?.trim()
+  const raw = env.ANYENGINE_SUBAGENT_TIMEOUT_MS?.trim()
   if (!raw) return DEFAULT_SUBAGENT_WATCHDOG_MS
   const parsed = Number(raw)
   // Zero is the documented opt-out. Invalid and negative values must fall
@@ -222,7 +221,7 @@ export class CodexClaudeAppServer {
   private tokenUsageByThread = new Map<string, TokenUsageBreakdown>()
   private configModel = defaultSelectableModelId()
   private configReasoningEffort =
-    normalizeCodexReasoningEffort(process.env.CLAUDE_CODEX_DEFAULT_EFFORT) ?? 'medium'
+    normalizeCodexReasoningEffort(process.env.ANYENGINE_DEFAULT_EFFORT) ?? 'medium'
   // Catch-all for arbitrary keys the App's settings sheet writes (approval
   // policy, sandbox preference, instructions toggles, etc.). We don't apply
   // them to typed runtime state, but we round-trip them through config/read
@@ -233,9 +232,9 @@ export class CodexClaudeAppServer {
   private idleCheckHandler: (() => void) | null = null
   private stopped = false
   // Native-codex multiplexer (docs/guide/backends.md). Null when no real
-  // codex binary is configured or CLAUDE_CODEX_GPT_ROUTE=exec.
+  // codex binary is configured or ANYENGINE_GPT_ROUTE=exec.
   private mux: NativeCodexMux | null = null
-  // Cross-engine bridge (docs/guide/bridge.md); null when CLAUDE_CODEX_BRIDGE=0.
+  // Cross-engine bridge (docs/guide/bridge.md); null when ANYENGINE_BRIDGE=0.
   private bridge: BridgeControl | null = null
   // The desktop peer that most recently initialized: where bridge-spawned
   // top-level threads (no ancestor) send their notifications.
@@ -333,7 +332,11 @@ export class CodexClaudeAppServer {
       bridgeCatalog: () => this.bridgeCatalogForInstructions(),
     })
     this.mux = mux
-    debugLog('codex.mux.attach', { binary: options.binary, args: options.args, eager: options.eager })
+    debugLog('codex.mux.attach', {
+      binary: options.binary,
+      args: options.args,
+      eager: options.eager,
+    })
     if (options.eager) upstream.start()
     return mux
   }
@@ -390,7 +393,7 @@ export class CodexClaudeAppServer {
       soleActiveThread: () => {
         const ids = new Set<string>(this.activeTurnByThread.keys())
         for (const id of this.mux?.activeUpstreamThreadIds() ?? []) ids.add(id)
-        return ids.size === 1 ? [...ids][0] ?? null : null
+        return ids.size === 1 ? ([...ids][0] ?? null) : null
       },
       createSubagentThread: (input) => this.createBridgeSubagentThread(input),
       emitParentItem: (parentThreadId, turnId, item, phase) =>
@@ -494,7 +497,10 @@ export class CodexClaudeAppServer {
       agentNickname,
       via: 'bridge',
     })
-    this.notify(input.peer, { method: 'thread/started', params: { thread: this.toThread(thread, []) } })
+    this.notify(input.peer, {
+      method: 'thread/started',
+      params: { thread: this.toThread(thread, []) },
+    })
     return { threadId: id, agentNickname, agentPath: `/root/${agentNickname}` }
   }
 
@@ -513,7 +519,8 @@ export class CodexClaudeAppServer {
     const params = { threadId: parentThreadId, turnId, item }
     if (phase === 'begin' && persist) this.store.appendItem(turnId, item)
     if (phase === 'end' && persist) this.store.updateItem(turnId, item.id, () => item)
-    if (phase === 'endMove' && persist) this.store.updateItemAndMoveToEnd(turnId, item.id, () => item)
+    if (phase === 'endMove' && persist)
+      this.store.updateItemAndMoveToEnd(turnId, item.id, () => item)
     if (!peer) return
     if (phase === 'lifecycle') {
       this.emitItemLifecycle(peer, parentThreadId, turnId, item)
@@ -523,7 +530,10 @@ export class CodexClaudeAppServer {
       this.notify(peer, { method: 'item/started', params: { ...params, startedAtMs: nowMillis() } })
       return
     }
-    this.notify(peer, { method: 'item/completed', params: { ...params, completedAtMs: nowMillis() } })
+    this.notify(peer, {
+      method: 'item/completed',
+      params: { ...params, completedAtMs: nowMillis() },
+    })
   }
 
   setIdleCheckHandler(handler: () => void): void {
@@ -573,7 +583,7 @@ export class CodexClaudeAppServer {
           supportsCompletedSubagentActivity:
             capabilities.subAgentActivityCompleted === true ||
             declaredActivityKinds.includes('completed') ||
-            process.env.CLAUDE_CODEX_SUBAGENT_COMPLETED === '1',
+            process.env.ANYENGINE_SUBAGENT_COMPLETED === '1',
         })
         // Push the account snapshot + MCP server statuses right after handshake
         // so the App's sidebar avatar and MCP panel populate without waiting
@@ -714,9 +724,9 @@ export class CodexClaudeAppServer {
           namespaceTools: true,
           imageGeneration: false,
           // Claude Code SDK ships a WebSearch tool. Default to advertising it
-          // so Codex App shows the search affordance; CLAUDE_CODEX_WEBSEARCH=0
+          // so Codex App shows the search affordance; ANYENGINE_WEBSEARCH=0
           // turns it off for environments where the tool is rate-limited.
-          webSearch: process.env.CLAUDE_CODEX_WEBSEARCH !== '0',
+          webSearch: process.env.ANYENGINE_WEBSEARCH !== '0',
         }
       case 'permissionProfile/list':
         return {
@@ -919,18 +929,18 @@ export class CodexClaudeAppServer {
     // Pick the runtime backend from the chosen model. gpt-* normally never
     // reaches here: the native-codex multiplexer forwards it to the real
     // child. Reaching here means no child is attached (no binary) and the
-    // legacy `codex exec` proxy is not opted in (CLAUDE_CODEX_GPT_ROUTE=exec),
+    // legacy `codex exec` proxy is not opted in (ANYENGINE_GPT_ROUTE=exec),
     // so refuse instead of handing a gpt id to the Claude CLI. The desktop's
-    // hidden title/summary threads are the exception (CLAUDE_CODEX_TITLE_ROUTE
+    // hidden title/summary threads are the exception (ANYENGINE_TITLE_ROUTE
     // =local): they stay on the Claude backend, whose summary path maps gpt-*
     // to the summary model.
     const codexBackendRequested =
       selectedProviderLoop.runtimeType === 'codex-proxy' || isCodexOpenAiModel(model)
-    const execRoute = codexExecRouteEnabled() || process.env.CLAUDE_CODEX_MOCK === '1'
+    const execRoute = codexExecRouteEnabled() || process.env.ANYENGINE_MOCK === '1'
     const gptWithoutRoute = isCodexOpenAiModel(model) && !execRoute
     if (gptWithoutRoute && !isTitleOrHelper) {
       throw new Error(
-        `no native codex upstream for model ${model}; set CLAUDE_CODEX_REAL_CODEX or CLAUDE_CODEX_GPT_ROUTE=exec`,
+        `no native codex upstream for model ${model}; set ANYENGINE_REAL_CODEX or ANYENGINE_GPT_ROUTE=exec`,
       )
     }
     const thread: ThreadRecord = {
@@ -1089,7 +1099,7 @@ export class CodexClaudeAppServer {
           : parent.sandboxMode),
       permissionProfileId:
         permissionProfileIdFromParams(params) ??
-        (hasLegacyPermissionParams(params) ? null : parent.permissionProfileId ?? null),
+        (hasLegacyPermissionParams(params) ? null : (parent.permissionProfileId ?? null)),
       ephemeral: parent.ephemeral,
       threadSource:
         typeof params.threadSource === 'string'
@@ -1397,7 +1407,7 @@ export class CodexClaudeAppServer {
     const threadId = stringOr(params.threadId, '')
     const thread = this.store.getThread(threadId)
     if (!thread) throw new Error(`unknown thread: ${threadId}`)
-    
+
     // Support dynamic model, reasoning effort, approval policy and sandbox updates
     const rawModel = modelFromParams(params, null)
     const model = rawModel ? normalizeSelectableModelId(rawModel, thread.model) : null
@@ -2194,17 +2204,14 @@ export class CodexClaudeAppServer {
       systemPromptAddendum = appendBridgeInstructions(systemPromptAddendum, bridgeCatalog)
 
     const rawTurnModel = stringOr(params.model, thread.model)
-    const isCodexThread = thread.runtimeBackend === 'codex' && process.env.CLAUDE_CODEX_MOCK !== '1'
+    const isCodexThread = thread.runtimeBackend === 'codex' && process.env.ANYENGINE_MOCK !== '1'
     const resolvedModel = isCodexThread
       ? rawTurnModel
-      : resolveClaudeModel(
-          rawTurnModel,
-          params.outputSchema == null ? 'normal' : 'summary',
-        )
+      : resolveClaudeModel(rawTurnModel, params.outputSchema == null ? 'normal' : 'summary')
     const resolvedEffort = resolveClaudeEffort(
       typeof params.effort === 'string'
         ? params.effort
-        : (thread.reasoningEffort ?? process.env.CLAUDE_CODEX_EFFORT ?? null),
+        : (thread.reasoningEffort ?? process.env.ANYENGINE_EFFORT ?? null),
     )
     // Log the effective Claude SDK model+effort per turn so when a user
     // reports "switching model didn't work" we can diff App's payload against
@@ -2216,9 +2223,9 @@ export class CodexClaudeAppServer {
       paramsEffort: params.effort ?? null,
       threadModel: thread.model,
       threadEffort: thread.reasoningEffort,
-      envDefaultModel: process.env.CLAUDE_CODEX_DEFAULT_MODEL ?? null,
+      envDefaultModel: process.env.ANYENGINE_DEFAULT_MODEL ?? null,
       envDefaultEffort:
-        process.env.CLAUDE_CODEX_DEFAULT_EFFORT ?? process.env.CLAUDE_CODEX_EFFORT ?? null,
+        process.env.ANYENGINE_DEFAULT_EFFORT ?? process.env.ANYENGINE_EFFORT ?? null,
       resolvedModel,
       resolvedEffort,
     })
@@ -2289,8 +2296,8 @@ export class CodexClaudeAppServer {
             ? this.bridge.mergeMcpServers(thread.id, readMcpConfig().sdkValue)
             : readMcpConfig().sdkValue,
         allowedTools: defaultAllowedTools(),
-        addDirs: stringListFromEnv('CLAUDE_CODEX_ADD_DIRS', []),
-        enableFileCheckpointing: process.env.CLAUDE_CODEX_ENABLE_FILE_CHECKPOINTING === '1',
+        addDirs: stringListFromEnv('ANYENGINE_ADD_DIRS', []),
+        enableFileCheckpointing: process.env.ANYENGINE_ENABLE_FILE_CHECKPOINTING === '1',
         outputFormat: claudeOutputFormat(params.outputSchema),
         approvalPolicy,
         sandboxMode,
@@ -3326,8 +3333,8 @@ export class CodexClaudeAppServer {
   }
 
   private supportsCompletedSubagentActivity(peer: RpcPeer): boolean {
-    if (process.env.CLAUDE_CODEX_SUBAGENT_COMPLETED === '1') return true
-    if (process.env.CLAUDE_CODEX_SUBAGENT_COMPLETED === '0') return false
+    if (process.env.ANYENGINE_SUBAGENT_COMPLETED === '1') return true
+    if (process.env.ANYENGINE_SUBAGENT_COMPLETED === '0') return false
     return this.peerFeatures.get(peer)?.supportsCompletedSubagentActivity === true
   }
 
@@ -3635,16 +3642,16 @@ export class CodexClaudeAppServer {
 
   private providerLoopSelectionInput(): ProviderLoopSelectionInput {
     const legacyRuntimeType = normalizeRuntimeType(
-      process.env.CLAUDE_CODEX_RUNTIME_TYPE ??
-        process.env.CLAUDE_CODEX_RUNTIME ??
-        process.env.CLAUDE_CODEX_BACKEND,
+      process.env.ANYENGINE_RUNTIME_TYPE ??
+        process.env.ANYENGINE_RUNTIME ??
+        process.env.ANYENGINE_BACKEND,
     )
     const envInput = providerLoopSelectionInputFromEnv(process.env, legacyRuntimeType)
     if (hasProviderLoopSelectionInput(envInput)) return envInput
     return providerLoopSelectionInputFromConfig(
       this.configOverrides,
       legacyRuntimeType,
-      process.env.CLAUDE_CODEX_MOCK === '1',
+      process.env.ANYENGINE_MOCK === '1',
     )
   }
 
@@ -3746,7 +3753,7 @@ export class CodexClaudeAppServer {
     // CodexProxyRuntime (shells out to `codex exec --json`).
     const codexOptions = codexProxyModelOptions()
     // grok-* ids (xAI Grok Build CLI) route the thread's turns to the grok
-    // runtime; see grok-models.mts for discovery / CLAUDE_CODEX_GROK_MODELS.
+    // runtime; see grok-models.mts for discovery / ANYENGINE_GROK_MODELS.
     const grokOptions = grokModelOptions()
     const options = [...claudeOptions, ...codexOptions, ...grokOptions]
     const hasConfiguredDefault = options.some((option) => option.id === defaultModel)
@@ -4164,7 +4171,8 @@ export class CodexClaudeAppServer {
     // Do not impose a default timeout on interactive/streaming terminal sessions (tty or streamStdin)
     const isInteractive = isTty || params.streamStdin === true
     const defaultTimeout = isInteractive ? 0 : 60_000
-    const timeoutMs = params.timeoutMs == null ? defaultTimeout : numberOr(params.timeoutMs, defaultTimeout)
+    const timeoutMs =
+      params.timeoutMs == null ? defaultTimeout : numberOr(params.timeoutMs, defaultTimeout)
     const timeout = timeoutMs > 0 ? setTimeout(() => child.kill('SIGTERM'), timeoutMs) : null
 
     child.once('error', (error) => {
@@ -4937,6 +4945,6 @@ export class CodexClaudeAppServer {
 // mode keeps every model on the mock runtime so protocol tests stay
 // deterministic.
 function grokRuntimeTypeFor(model: string | null): 'grok' | null {
-  if (process.env.CLAUDE_CODEX_MOCK === '1') return null
+  if (process.env.ANYENGINE_MOCK === '1') return null
   return isGrokModel(model) ? 'grok' : null
 }

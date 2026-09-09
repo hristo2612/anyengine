@@ -132,7 +132,7 @@ test('stdio initialize -> thread/start -> turn/start streams mock response', asy
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -200,7 +200,7 @@ test('permission profile selection applies full access without legacy sandbox fi
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -269,8 +269,8 @@ test('run registry records thread and turn lifecycle without raw prompt or respo
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_RUN_LOG: runLog,
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_RUN_LOG: runLog,
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -333,7 +333,7 @@ test('primary turn lifecycle keeps lightweight notLoaded envelopes', async () =>
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -398,7 +398,7 @@ test('thread/turns/list honors default summary and explicit itemsView', async ()
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -457,9 +457,9 @@ test('mcpServerStatus/list and startup notifications use conformant Codex v2 sha
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
+      ANYENGINE_MOCK: '1',
       NODE_NO_WARNINGS: '1',
-      CLAUDE_CODEX_MCP_SERVERS: JSON.stringify({
+      ANYENGINE_MCP_SERVERS: JSON.stringify({
         github: { type: 'stdio', command: 'github-mcp' },
       }),
     },
@@ -512,7 +512,7 @@ test('thread/start with a gpt-* model marks the thread runtimeBackend=codex', as
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -561,11 +561,11 @@ test('model/list exposes Claude model aliases and Codex-safe reasoning efforts',
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_MODELS: '',
-      CLAUDE_CODEX_MODEL_ALIASES: '',
-      CLAUDE_CODEX_DEFAULT_MODEL: 'opus',
-      CLAUDE_CODEX_DEFAULT_EFFORT: 'xhigh',
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_MODELS: '',
+      ANYENGINE_MODEL_ALIASES: '',
+      ANYENGINE_DEFAULT_MODEL: 'opus',
+      ANYENGINE_DEFAULT_EFFORT: 'xhigh',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -671,13 +671,13 @@ test('config/read exposes sanitized provider loop selection over stdio', async (
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_PROVIDER: 'codex',
-      CLAUDE_CODEX_AGENT_LOOP: 'codex-jsonl-proxy',
-      CLAUDE_CODEX_RUNTIME_TYPE: '',
-      CLAUDE_CODEX_RUNTIME: '',
-      CLAUDE_CODEX_BACKEND: '',
-      CLAUDE_CODEX_MOCK: '',
-      CLAUDE_CODEX_DISABLE_CODEX_PROXY: '1',
+      ANYENGINE_PROVIDER: 'codex',
+      ANYENGINE_AGENT_LOOP: 'codex-jsonl-proxy',
+      ANYENGINE_RUNTIME_TYPE: '',
+      ANYENGINE_RUNTIME: '',
+      ANYENGINE_BACKEND: '',
+      ANYENGINE_MOCK: '',
+      ANYENGINE_DISABLE_CODEX_PROXY: '1',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -728,13 +728,13 @@ test('config/read resolves saved provider loop selection without projecting raw 
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_PROVIDER: '',
-      CLAUDE_CODEX_AGENT_LOOP: '',
-      CLAUDE_CODEX_RUNTIME_TYPE: '',
-      CLAUDE_CODEX_RUNTIME: '',
-      CLAUDE_CODEX_BACKEND: '',
-      CLAUDE_CODEX_MOCK: '',
-      CLAUDE_CODEX_DISABLE_CODEX_PROXY: '1',
+      ANYENGINE_PROVIDER: '',
+      ANYENGINE_AGENT_LOOP: '',
+      ANYENGINE_RUNTIME_TYPE: '',
+      ANYENGINE_RUNTIME: '',
+      ANYENGINE_BACKEND: '',
+      ANYENGINE_MOCK: '',
+      ANYENGINE_DISABLE_CODEX_PROXY: '1',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -793,9 +793,9 @@ test('config writes persist across adapter restarts', async () => {
       env: {
         ...process.env,
         CODEX_HOME: home,
-        CLAUDE_CODEX_MOCK: '1',
-        CLAUDE_CODEX_DEFAULT_MODEL: 'opus',
-        CLAUDE_CODEX_DEFAULT_EFFORT: 'high',
+        ANYENGINE_MOCK: '1',
+        ANYENGINE_DEFAULT_MODEL: 'opus',
+        ANYENGINE_DEFAULT_EFFORT: 'high',
         NODE_NO_WARNINGS: '1',
       },
     })
@@ -821,9 +821,9 @@ test('config writes persist across adapter restarts', async () => {
       env: {
         ...process.env,
         CODEX_HOME: home,
-        CLAUDE_CODEX_MOCK: '1',
-        CLAUDE_CODEX_DEFAULT_MODEL: 'opus',
-        CLAUDE_CODEX_DEFAULT_EFFORT: 'high',
+        ANYENGINE_MOCK: '1',
+        ANYENGINE_DEFAULT_MODEL: 'opus',
+        ANYENGINE_DEFAULT_EFFORT: 'high',
         NODE_NO_WARNINGS: '1',
       },
     })
@@ -867,8 +867,8 @@ test('invalid persisted model selections are repaired to a selectable model', as
       env: {
         ...process.env,
         CODEX_HOME: home,
-        CLAUDE_CODEX_MOCK: '1',
-        CLAUDE_CODEX_DEFAULT_MODEL: 'opus',
+        ANYENGINE_MOCK: '1',
+        ANYENGINE_DEFAULT_MODEL: 'opus',
         NODE_NO_WARNINGS: '1',
       },
     })
@@ -907,10 +907,10 @@ test('Codex++ model and effort selections map into Claude runtime context', asyn
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_MODELS: '',
-      CLAUDE_CODEX_MODEL_ALIASES: '',
-      CLAUDE_CODEX_EFFORT_ALIASES: JSON.stringify({ xhigh: 'max' }),
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_MODELS: '',
+      ANYENGINE_MODEL_ALIASES: '',
+      ANYENGINE_EFFORT_ALIASES: JSON.stringify({ xhigh: 'max' }),
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -973,9 +973,9 @@ test('Codex app config payload model and effort map into Claude runtime context'
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_MODELS: '',
-      CLAUDE_CODEX_MODEL_ALIASES: '',
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_MODELS: '',
+      ANYENGINE_MODEL_ALIASES: '',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -1031,11 +1031,11 @@ test('Codex app model ids and outputSchema map into Claude runtime context', asy
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_MODELS: '',
-      CLAUDE_CODEX_MODEL_ALIASES: '',
-      CLAUDE_CODEX_DEFAULT_MODEL: 'claude-opus-4-6',
-      CLAUDE_CODEX_SUMMARY_MODEL: 'haiku',
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_MODELS: '',
+      ANYENGINE_MODEL_ALIASES: '',
+      ANYENGINE_DEFAULT_MODEL: 'claude-opus-4-6',
+      ANYENGINE_SUMMARY_MODEL: 'haiku',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -1106,8 +1106,8 @@ test('Codex title-generation turn runs through the runtime instead of a hardcode
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_DEBUG_LOG: debugLog,
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_DEBUG_LOG: debugLog,
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -1208,10 +1208,10 @@ test('stateful HTTP bridge runtimes keep Codex title-generation turns local', as
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_RUNTIME_TYPE: 'agent-http',
-      CLAUDE_CODEX_HTTP_BASE_URL: 'http://127.0.0.1:9',
-      CLAUDE_CODEX_HTTP_MANAGE_BRIDGE: '1',
-      CLAUDE_CODEX_DEBUG_LOG: debugLog,
+      ANYENGINE_RUNTIME_TYPE: 'agent-http',
+      ANYENGINE_HTTP_BASE_URL: 'http://127.0.0.1:9',
+      ANYENGINE_HTTP_MANAGE_BRIDGE: '1',
+      ANYENGINE_DEBUG_LOG: debugLog,
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -1275,8 +1275,8 @@ test('default runtime tool policy leaves Claude Code tools unrestricted unless e
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_ALLOWED_TOOLS: '',
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_ALLOWED_TOOLS: '',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -1324,7 +1324,7 @@ test('unix websocket app-server accepts initialize', async () => {
   const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   try {
     await waitForStderr(proc, /listening on/)
@@ -1369,8 +1369,8 @@ test('unix daemon keeps active turns alive across peer reconnect', async () => {
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_IDLE_EXIT_MS: '40',
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_IDLE_EXIT_MS: '40',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -1444,7 +1444,7 @@ test('unix daemon recovers stale in-progress turns after process restart', async
   const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
   let proc = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   try {
     await waitForStderr(proc, /listening on/)
@@ -1490,7 +1490,7 @@ test('unix daemon recovers stale in-progress turns after process restart', async
 
     proc = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
       stdio: ['ignore', 'ignore', 'pipe'],
-      env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+      env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
     })
     await waitForStderr(proc, /listening on/)
 
@@ -1523,7 +1523,7 @@ test('stdio app-server recovers stale in-progress turns after process restart', 
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   let proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   try {
     const reader1 = new JsonLineReader(proc)
@@ -1565,7 +1565,7 @@ test('stdio app-server recovers stale in-progress turns after process restart', 
 
     proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+      env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
     })
     const reader2 = new JsonLineReader(proc)
     proc.stdin.write(
@@ -1849,7 +1849,10 @@ test('startup recovery removes legacy activity markers from completed subagent t
     assert.equal(store.recoverStaleInProgressTurns(), 1)
     const recovered = store.getTurn(turnId)
     assert.ok(recovered)
-    assert.equal(recovered.items.some((item) => item.type === 'subAgentActivity'), false)
+    assert.equal(
+      recovered.items.some((item) => item.type === 'subAgentActivity'),
+      false,
+    )
     assert.equal(store.getThread(threadId)?.status.type, 'idle')
     assert.equal(store.recoverStaleInProgressTurns(), 0)
   } finally {
@@ -1865,11 +1868,11 @@ test('app-server proxy forwards websocket handshake bytes to unix daemon', async
   const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
   const daemon = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const proxy = spawn(process.execPath, [adapter, 'app-server', 'proxy', '--sock', sock], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   try {
     await waitForStderr(daemon, /listening on/)
@@ -1901,11 +1904,11 @@ test('app-server proxy carries websocket JSON-RPC traffic over stdio', async () 
   const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
   const daemon = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const proxy = spawn(process.execPath, [adapter, 'app-server', 'proxy', '--sock', sock], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   try {
     await waitForStderr(daemon, /listening on/)
@@ -1955,8 +1958,8 @@ test('remote shim launches daemon and proxy with Codex-compatible commands', asy
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_ADAPTER: adapter,
-      CLAUDE_CODEX_MOCK: '1',
+      ANYENGINE_ADAPTER: adapter,
+      ANYENGINE_MOCK: '1',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -1965,8 +1968,8 @@ test('remote shim launches daemon and proxy with Codex-compatible commands', asy
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_ADAPTER: adapter,
-      CLAUDE_CODEX_MOCK: '1',
+      ANYENGINE_ADAPTER: adapter,
+      ANYENGINE_MOCK: '1',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -2014,7 +2017,7 @@ test('remote utility methods use v2 response shapes', async () => {
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2067,8 +2070,8 @@ test('process/spawn supports shell strings, errors, and debug logs terminal life
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_DEBUG_LOG: debugLog,
-      CLAUDE_CODEX_MOCK: '1',
+      ANYENGINE_DEBUG_LOG: debugLog,
+      ANYENGINE_MOCK: '1',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -2138,7 +2141,7 @@ test('review/start and thread/compact/start emit real turn items', async () => {
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2211,7 +2214,7 @@ test('Claude thinking maps to Codex reasoning summary and content deltas', async
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2259,7 +2262,7 @@ test('Claude token usage maps to thread/tokenUsage/updated notifications', async
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2321,7 +2324,7 @@ test('baseInstructions / developerInstructions / personality flow into the syste
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2374,7 +2377,7 @@ test('Claude hook events are rendered as Codex hookPrompt ThreadItems', async ()
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2422,7 +2425,7 @@ test('thread/compact/start drives Claude (summary model) instead of the local st
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2492,7 +2495,7 @@ test('localImage user input becomes a multimodal Claude prompt + an imageView Th
 
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2545,7 +2548,7 @@ test('Claude WebSearch tool maps to native Codex webSearch ThreadItem with actio
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2597,11 +2600,11 @@ test('Claude WebSearch tool maps to native Codex webSearch ThreadItem with actio
   }
 })
 
-test('modelProvider/capabilities/read advertises webSearch=true unless CLAUDE_CODEX_WEBSEARCH=0', async () => {
+test('modelProvider/capabilities/read advertises webSearch=true unless ANYENGINE_WEBSEARCH=0', async () => {
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2616,7 +2619,7 @@ test('modelProvider/capabilities/read advertises webSearch=true unless CLAUDE_CO
 
 test('config/value/write persists arbitrary settings keys across restarts', async () => {
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
-  const env = { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' }
+  const env = { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' }
   // Round 1: write a custom key + a known typed key.
   const proc1 = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -2678,7 +2681,7 @@ test('thread/inject_items appends a synthetic turn carrying the injected text', 
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2749,7 +2752,7 @@ test('turn/start planMode=true flows into Claude SDK permission_mode plan', asyn
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2793,7 +2796,7 @@ test('TodoWrite maps to a Codex v2 turn/plan/updated notification, not a timelin
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2846,7 +2849,7 @@ test('Codex App approvalPolicy=never + sandbox=danger-full-access auto-accepts t
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -2912,8 +2915,8 @@ test('Task subagent emits the canonical activity lifecycle and leaves wait as th
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_SUBAGENT_COMPLETED: '1',
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_SUBAGENT_COMPLETED: '1',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -3327,7 +3330,7 @@ test('Task subagent emits the canonical activity lifecycle and leaves wait as th
     await exited
     const restarted = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+      env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
     })
     const restartedReader = new JsonLineReader(restarted)
     try {
@@ -3422,7 +3425,7 @@ test('Codex cc 26.818 settles subagents without the unsupported completed activi
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -3533,7 +3536,7 @@ test('subagent without a terminal result emits interrupted activity and failed w
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -3604,7 +3607,7 @@ test('bare /workflows lists prior workflow runs without invoking the model', asy
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -3661,7 +3664,7 @@ test('thread/start picks up effort from config.model_reasoning_effort when top-l
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -3717,7 +3720,7 @@ test('thread/start coerces invalid threadSource / source values so Codex App nev
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -3841,7 +3844,7 @@ test('thread/start with ephemeral=true is hidden from thread/list and surfaces t
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -3883,16 +3886,16 @@ test('thread/start with ephemeral=true is hidden from thread/list and surfaces t
   }
 })
 
-test('debug.jsonl rotates once it crosses CLAUDE_CODEX_DEBUG_LOG_MAX_BYTES', async () => {
+test('debug.jsonl rotates once it crosses ANYENGINE_DEBUG_LOG_MAX_BYTES', async () => {
   const util = await import(resolve('dist/src/util.mjs'))
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-rotate-'))
   const logPath = join(home, 'debug.jsonl')
-  const prevPath = process.env.CLAUDE_CODEX_DEBUG_LOG
-  const prevMax = process.env.CLAUDE_CODEX_DEBUG_LOG_MAX_BYTES
-  const prevKeep = process.env.CLAUDE_CODEX_DEBUG_LOG_KEEP
-  process.env.CLAUDE_CODEX_DEBUG_LOG = logPath
-  process.env.CLAUDE_CODEX_DEBUG_LOG_MAX_BYTES = '512'
-  process.env.CLAUDE_CODEX_DEBUG_LOG_KEEP = '2'
+  const prevPath = process.env.ANYENGINE_DEBUG_LOG
+  const prevMax = process.env.ANYENGINE_DEBUG_LOG_MAX_BYTES
+  const prevKeep = process.env.ANYENGINE_DEBUG_LOG_KEEP
+  process.env.ANYENGINE_DEBUG_LOG = logPath
+  process.env.ANYENGINE_DEBUG_LOG_MAX_BYTES = '512'
+  process.env.ANYENGINE_DEBUG_LOG_KEEP = '2'
   try {
     // Each line is ~150 bytes; write enough to cross 512 bytes twice.
     for (let i = 0; i < 30; i += 1) util.debugLog('test.rotate', { i, payload: 'x'.repeat(120) })
@@ -3903,17 +3906,17 @@ test('debug.jsonl rotates once it crosses CLAUDE_CODEX_DEBUG_LOG_MAX_BYTES', asy
     // KEEP=2 means at most .1 + .2; .3 must never appear.
     assert.ok(
       !entries.includes('debug.jsonl.3'),
-      'rotation should respect CLAUDE_CODEX_DEBUG_LOG_KEEP',
+      'rotation should respect ANYENGINE_DEBUG_LOG_KEEP',
     )
     const activeSize = (await fs.stat(logPath)).size
     assert.ok(activeSize < 512 * 4, 'active log should have been freshly started after rotation')
   } finally {
-    if (prevPath == null) delete process.env.CLAUDE_CODEX_DEBUG_LOG
-    else process.env.CLAUDE_CODEX_DEBUG_LOG = prevPath
-    if (prevMax == null) delete process.env.CLAUDE_CODEX_DEBUG_LOG_MAX_BYTES
-    else process.env.CLAUDE_CODEX_DEBUG_LOG_MAX_BYTES = prevMax
-    if (prevKeep == null) delete process.env.CLAUDE_CODEX_DEBUG_LOG_KEEP
-    else process.env.CLAUDE_CODEX_DEBUG_LOG_KEEP = prevKeep
+    if (prevPath == null) delete process.env.ANYENGINE_DEBUG_LOG
+    else process.env.ANYENGINE_DEBUG_LOG = prevPath
+    if (prevMax == null) delete process.env.ANYENGINE_DEBUG_LOG_MAX_BYTES
+    else process.env.ANYENGINE_DEBUG_LOG_MAX_BYTES = prevMax
+    if (prevKeep == null) delete process.env.ANYENGINE_DEBUG_LOG_KEEP
+    else process.env.ANYENGINE_DEBUG_LOG_KEEP = prevKeep
     await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
   }
 })
@@ -3938,7 +3941,7 @@ test('approval requests round-trip through Codex server requests', async () => {
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -4007,7 +4010,7 @@ test('generic Claude tools complete as Codex mcpToolCall items', async () => {
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -4064,7 +4067,7 @@ test('turn/steer appends user input to an active Claude turn', async () => {
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -4140,7 +4143,7 @@ test('AskUserQuestion is bridged to Codex item/tool/requestUserInput', async () 
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -4243,7 +4246,7 @@ test('compatibility-only UI methods return schema-shaped responses', async () =>
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -4314,7 +4317,7 @@ test('file change approval emits patch and git diff updates', async () => {
 
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -4384,7 +4387,7 @@ test('gitDiffToRemote includes untracked files for Codex diff review', async () 
 
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -4402,7 +4405,7 @@ test('thread resume, fork, and interrupt lifecycle methods are stable', async ()
   const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -4466,7 +4469,7 @@ test('turn interrupt completes requested in-progress turn after reconnect', asyn
       import { CodexClaudeAppServer } from './dist/src/server.mjs'
       import { SessionStore } from './dist/src/store.mjs'
 
-      process.env.CLAUDE_CODEX_HOME = ${JSON.stringify(home)}
+      process.env.ANYENGINE_HOME = ${JSON.stringify(home)}
       const store = new SessionStore(join(${JSON.stringify(home)}, 'state.sqlite'))
       const threadId = randomUUID()
       const turnId = randomUUID()
@@ -4563,7 +4566,7 @@ test('runtime settlement cannot overwrite an interrupted turn', async () => {
       import { CodexClaudeAppServer } from './dist/src/server.mjs'
       import { SessionStore } from './dist/src/store.mjs'
 
-      process.env.CLAUDE_CODEX_HOME = ${JSON.stringify(home)}
+      process.env.ANYENGINE_HOME = ${JSON.stringify(home)}
       const store = new SessionStore(join(${JSON.stringify(home)}, 'state.sqlite'))
       const controls = new Map()
       const controlsByThread = new Map()
@@ -4722,8 +4725,8 @@ test('subagent watchdog terminalizes a runtime that never returns', async () => 
       import { CodexClaudeAppServer } from './dist/src/server.mjs'
       import { SessionStore } from './dist/src/store.mjs'
 
-      process.env.CLAUDE_CODEX_HOME = ${JSON.stringify(home)}
-      process.env.CLAUDE_CODEX_SUBAGENT_TIMEOUT_MS = '100'
+      process.env.ANYENGINE_HOME = ${JSON.stringify(home)}
+      process.env.ANYENGINE_SUBAGENT_TIMEOUT_MS = '100'
       const store = new SessionStore(join(${JSON.stringify(home)}, 'state.sqlite'))
       const interrupted = []
       const server = new CodexClaudeAppServer(store, {
@@ -4814,8 +4817,8 @@ test('workflow watchdog terminalizes a launch that never publishes a result', as
       import { CodexClaudeAppServer } from './dist/src/server.mjs'
       import { SessionStore } from './dist/src/store.mjs'
 
-      process.env.CLAUDE_CODEX_HOME = ${JSON.stringify(home)}
-      process.env.CLAUDE_CODEX_SUBAGENT_TIMEOUT_MS = '100'
+      process.env.ANYENGINE_HOME = ${JSON.stringify(home)}
+      process.env.ANYENGINE_SUBAGENT_TIMEOUT_MS = '100'
       const store = new SessionStore(join(${JSON.stringify(home)}, 'state.sqlite'))
       const interrupted = []
       const server = new CodexClaudeAppServer(store, {
@@ -4909,8 +4912,8 @@ test('workflow watchdog disarms when the original Workflow tool result arrives',
       import { CodexClaudeAppServer } from './dist/src/server.mjs'
       import { SessionStore } from './dist/src/store.mjs'
 
-      process.env.CLAUDE_CODEX_HOME = ${JSON.stringify(home)}
-      process.env.CLAUDE_CODEX_SUBAGENT_TIMEOUT_MS = '100'
+      process.env.ANYENGINE_HOME = ${JSON.stringify(home)}
+      process.env.ANYENGINE_SUBAGENT_TIMEOUT_MS = '100'
       const store = new SessionStore(join(${JSON.stringify(home)}, 'state.sqlite'))
       const server = new CodexClaudeAppServer(store, {
         async runTurn(context, handlers) {
@@ -4994,7 +4997,7 @@ test('server shutdown terminalizes active child turns before closing the store',
       import { CodexClaudeAppServer } from './dist/src/server.mjs'
       import { SessionStore } from './dist/src/store.mjs'
 
-      process.env.CLAUDE_CODEX_HOME = ${JSON.stringify(home)}
+      process.env.ANYENGINE_HOME = ${JSON.stringify(home)}
       const store = new SessionStore(${JSON.stringify(database)})
       const server = new CodexClaudeAppServer(store, {
         async runTurn(context, handlers) {
@@ -5087,12 +5090,12 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
       '  exit 0',
       'fi',
       'if [ "$1" = "diff" ]; then',
-      '  : > "$CLAUDE_CODEX_TEST_GIT_DIFF_STARTED"',
-      '  while [ ! -f "$CLAUDE_CODEX_TEST_GIT_DIFF_RELEASE" ]; do sleep 0.01; done',
+      '  : > "$ANYENGINE_TEST_GIT_DIFF_STARTED"',
+      '  while [ ! -f "$ANYENGINE_TEST_GIT_DIFF_RELEASE" ]; do sleep 0.01; done',
       "  printf 'diff --git a/file b/file\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-old\\n+new\\n'",
       '  exit 0',
       'fi',
-      'exec "$CLAUDE_CODEX_REAL_GIT" "$@"',
+      'exec "$ANYENGINE_REAL_GIT" "$@"',
       '',
     ].join('\n'),
   )
@@ -5112,7 +5115,7 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
       import { CodexClaudeAppServer } from './dist/src/server.mjs'
       import { SessionStore } from './dist/src/store.mjs'
 
-      process.env.CLAUDE_CODEX_HOME = ${JSON.stringify(home)}
+      process.env.ANYENGINE_HOME = ${JSON.stringify(home)}
       const store = new SessionStore(join(${JSON.stringify(home)}, 'state.sqlite'))
       const server = new CodexClaudeAppServer(store, {
         async runTurn() {},
@@ -5146,14 +5149,14 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
         },
       })
       const turnId = response(2).result.turn.id
-      await waitFor(() => existsSync(process.env.CLAUDE_CODEX_TEST_GIT_DIFF_STARTED))
+      await waitFor(() => existsSync(process.env.ANYENGINE_TEST_GIT_DIFF_STARTED))
 
       await server.handle(peer, {
         id: 3,
         method: 'turn/interrupt',
         params: { threadId, turnId },
       })
-      writeFileSync(process.env.CLAUDE_CODEX_TEST_GIT_DIFF_RELEASE, 'continue')
+      writeFileSync(process.env.ANYENGINE_TEST_GIT_DIFF_RELEASE, 'continue')
       await new Promise((resolve) => setTimeout(resolve, 50))
 
       assert.equal(store.getTurn(turnId)?.status, 'interrupted')
@@ -5192,9 +5195,9 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
         env: {
           ...process.env,
           PATH: `${bin}:${process.env.PATH ?? ''}`,
-          CLAUDE_CODEX_REAL_GIT: realGit,
-          CLAUDE_CODEX_TEST_GIT_DIFF_STARTED: diffStarted,
-          CLAUDE_CODEX_TEST_GIT_DIFF_RELEASE: diffRelease,
+          ANYENGINE_REAL_GIT: realGit,
+          ANYENGINE_TEST_GIT_DIFF_STARTED: diffStarted,
+          ANYENGINE_TEST_GIT_DIFF_RELEASE: diffRelease,
         },
       },
     )
@@ -5210,8 +5213,8 @@ test('mcp status list reflects configured Claude SDK MCP servers', async () => {
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_MCP_SERVERS: JSON.stringify({
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_MCP_SERVERS: JSON.stringify({
         demo: { type: 'stdio', command: 'node', args: ['mcp.js'] },
       }),
       NODE_NO_WARNINGS: '1',
@@ -5245,8 +5248,8 @@ test('direct MCP stdio resource and tool calls work', async () => {
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_MCP_SERVERS: JSON.stringify({
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_MCP_SERVERS: JSON.stringify({
         fixture: { type: 'stdio', command: process.execPath, args: [fixture] },
       }),
       NODE_NO_WARNINGS: '1',
@@ -5289,8 +5292,8 @@ test('mcpServerStatus/list enumerates tools and resources from the server', asyn
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_MCP_SERVERS: JSON.stringify({
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_MCP_SERVERS: JSON.stringify({
         fixture: { type: 'stdio', command: process.execPath, args: [fixture] },
       }),
       NODE_NO_WARNINGS: '1',
@@ -5318,7 +5321,7 @@ test('fuzzyFileSearch session streams updated and completed notifications', asyn
   await writeFile(join(home, 'findme-fixture.txt'), 'x')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
@@ -5408,7 +5411,7 @@ test('skills/list and hooks/list surface Claude Code skills and settings hooks',
       ...process.env,
       CODEX_HOME: home,
       HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
+      ANYENGINE_MOCK: '1',
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -5508,8 +5511,8 @@ test('direct MCP HTTP tool calls work', async () => {
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_MCP_SERVERS: JSON.stringify({ fixture: { type: 'http', url } }),
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_MCP_SERVERS: JSON.stringify({ fixture: { type: 'http', url } }),
       NODE_NO_WARNINGS: '1',
     },
   })
@@ -5552,9 +5555,9 @@ test('optional auto worktree binds new threads to isolated git worktrees', async
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_MOCK: '1',
-      CLAUDE_CODEX_AUTO_WORKTREE: '1',
-      CLAUDE_CODEX_WORKTREE_ROOT: worktrees,
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_AUTO_WORKTREE: '1',
+      ANYENGINE_WORKTREE_ROOT: worktrees,
       NODE_NO_WARNINGS: '1',
     },
   })

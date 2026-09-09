@@ -7,10 +7,10 @@
 //
 // Usage:
 //   source ~/.claude-codex/runtime.env
-//   CLAUDE_CODEX_NATIVE_CODEX=0 node scripts/smoke-subagents.mjs claude   # port 8795
-//   CLAUDE_CODEX_NATIVE_CODEX=0 node scripts/smoke-subagents.mjs grok     # port 8796
-//   CLAUDE_CODEX_SMOKE_PORT / CLAUDE_CODEX_SMOKE_MODEL / CLAUDE_CODEX_SMOKE_CWD override;
-//   CLAUDE_CODEX_SMOKE_TURN_GAP_MS waits (and records stray notifications) between turns.
+//   ANYENGINE_NATIVE_CODEX=0 node scripts/smoke-subagents.mjs claude   # port 8795
+//   ANYENGINE_NATIVE_CODEX=0 node scripts/smoke-subagents.mjs grok     # port 8796
+//   ANYENGINE_SMOKE_PORT / ANYENGINE_SMOKE_MODEL / ANYENGINE_SMOKE_CWD override;
+//   ANYENGINE_SMOKE_TURN_GAP_MS waits (and records stray notifications) between turns.
 // The adapter process it spawns is the only pid it kills.
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -21,15 +21,15 @@ import WebSocket from 'ws'
 const runtime = process.argv[2] === 'grok' ? 'grok' : 'claude'
 const repo = resolve(process.cwd())
 const cwd = resolve(
-  process.env.CLAUDE_CODEX_SMOKE_CWD ?? join(repo, '.claude-codex', 'subagent-smoke'),
+  process.env.ANYENGINE_SMOKE_CWD ?? join(repo, '.claude-codex', 'subagent-smoke'),
 )
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
 const home = join(repo, '.claude-codex', `subagent-smoke-home-${runtime}-${stamp}`)
 await mkdir(cwd, { recursive: true })
 await mkdir(home, { recursive: true })
-const port = Number(process.env.CLAUDE_CODEX_SMOKE_PORT ?? (runtime === 'grok' ? 8796 : 8795))
+const port = Number(process.env.ANYENGINE_SMOKE_PORT ?? (runtime === 'grok' ? 8796 : 8795))
 const listen = `ws://127.0.0.1:${port}`
-const model = process.env.CLAUDE_CODEX_SMOKE_MODEL ?? (runtime === 'grok' ? 'grok-4.6' : 'sonnet')
+const model = process.env.ANYENGINE_SMOKE_MODEL ?? (runtime === 'grok' ? 'grok-4.6' : 'sonnet')
 const debugLog = join(home, 'debug.jsonl')
 const TURN_TIMEOUT_MS = 300_000
 
@@ -39,19 +39,23 @@ const ms = () => Date.now() - t0
 
 const env = {
   ...process.env,
-  CLAUDE_CODEX_MOCK: '',
-  CLAUDE_CODEX_NATIVE_CODEX: '0',
-  CLAUDE_CODEX_HOME: join(home, 'adapter-home'),
+  ANYENGINE_MOCK: '',
+  ANYENGINE_NATIVE_CODEX: '0',
+  ANYENGINE_HOME: join(home, 'adapter-home'),
   CODEX_HOME: join(home, 'codex-home'),
-  CLAUDE_CODEX_DEBUG_LOG: debugLog,
+  ANYENGINE_DEBUG_LOG: debugLog,
   NODE_NO_WARNINGS: '1',
 }
-if (runtime === 'claude') env.CLAUDE_CODEX_RUNTIME_TYPE = 'anyengine'
+if (runtime === 'claude') env.ANYENGINE_RUNTIME_TYPE = 'anyengine'
 
-const adapter = spawn(process.execPath, [resolve('dist/src/adapter.mjs'), 'app-server', '--listen', listen], {
-  stdio: ['ignore', 'pipe', 'pipe'],
-  env,
-})
+const adapter = spawn(
+  process.execPath,
+  [resolve('dist/src/adapter.mjs'), 'app-server', '--listen', listen],
+  {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env,
+  },
+)
 log(`adapter pid=${adapter.pid} listen=${listen} home=${home}`)
 const adapterStderr = []
 adapter.stderr.setEncoding('utf8')
@@ -263,7 +267,8 @@ function debugSummary() {
     }
     const ev = e.event ?? e.type ?? e.msg ?? 'unknown'
     counts[ev] = (counts[ev] ?? 0) + 1
-    if (/error|fail|denied|timeout/i.test(ev) || e.error || e.data?.error) errors.push(line.slice(0, 400))
+    if (/error|fail|denied|timeout/i.test(ev) || e.error || e.data?.error)
+      errors.push(line.slice(0, 400))
     if (ev === 'anyengine.hook') {
       const k = `${e.data?.event ?? e.event}:${e.data?.tool ?? e.tool ?? '-'}`
       hookTools[k] = (hookTools[k] ?? 0) + 1
@@ -273,9 +278,9 @@ function debugSummary() {
 }
 
 const CLAUDE_PROMPT =
-  'Use your Agent/Task tool to spawn exactly two sub-agents in parallel. Sub-agent A must reply with the single word ALPHA and sub-agent B with the single word BRAVO. After both finish, reply with exactly: A=<A\'s word> B=<B\'s word>'
+  "Use your Agent/Task tool to spawn exactly two sub-agents in parallel. Sub-agent A must reply with the single word ALPHA and sub-agent B with the single word BRAVO. After both finish, reply with exactly: A=<A's word> B=<B's word>"
 const GROK_PROMPT =
-  'If you have a sub-agent/delegation tool, use it to spawn exactly two sub-agents in parallel: sub-agent A must reply with the single word ALPHA and sub-agent B with the single word BRAVO, then reply with exactly: A=<A\'s word> B=<B\'s word>. If you have no sub-agent/delegation tool, say NO_SUBAGENT_TOOL and stop.'
+  "If you have a sub-agent/delegation tool, use it to spawn exactly two sub-agents in parallel: sub-agent A must reply with the single word ALPHA and sub-agent B with the single word BRAVO, then reply with exactly: A=<A's word> B=<B's word>. If you have no sub-agent/delegation tool, say NO_SUBAGENT_TOOL and stop."
 
 try {
   const ws = await connect()
@@ -302,7 +307,7 @@ try {
   await runTurn(rpc, threadId, runtime === 'grok' ? GROK_PROMPT : CLAUDE_PROMPT, 'turn1-subagents')
   // Optional quiet gap between turns; anything the adapter emits while no
   // turn is active (e.g. a late stream from the previous turn) is captured.
-  const gapMs = Number(process.env.CLAUDE_CODEX_SMOKE_TURN_GAP_MS ?? 0)
+  const gapMs = Number(process.env.ANYENGINE_SMOKE_TURN_GAP_MS ?? 0)
   if (gapMs > 0) {
     const until = Date.now() + gapMs
     report.gapNotifications = []

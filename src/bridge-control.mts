@@ -29,9 +29,9 @@ import { adapterHome, debugLog, ensureParent, newId, socketPathLimit, stableHash
 export { providerFor } from './bridge-instructions.mjs'
 
 export const BRIDGE_SERVER_NAME = 'anyengine'
-export const BRIDGE_ENV_SOCKET = 'CLAUDE_CODEX_BRIDGE_SOCKET'
-export const BRIDGE_ENV_TOKEN = 'CLAUDE_CODEX_BRIDGE_TOKEN'
-export const BRIDGE_ENV_THREAD = 'CLAUDE_CODEX_BRIDGE_THREAD'
+export const BRIDGE_ENV_SOCKET = 'ANYENGINE_BRIDGE_SOCKET'
+export const BRIDGE_ENV_TOKEN = 'ANYENGINE_BRIDGE_TOKEN'
+export const BRIDGE_ENV_THREAD = 'ANYENGINE_BRIDGE_THREAD'
 export const BRIDGE_THREAD_HEADER = 'x-bridge-thread'
 export const DEFAULT_WAIT_TIMEOUT_MS = 600_000
 // Codex defaults an MCP tool call to 60 s; a spawned turn runs for minutes.
@@ -39,7 +39,7 @@ const CODEX_TOOL_TIMEOUT_SEC = 3600
 const TRACKER_CAP = 500
 
 export function bridgeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return (env.CLAUDE_CODEX_BRIDGE ?? '').trim() !== '0'
+  return (env.ANYENGINE_BRIDGE ?? '').trim() !== '0'
 }
 
 export function isBridgePeer(peer: RpcPeer): boolean {
@@ -179,7 +179,7 @@ export class BridgeControl {
     }
   }
 
-  // The App-provided servers (CLAUDE_CODEX_MCP_SERVERS: record, {mcpServers}
+  // The App-provided servers (ANYENGINE_MCP_SERVERS: record, {mcpServers}
   // wrapper or a file path) plus `anyengine` for this thread.
   mergeMcpServers(threadId: string | null, base: unknown): Record<string, unknown> {
     const servers = { ...mcpServerRecord(base) }

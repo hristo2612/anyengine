@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { ClaudePTranscriptRuntime } from '../src/claude-p-runtime.mjs'
+import { applyLegacyEnvNames } from '../src/env-compat.mjs'
 import {
   HttpAgentRuntime,
   hasAgentapiTrustPrompt,
@@ -58,37 +59,34 @@ function nativeTurnContext(overrides: Partial<RuntimeTurnContext> = {}): Runtime
 
 test('runtime config keeps legacy defaults and accepts explicit backends', () => {
   assert.equal(resolveRuntimeConfig({}).type, 'agent-sdk-sidecar')
-  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_MOCK: '1' }).type, 'mock')
+  assert.equal(resolveRuntimeConfig({ ANYENGINE_MOCK: '1' }).type, 'mock')
   assert.equal(
-    resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_SOCKET: '/tmp/runtime.sock' }).type,
+    resolveRuntimeConfig({ ANYENGINE_RUNTIME_SOCKET: '/tmp/runtime.sock' }).type,
     'agent-sdk-sidecar',
   )
   assert.equal(
-    resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'agent-sdk-socket' }).type,
+    resolveRuntimeConfig({ ANYENGINE_RUNTIME_TYPE: 'agent-sdk-socket' }).type,
     'agent-sdk-sidecar',
   )
-  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'channels' }).type, 'agent-http')
-  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'agentapi' }).type, 'agentapi')
-  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'claude-p' }).type, 'claude-p')
-  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_PROVIDER: 'codex' }).type, 'codex-proxy')
+  assert.equal(resolveRuntimeConfig({ ANYENGINE_RUNTIME_TYPE: 'channels' }).type, 'agent-http')
+  assert.equal(resolveRuntimeConfig({ ANYENGINE_RUNTIME_TYPE: 'agentapi' }).type, 'agentapi')
+  assert.equal(resolveRuntimeConfig({ ANYENGINE_RUNTIME_TYPE: 'claude-p' }).type, 'claude-p')
+  assert.equal(resolveRuntimeConfig({ ANYENGINE_PROVIDER: 'codex' }).type, 'codex-proxy')
   assert.equal(
     resolveRuntimeConfig({
-      CLAUDE_CODEX_PROVIDER: 'codex',
-      CLAUDE_CODEX_RUNTIME_TYPE: 'agent-http',
+      ANYENGINE_PROVIDER: 'codex',
+      ANYENGINE_RUNTIME_TYPE: 'agent-http',
     }).type,
     'agent-http',
   )
+  assert.equal(resolveRuntimeConfig({ ANYENGINE_HTTP_MANAGE_BRIDGE: '1' }).http.manageBridge, true)
   assert.equal(
-    resolveRuntimeConfig({ CLAUDE_CODEX_HTTP_MANAGE_BRIDGE: '1' }).http.manageBridge,
-    true,
-  )
-  assert.equal(
-    resolveRuntimeConfig({ CLAUDE_CODEX_MODE_COMMAND: '/tmp/mode' }).http.modeCommand,
+    resolveRuntimeConfig({ ANYENGINE_MODE_COMMAND: '/tmp/mode' }).http.modeCommand,
     '/tmp/mode',
   )
   assert.equal(resolveRuntimeConfig({}).claudeP.stopTimeoutRetries, 1)
   assert.equal(
-    resolveRuntimeConfig({ CLAUDE_CODEX_CLAUDE_P_STOP_TIMEOUT_RETRIES: '0' }).claudeP
+    resolveRuntimeConfig({ ANYENGINE_CLAUDE_P_STOP_TIMEOUT_RETRIES: '0' }).claudeP
       .stopTimeoutRetries,
     0,
   )
@@ -152,8 +150,8 @@ test('native SDK runtime maps manual /workflows prompts to the human workflow tr
 })
 
 test('explicit native SDK bypass includes the required dangerous opt-in flag', () => {
-  const previous = process.env.CLAUDE_CODEX_PERMISSION_MODE
-  process.env.CLAUDE_CODEX_PERMISSION_MODE = 'bypassPermissions'
+  const previous = process.env.ANYENGINE_PERMISSION_MODE
+  process.env.ANYENGINE_PERMISSION_MODE = 'bypassPermissions'
   try {
     const runtime = new NativeClaudeRuntime()
     const buildOptions = Reflect.get(runtime, 'buildOptions')
@@ -167,8 +165,8 @@ test('explicit native SDK bypass includes the required dangerous opt-in flag', (
     assert.equal(options.allowDangerouslySkipPermissions, true)
     assert.equal(options.canUseTool, undefined)
   } finally {
-    if (previous === undefined) delete process.env.CLAUDE_CODEX_PERMISSION_MODE
-    else process.env.CLAUDE_CODEX_PERMISSION_MODE = previous
+    if (previous === undefined) delete process.env.ANYENGINE_PERMISSION_MODE
+    else process.env.ANYENGINE_PERMISSION_MODE = previous
   }
 })
 
@@ -2042,7 +2040,7 @@ test('HTTP agent runtime uses one managed bridge URL per cwd/model key', async (
       'const cwd = process.argv[5];',
       'const url = urls.get(cwd);',
       'if (!url) { console.error(`unknown cwd: ${cwd}`); process.exit(2); }',
-      'console.log(`CLAUDE_CODEX_BRIDGE_URL=${url}`);',
+      'console.log(`ANYENGINE_BRIDGE_URL=${url}`);',
     ].join('\n'),
   )
   await chmod(modeCommand, 0o755)
@@ -2628,3 +2626,24 @@ async function waitForCondition(read: () => number, expected: number): Promise<v
   }
   assert.equal(read(), expected)
 }
+
+// --- legacy env-name compatibility (src/env-compat.mts) --------------------
+
+test('legacy CLAUDE_CODEX_* names are adopted unless the new name is set', () => {
+  const env: NodeJS.ProcessEnv = {
+    CLAUDE_CODEX_RUNTIME_TYPE: 'pty',
+    CLAUDE_CODEX_DEFAULT_MODEL: 'legacy-model',
+    ANYENGINE_DEFAULT_MODEL: 'new-model',
+    PATH: '/usr/bin',
+  }
+  const migrated = applyLegacyEnvNames(env)
+  assert.deepEqual(migrated, ['ANYENGINE_RUNTIME_TYPE'])
+  assert.equal(env.ANYENGINE_RUNTIME_TYPE, 'pty')
+  // The new spelling always wins, and the legacy variable is left in place.
+  assert.equal(env.ANYENGINE_DEFAULT_MODEL, 'new-model')
+  assert.equal(env.CLAUDE_CODEX_DEFAULT_MODEL, 'legacy-model')
+  assert.equal(env.PATH, '/usr/bin')
+  // Idempotent: a second pass migrates nothing.
+  assert.deepEqual(applyLegacyEnvNames(env), [])
+  assert.equal(resolveRuntimeConfig(env).type, 'anyengine')
+})

@@ -97,7 +97,7 @@ export class GrokRuntime implements ClaudeRuntime {
     const binary = this.options.binary ?? resolveGrokBinary()
     if (!binary) {
       const message =
-        'grok CLI not found. Install Grok Build or set CLAUDE_CODEX_GROK_BIN=/abs/path/to/grok.'
+        'grok CLI not found. Install Grok Build or set ANYENGINE_GROK_BIN=/abs/path/to/grok.'
       await handlers.onEvent({ type: 'error', message })
       await handlers.onEvent({ type: 'completed', success: false, result: message })
       throw new Error(message)

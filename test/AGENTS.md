@@ -22,9 +22,9 @@ node --test dist/test/adapter.test.mjs   # a single suite, after a build
 - Tests import from `dist/` (compiled `.mjs`), so **always build first** —
   `npm test` does this for you; editing a `.mts` and re-running raw
   `node --test` without a rebuild tests stale output.
-- Use `CLAUDE_CODEX_MOCK=1` to exercise protocol behavior without Claude
-  credentials. `npm test` also sets `CLAUDE_CODEX_NATIVE_CODEX=0` so no suite
+- Use `ANYENGINE_MOCK=1` to exercise protocol behavior without Claude
+  credentials. `npm test` also sets `ANYENGINE_NATIVE_CODEX=0` so no suite
   spawns a real `codex` binary found on the machine; only an explicit
-  `CLAUDE_CODEX_REAL_CODEX` (the fake child) attaches the multiplexer. Credentialed end-to-end checks live in `scripts/acceptance-*`,
+  `ANYENGINE_REAL_CODEX` (the fake child) attaches the multiplexer. Credentialed end-to-end checks live in `scripts/acceptance-*`,
   not here.
 - Add new suites as `<area>.test.mts`; the `npm test` glob picks them up.

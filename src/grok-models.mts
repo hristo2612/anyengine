@@ -23,7 +23,7 @@ const CATALOG_TTL_MS = 5 * 60_000
 let cachedDiscovered: { expiresAt: number; ids: string[] } | null = null
 
 export function resolveGrokBinary(env: NodeJS.ProcessEnv = process.env): string | null {
-  const explicit = env.CLAUDE_CODEX_GROK_BIN ?? env.GROK_BIN
+  const explicit = env.ANYENGINE_GROK_BIN ?? env.GROK_BIN
   if (explicit && explicit.trim()) return explicit.trim()
   const candidates = [
     ...(env.PATH ?? '')
@@ -63,13 +63,13 @@ export function parseGrokModelsOutput(output: string): string[] {
 }
 
 // Suppressed in mock mode (protocol tests assume a Claude-only picker) and
-// when no grok binary is resolvable, unless CLAUDE_CODEX_GROK_MODELS names the
-// models explicitly. Set CLAUDE_CODEX_DISABLE_GROK=1 to hide them entirely.
+// when no grok binary is resolvable, unless ANYENGINE_GROK_MODELS names the
+// models explicitly. Set ANYENGINE_DISABLE_GROK=1 to hide them entirely.
 export function grokModelOptions(env: NodeJS.ProcessEnv = process.env): GrokModelOption[] {
-  if (env.CLAUDE_CODEX_DISABLE_GROK === '1') return []
-  const configured = env.CLAUDE_CODEX_GROK_MODELS?.trim()
+  if (env.ANYENGINE_DISABLE_GROK === '1') return []
+  const configured = env.ANYENGINE_GROK_MODELS?.trim()
   if (configured) return parseConfiguredModels(configured)
-  if (env.CLAUDE_CODEX_MOCK === '1') return []
+  if (env.ANYENGINE_MOCK === '1') return []
   const binary = resolveGrokBinary(env)
   if (!binary) return []
   return discoverGrokModels(binary).map((id) => grokModelOption(id))

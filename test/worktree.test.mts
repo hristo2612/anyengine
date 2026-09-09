@@ -63,13 +63,13 @@ test('auto worktree falls back to original cwd outside git repositories', async 
 })
 
 function withWorktreeEnv(root: string): () => void {
-  const previousAuto = process.env.CLAUDE_CODEX_AUTO_WORKTREE
-  const previousRoot = process.env.CLAUDE_CODEX_WORKTREE_ROOT
-  process.env.CLAUDE_CODEX_AUTO_WORKTREE = '1'
-  process.env.CLAUDE_CODEX_WORKTREE_ROOT = root
+  const previousAuto = process.env.ANYENGINE_AUTO_WORKTREE
+  const previousRoot = process.env.ANYENGINE_WORKTREE_ROOT
+  process.env.ANYENGINE_AUTO_WORKTREE = '1'
+  process.env.ANYENGINE_WORKTREE_ROOT = root
   return () => {
-    restoreEnv('CLAUDE_CODEX_AUTO_WORKTREE', previousAuto)
-    restoreEnv('CLAUDE_CODEX_WORKTREE_ROOT', previousRoot)
+    restoreEnv('ANYENGINE_AUTO_WORKTREE', previousAuto)
+    restoreEnv('ANYENGINE_WORKTREE_ROOT', previousRoot)
   }
 }
 

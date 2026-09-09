@@ -4,7 +4,7 @@
 // (`--append-system-prompt`), Grok through the same addendum prefixed on the
 // first prompt of a session (grok-acp#grokPromptText), and the native Codex
 // child through `developerInstructions` on the forwarded thread/start
-// (codex-mux). `CLAUDE_CODEX_BRIDGE_INSTRUCTIONS=0` turns the injection off.
+// (codex-mux). `ANYENGINE_BRIDGE_INSTRUCTIONS=0` turns the injection off.
 
 import { isCodexOpenAiModel } from './util.mjs'
 
@@ -59,7 +59,7 @@ export const MODEL_ALIAS_TABLE =
   'Aliases (case-insensitive): "claude", "claude opus", "opus 5", "claude sonnet", "sonnet", "haiku", "fable", "grok", "grok 4.6", "grok 4.5", "gpt", "gpt 5.6", "codex", or any exact id / display name from list_models. Engine-only names ("claude", "grok", "gpt") pick that engine\'s default model.'
 
 export function bridgeInstructionsEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return (env.CLAUDE_CODEX_BRIDGE_INSTRUCTIONS ?? '').trim() !== '0'
+  return (env.ANYENGINE_BRIDGE_INSTRUCTIONS ?? '').trim() !== '0'
 }
 
 export function providerFor(model: string): BridgeProvider {

@@ -11,8 +11,8 @@
 // Fails open (exit 0, no output) on any relay error so a broken relay can
 // never wedge the TUI; the runtime notices a missing hook by other means
 // (Notification fallback, turn timeout).
-const url = process.env.CLAUDE_CODEX_PTY_HOOK_URL
-const token = process.env.CLAUDE_CODEX_PTY_HOOK_TOKEN
+const url = process.env.ANYENGINE_PTY_HOOK_URL
+const token = process.env.ANYENGINE_PTY_HOOK_TOKEN
 const threadId = process.argv[2] ?? ''
 
 async function main() {
@@ -27,7 +27,7 @@ async function main() {
   }
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-claude-codex-hook-token': token },
+    headers: { 'content-type': 'application/json', 'x-anyengine-hook-token': token },
     body: JSON.stringify({ threadId, hook }),
   }).catch(() => null)
   if (!response) return

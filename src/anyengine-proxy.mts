@@ -214,7 +214,11 @@ export class SsePtyProxy {
         !res.headersSent &&
         isRetriableUpstreamError(err)
       ) {
-        debugLog('anyengine.proxy.retry', { label: this.label, attempt: attempt + 2, code: err.code })
+        debugLog('anyengine.proxy.retry', {
+          label: this.label,
+          attempt: attempt + 2,
+          code: err.code,
+        })
         setTimeout(
           () => {
             if (inflight.clientGone) return

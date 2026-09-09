@@ -34,10 +34,7 @@ function assertDesktopArgvReplayed(argv: string[]): void {
   const index = argv.findIndex((arg) => arg.startsWith('mcp_servers.anyengine='))
   assert.ok(index > 0 && argv[index - 1] === '-c', 'bridge override is a -c global')
   assert.ok(index < argv.indexOf('app-server'), 'bridge override precedes app-server')
-  assert.match(
-    argv[index] ?? '',
-    /env_vars=\["CLAUDE_CODEX_BRIDGE_SOCKET","CLAUDE_CODEX_BRIDGE_TOKEN"\]/,
-  )
+  assert.match(argv[index] ?? '', /env_vars=\["ANYENGINE_BRIDGE_SOCKET","ANYENGINE_BRIDGE_TOKEN"\]/)
   assert.deepEqual([...argv.slice(0, index - 1), ...argv.slice(index + 1)], DESKTOP_ARGV)
 }
 
@@ -105,26 +102,26 @@ class StdioClient {
 function launch(home: string, extraEnv: NodeJS.ProcessEnv = {}, viaShim = false): StdioClient {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    CLAUDE_CODEX_MOCK: '1',
-    CLAUDE_CODEX_HOME: home,
-    CLAUDE_CODEX_DEBUG_LOG: join(home, 'debug.jsonl'),
-    CLAUDE_CODEX_REAL_CODEX: fakeCodex,
-    CLAUDE_CODEX_MODELS: 'opus,sonnet',
-    CLAUDE_CODEX_DEFAULT_MODEL: 'opus',
-    CLAUDE_CODEX_RUNTIME_TYPE: 'mock',
+    ANYENGINE_MOCK: '1',
+    ANYENGINE_HOME: home,
+    ANYENGINE_DEBUG_LOG: join(home, 'debug.jsonl'),
+    ANYENGINE_REAL_CODEX: fakeCodex,
+    ANYENGINE_MODELS: 'opus,sonnet',
+    ANYENGINE_DEFAULT_MODEL: 'opus',
+    ANYENGINE_RUNTIME_TYPE: 'mock',
     CODEX_APP_TOOLS_PIPE_PATH: '/tmp/codex-browser-use/test.sock',
     FAKE_CODEX_ARGV_FILE: join(home, 'fake-argv.json'),
     ...extraEnv,
   }
-  delete env.CLAUDE_CODEX_GPT_ROUTE
-  delete env.CLAUDE_CODEX_RUNTIME_ENV
+  delete env.ANYENGINE_GPT_ROUTE
+  delete env.ANYENGINE_RUNTIME_ENV
   const child = viaShim
     ? spawn(shim, DESKTOP_ARGV, {
         env: {
           ...env,
-          CLAUDE_CODEX_ADAPTER: adapter,
-          CLAUDE_CODEX_NODE: process.execPath,
-          CLAUDE_CODEX_RUNTIME_ENV: join(home, 'missing.env'),
+          ANYENGINE_ADAPTER: adapter,
+          ANYENGINE_NODE: process.execPath,
+          ANYENGINE_RUNTIME_ENV: join(home, 'missing.env'),
         },
         stdio: ['pipe', 'pipe', 'inherit'],
       })

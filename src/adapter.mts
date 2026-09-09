@@ -4,6 +4,9 @@ import { dirname } from 'node:path'
 import { BridgeControl, bridgeEnabled } from './bridge-control.mjs'
 import { runBridgeMcp } from './bridge-mcp.mjs'
 import { resolveNativeCodexBinary } from './codex-upstream.mjs'
+// Must be first: maps legacy CLAUDE_CODEX_* names onto ANYENGINE_* before
+// any other module reads process.env (see src/env-compat.mts).
+import { migratedLegacyEnvNames } from './env-compat.mjs'
 import { resolveRuntimeConfig } from './runtime-config.mjs'
 import { createRuntime } from './runtime-factory.mjs'
 import { CodexClaudeAppServer } from './server.mjs'
@@ -152,13 +155,13 @@ async function main(): Promise<void> {
   // would otherwise linger forever and keep its Claude runtime sidecar alive.
   // Exit once the last peer is gone so the runtime socket closes and the
   // sidecar is reclaimed. Codex App re-probes and restarts the daemon on
-  // reconnect. Set CLAUDE_CODEX_IDLE_EXIT_MS=0 to keep the legacy persistent
+  // reconnect. Set ANYENGINE_IDLE_EXIT_MS=0 to keep the legacy persistent
   // behavior.
   // The anyengine runtime keeps one warm interactive `claude` PTY per thread;
   // exiting on idle would kill them and force a `--resume` cold start on the
   // next turn, so that runtime defaults to never idling out.
   const defaultIdleExitMs = resolveRuntimeConfig().type === 'anyengine' ? 0 : 15000
-  const idleExitMs = Number(process.env.CLAUDE_CODEX_IDLE_EXIT_MS ?? defaultIdleExitMs)
+  const idleExitMs = Number(process.env.ANYENGINE_IDLE_EXIT_MS ?? defaultIdleExitMs)
   const idleExitEnabled = isUnixDaemon && Number.isFinite(idleExitMs) && idleExitMs > 0
   let activePeers = 0
   let everConnected = false

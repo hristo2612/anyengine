@@ -48,7 +48,7 @@ export const PTY_HOOK_EVENTS = [
 
 export type HookResponder = (threadId: string, payload: HookPayload) => Promise<unknown>
 
-export const HOOK_TOKEN_HEADER = 'x-claude-codex-hook-token'
+export const HOOK_TOKEN_HEADER = 'x-anyengine-hook-token'
 
 // Loopback HTTP endpoint the relay script posts every hook to. A random token
 // (handed to each PTY through its environment) keeps stray local processes

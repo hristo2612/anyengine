@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Real-Claude smoke for the anyengine runtime: boots the adapter on a WebSocket
-// listener with CLAUDE_CODEX_RUNTIME_TYPE=anyengine, runs a text-only turn, then
+// listener with ANYENGINE_RUNTIME_TYPE=anyengine, runs a text-only turn, then
 // a Bash turn and asserts the App-side approval round-trips. Needs a logged-in
 // `claude` CLI (subscription). Usage: npm run smoke:anyengine
 import assert from 'node:assert/strict'
@@ -10,11 +10,11 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import WebSocket from 'ws'
 
-const root = resolve(process.env.CLAUDE_CODEX_SMOKE_ROOT ?? tmpdir())
+const root = resolve(process.env.ANYENGINE_SMOKE_ROOT ?? tmpdir())
 const home = await mkdtemp(join(root, 'anyengine-smoke-'))
 const workspace = join(home, 'workspace')
 await import('node:fs/promises').then((fs) => fs.mkdir(workspace, { recursive: true }))
-const port = Number(process.env.CLAUDE_CODEX_SMOKE_PORT ?? 8791)
+const port = Number(process.env.ANYENGINE_SMOKE_PORT ?? 8791)
 const listen = `ws://127.0.0.1:${port}`
 
 const adapter = spawn(
@@ -24,10 +24,10 @@ const adapter = spawn(
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
-      CLAUDE_CODEX_RUNTIME_TYPE: 'anyengine',
-      CLAUDE_CODEX_HOME: join(home, 'adapter-home'),
+      ANYENGINE_RUNTIME_TYPE: 'anyengine',
+      ANYENGINE_HOME: join(home, 'adapter-home'),
       CODEX_HOME: join(home, 'codex-home'),
-      CLAUDE_CODEX_DEBUG_LOG: join(home, 'debug.jsonl'),
+      ANYENGINE_DEBUG_LOG: join(home, 'debug.jsonl'),
       NODE_NO_WARNINGS: '1',
     },
   },

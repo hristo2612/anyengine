@@ -66,7 +66,7 @@ export interface RuntimeConfig {
 
 export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const explicit = normalizeRuntimeType(
-    env.CLAUDE_CODEX_RUNTIME_TYPE ?? env.CLAUDE_CODEX_RUNTIME ?? env.CLAUDE_CODEX_BACKEND,
+    env.ANYENGINE_RUNTIME_TYPE ?? env.ANYENGINE_RUNTIME ?? env.ANYENGINE_BACKEND,
   )
   const selection = resolveProviderLoopSelection(providerLoopSelectionInputFromEnv(env, explicit))
   const type = selection.runtimeType
@@ -75,78 +75,73 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
     type,
     http: {
       baseUrl: normalizeBaseUrl(
-        env.CLAUDE_CODEX_HTTP_BASE_URL ??
-          env.CLAUDE_CODEX_AGENT_HTTP_URL ??
-          env.CLAUDE_CODEX_AGENTAPI_URL ??
+        env.ANYENGINE_HTTP_BASE_URL ??
+          env.ANYENGINE_AGENT_HTTP_URL ??
+          env.ANYENGINE_AGENTAPI_URL ??
           'http://127.0.0.1:3284',
       ),
-      useSse: envFlag(env.CLAUDE_CODEX_HTTP_USE_SSE, true),
-      pollIntervalMs: numericEnv(env.CLAUDE_CODEX_HTTP_POLL_MS, 500, 100, 60_000),
-      timeoutMs: numericEnv(env.CLAUDE_CODEX_HTTP_TIMEOUT_MS, 5 * 60_000, 1_000, 24 * 60 * 60_000),
-      sendInterruptRaw: envFlag(env.CLAUDE_CODEX_HTTP_INTERRUPT_RAW, false),
-      manageBridge: envFlag(env.CLAUDE_CODEX_HTTP_MANAGE_BRIDGE, false),
-      modeCommand: env.CLAUDE_CODEX_MODE_COMMAND || 'claude-codex-mode',
+      useSse: envFlag(env.ANYENGINE_HTTP_USE_SSE, true),
+      pollIntervalMs: numericEnv(env.ANYENGINE_HTTP_POLL_MS, 500, 100, 60_000),
+      timeoutMs: numericEnv(env.ANYENGINE_HTTP_TIMEOUT_MS, 5 * 60_000, 1_000, 24 * 60 * 60_000),
+      sendInterruptRaw: envFlag(env.ANYENGINE_HTTP_INTERRUPT_RAW, false),
+      manageBridge: envFlag(env.ANYENGINE_HTTP_MANAGE_BRIDGE, false),
+      modeCommand: env.ANYENGINE_MODE_COMMAND || 'claude-codex-mode',
     },
     claudeP: {
-      command: env.CLAUDE_CODEX_CLAUDE_P_COMMAND || env.CLAUDE_P || 'claude-p',
-      extraArgs: stringList(env.CLAUDE_CODEX_CLAUDE_P_ARGS),
-      timeoutMs: numericEnv(
-        env.CLAUDE_CODEX_CLAUDE_P_TIMEOUT_MS,
-        5 * 60_000,
-        1_000,
-        24 * 60 * 60_000,
-      ),
-      skipPermissions: envFlag(env.CLAUDE_CODEX_CLAUDE_P_SKIP_PERMISSIONS, false),
-      resume: envFlag(env.CLAUDE_CODEX_CLAUDE_P_RESUME, false),
-      stopTimeoutRetries: numericEnv(env.CLAUDE_CODEX_CLAUDE_P_STOP_TIMEOUT_RETRIES, 1, 0, 5),
+      command: env.ANYENGINE_CLAUDE_P_COMMAND || env.CLAUDE_P || 'claude-p',
+      extraArgs: stringList(env.ANYENGINE_CLAUDE_P_ARGS),
+      timeoutMs: numericEnv(env.ANYENGINE_CLAUDE_P_TIMEOUT_MS, 5 * 60_000, 1_000, 24 * 60 * 60_000),
+      skipPermissions: envFlag(env.ANYENGINE_CLAUDE_P_SKIP_PERMISSIONS, false),
+      resume: envFlag(env.ANYENGINE_CLAUDE_P_RESUME, false),
+      stopTimeoutRetries: numericEnv(env.ANYENGINE_CLAUDE_P_STOP_TIMEOUT_RETRIES, 1, 0, 5),
     },
     anyengine: {
-      cli: env.CLAUDE_CODEX_CLI || 'claude',
-      cols: numericEnv(env.CLAUDE_CODEX_PTY_COLS, 120, 40, 500),
-      rows: numericEnv(env.CLAUDE_CODEX_PTY_ROWS, 40, 10, 200),
+      cli: env.ANYENGINE_CLI || 'claude',
+      cols: numericEnv(env.ANYENGINE_PTY_COLS, 120, 40, 500),
+      rows: numericEnv(env.ANYENGINE_PTY_ROWS, 40, 10, 200),
       turnTimeoutMs: numericEnv(
-        env.CLAUDE_CODEX_PTY_TURN_TIMEOUT_MS,
+        env.ANYENGINE_PTY_TURN_TIMEOUT_MS,
         60 * 60_000,
         0,
         24 * 60 * 60_000,
       ),
       asyncSubagentTimeoutMs: numericEnv(
-        env.CLAUDE_CODEX_PTY_ASYNC_SUBAGENT_TIMEOUT_MS,
+        env.ANYENGINE_PTY_ASYNC_SUBAGENT_TIMEOUT_MS,
         10 * 60_000,
         0,
         24 * 60 * 60_000,
       ),
       startupTimeoutMs: numericEnv(
-        env.CLAUDE_CODEX_PTY_STARTUP_TIMEOUT_MS,
+        env.ANYENGINE_PTY_STARTUP_TIMEOUT_MS,
         30_000,
         1_000,
         10 * 60_000,
       ),
-      streamProxy: envFlag(env.CLAUDE_CODEX_PTY_STREAM_PROXY, true),
-      extraArgs: stringList(env.CLAUDE_CODEX_PTY_ARGS),
-      hookTimeoutSec: numericEnv(env.CLAUDE_CODEX_PTY_HOOK_TIMEOUT_S, 3600, 30, 24 * 60 * 60),
-      autoApproveSafetyPrompts: envFlag(env.CLAUDE_CODEX_PTY_AUTO_APPROVE_SAFETY_PROMPTS, true),
-      keepApiKey: envFlag(env.CLAUDE_CODEX_PTY_KEEP_API_KEY, false),
-      stateDir: env.CLAUDE_CODEX_PTY_STATE_DIR || null,
-      relayScript: env.CLAUDE_CODEX_PTY_HOOK_RELAY || null,
-      nodeBinary: env.CLAUDE_CODEX_PTY_NODE || process.execPath,
+      streamProxy: envFlag(env.ANYENGINE_PTY_STREAM_PROXY, true),
+      extraArgs: stringList(env.ANYENGINE_PTY_ARGS),
+      hookTimeoutSec: numericEnv(env.ANYENGINE_PTY_HOOK_TIMEOUT_S, 3600, 30, 24 * 60 * 60),
+      autoApproveSafetyPrompts: envFlag(env.ANYENGINE_PTY_AUTO_APPROVE_SAFETY_PROMPTS, true),
+      keepApiKey: envFlag(env.ANYENGINE_PTY_KEEP_API_KEY, false),
+      stateDir: env.ANYENGINE_PTY_STATE_DIR || null,
+      relayScript: env.ANYENGINE_PTY_HOOK_RELAY || null,
+      nodeBinary: env.ANYENGINE_PTY_NODE || process.execPath,
     },
     grok: {
-      binary: env.CLAUDE_CODEX_GROK_BIN || env.GROK_BIN || null,
-      extraArgs: stringList(env.CLAUDE_CODEX_GROK_ARGS),
+      binary: env.ANYENGINE_GROK_BIN || env.GROK_BIN || null,
+      extraArgs: stringList(env.ANYENGINE_GROK_ARGS),
       turnTimeoutMs: numericEnv(
-        env.CLAUDE_CODEX_GROK_TURN_TIMEOUT_MS,
+        env.ANYENGINE_GROK_TURN_TIMEOUT_MS,
         60 * 60_000,
         0,
         24 * 60 * 60_000,
       ),
       startupTimeoutMs: numericEnv(
-        env.CLAUDE_CODEX_GROK_STARTUP_TIMEOUT_MS,
+        env.ANYENGINE_GROK_STARTUP_TIMEOUT_MS,
         60_000,
         1_000,
         10 * 60_000,
       ),
-      idleExitMs: numericEnv(env.CLAUDE_CODEX_GROK_IDLE_MS, 10 * 60_000, 0, 24 * 60 * 60_000),
+      idleExitMs: numericEnv(env.ANYENGINE_GROK_IDLE_MS, 10 * 60_000, 0, 24 * 60 * 60_000),
     },
   }
 }
@@ -195,7 +190,7 @@ export function normalizeRuntimeType(value: string | undefined): RuntimeBackendT
     case 'grok-acp':
       return 'grok'
     default:
-      throw new Error(`unknown CLAUDE_CODEX_RUNTIME_TYPE: ${value}`)
+      throw new Error(`unknown ANYENGINE_RUNTIME_TYPE: ${value}`)
   }
 }
 

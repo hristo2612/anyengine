@@ -84,10 +84,10 @@ export function providerLoopSelectionInputFromEnv(
   legacyRuntimeType: RuntimeBackendType | null = null,
 ): ProviderLoopSelectionInput {
   return {
-    providerId: env.CLAUDE_CODEX_PROVIDER,
-    loopId: env.CLAUDE_CODEX_AGENT_LOOP,
+    providerId: env.ANYENGINE_PROVIDER,
+    loopId: env.ANYENGINE_AGENT_LOOP,
     legacyRuntimeType,
-    mock: env.CLAUDE_CODEX_MOCK === '1',
+    mock: env.ANYENGINE_MOCK === '1',
     source: 'environment',
   }
 }

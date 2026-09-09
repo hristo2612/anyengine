@@ -41,13 +41,13 @@ Claude backends sit behind the `ClaudeRuntime` interface and are constructed in
   compaction gate), `anyengine-screen.mts` (headless xterm + dialog parsers),
   `anyengine-transcript.mts`. Hook relay: `scripts/anyengine-hook-relay.mjs`.
 - `codex-proxy-runtime.mts` — legacy `codex exec` proxy, opt-in via
-  `CLAUDE_CODEX_GPT_ROUTE=exec` (gpt-* threads default to the multiplexer).
+  `ANYENGINE_GPT_ROUTE=exec` (gpt-* threads default to the multiplexer).
 - `codex-proxy-runtime.mts` — native Codex passthrough (`codex exec`).
 - `grok-runtime.mts` — xAI Grok Build CLI over its agent protocol (`grok agent
   stdio`), one warm process per thread; selected per thread for `grok-*` models.
   Helpers: `grok-acp.mts` (wire → RuntimeEvent mapping, argv, permissions) and
   `grok-models.mts` (picker catalog + binary discovery).
-- `mock-runtime.mts` — credential-free protocol testing (`CLAUDE_CODEX_MOCK=1`).
+- `mock-runtime.mts` — credential-free protocol testing (`ANYENGINE_MOCK=1`).
 
 **Adding a backend:** create `<name>-runtime.mts` implementing `ClaudeRuntime`,
 register it in `runtime-factory.mts`, and add any env knobs to

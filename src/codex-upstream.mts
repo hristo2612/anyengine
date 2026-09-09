@@ -50,28 +50,28 @@ interface PendingServerRequest {
 const ANSWERED_SERVER_REQUEST_CAP = 512
 
 export function resolveNativeCodexBinary(env: NodeJS.ProcessEnv = process.env): string | null {
-  // CLAUDE_CODEX_NATIVE_CODEX=0 switches the passthrough off entirely, even
-  // when CLAUDE_CODEX_REAL_CODEX names a binary: the SSH/Remote twin runs this
+  // ANYENGINE_NATIVE_CODEX=0 switches the passthrough off entirely, even
+  // when ANYENGINE_REAL_CODEX names a binary: the SSH/Remote twin runs this
   // way so it never carries the account's rate-limit state into the App.
-  if ((env.CLAUDE_CODEX_NATIVE_CODEX ?? '').trim() === '0') return null
-  const explicit = env.CLAUDE_CODEX_REAL_CODEX?.trim()
+  if ((env.ANYENGINE_NATIVE_CODEX ?? '').trim() === '0') return null
+  const explicit = env.ANYENGINE_REAL_CODEX?.trim()
   if (explicit) return explicit
   // Auto-detection is off in mock mode (the test suite): a dev machine with
   // the desktop installed must not have its unit tests spawn the real binary.
-  if (env.CLAUDE_CODEX_MOCK === '1') return null
+  if (env.ANYENGINE_MOCK === '1') return null
   const bundled = '/Applications/ChatGPT.app/Contents/Resources/codex'
   if (existsSync(bundled)) return bundled
   const real = env.CODEX_REAL?.trim()
   return real || null
 }
 
-// CLAUDE_CODEX_HIDE_RATE_LIMIT_UPSELL=1: keep the real usage numbers but drop
+// ANYENGINE_HIDE_RATE_LIMIT_UPSELL=1: keep the real usage numbers but drop
 // the "reserve" markers (`rateLimitReachedType`, `rateLimitUpsell`) that make
 // the desktop force its reserve model and hide the whole model picker,
 // including the Claude/Grok entries this adapter serves. GPT turns still reach
 // OpenAI and still fail natively while the account is over its limit.
 function hideRateLimitUpsell(): boolean {
-  return (process.env.CLAUDE_CODEX_HIDE_RATE_LIMIT_UPSELL ?? '').trim() === '1'
+  return (process.env.ANYENGINE_HIDE_RATE_LIMIT_UPSELL ?? '').trim() === '1'
 }
 
 export function sanitizeRateLimitPayload<T>(value: T): T {
@@ -85,7 +85,8 @@ export function sanitizeRateLimitPayload<T>(value: T): T {
   }
   scrub(clone.rateLimits)
   const byId = clone.rateLimitsByLimitId
-  if (byId && typeof byId === 'object') for (const entry of Object.values(byId as object)) scrub(entry)
+  if (byId && typeof byId === 'object')
+    for (const entry of Object.values(byId as object)) scrub(entry)
   if ('rateLimitUpsell' in clone) clone.rateLimitUpsell = null
   return clone as T
 }
@@ -433,7 +434,7 @@ export class CodexUpstream {
   }
 }
 
-// Tests point CLAUDE_CODEX_REAL_CODEX at a node script; a real install points
+// Tests point ANYENGINE_REAL_CODEX at a node script; a real install points
 // at the bundled Mach-O binary. Both spawn the same way from here on.
 function spawnCommandFor(binary: string): [string, string[]] {
   if (/\.(mjs|cjs|js)$/.test(binary)) return [process.execPath, [binary]]

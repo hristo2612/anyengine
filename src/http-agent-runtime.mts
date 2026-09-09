@@ -334,7 +334,7 @@ export class HttpAgentRuntime implements ClaudeRuntime {
 
 function parseBridgeBaseUrl(stdout: string): string | null {
   for (const line of stdout.split(/\r?\n/)) {
-    const explicit = line.match(/^CLAUDE_CODEX_BRIDGE_URL=(\S+)$/)
+    const explicit = line.match(/^ANYENGINE_BRIDGE_URL=(\S+)$/)
     if (explicit) return normalizeBaseUrl(explicit[1]!)
     const ready = line.match(/\bready at (https?:\/\/\S+)/)
     if (ready) return normalizeBaseUrl(ready[1]!)

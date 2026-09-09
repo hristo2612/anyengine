@@ -22,7 +22,7 @@ npm run dev          # tsx src/adapter.mts — run sources directly, no build
 npm run doctor       # environment self-check
 ```
 
-> **Requires Node.js 24+** for stable `node:sqlite`. Set `CLAUDE_CODEX_NODE` to
+> **Requires Node.js 24+** for stable `node:sqlite`. Set `ANYENGINE_NODE` to
 > pin a node binary if your default is older.
 
 Then install the `codex` shim on the remote host and add a Remote connection in
@@ -32,7 +32,7 @@ the Codex App:
 mkdir -p ~/bin
 cp scripts/codex-shim ~/bin/codex && chmod +x ~/bin/codex
 export PATH="$HOME/bin:$PATH"
-export CLAUDE_CODEX_ADAPTER="$PWD/dist/src/adapter.mjs"
+export ANYENGINE_ADAPTER="$PWD/dist/src/adapter.mjs"
 export ANTHROPIC_API_KEY="<your-anthropic-api-key>" # or authenticate with `claude /login`
 ```
 
@@ -75,7 +75,7 @@ When Codex Full Access is selected, the adapter keeps Claude in its standard per
 auto-allows permission requests through the existing Codex bridge. This avoids Relay's refusal of
 dangerous permission bypass outside a recognized container sandbox while preserving a zero-prompt
 Full Access turn. Operators can still opt into native SDK bypass explicitly with
-`CLAUDE_CODEX_PERMISSION_MODE=bypassPermissions` in an appropriately isolated environment.
+`ANYENGINE_PERMISSION_MODE=bypassPermissions` in an appropriately isolated environment.
 
 ## Current release boundaries
 
@@ -160,11 +160,11 @@ renew the heartbeat only when more time is needed. Do not enqueue duplicates.
 Run events are appended to
 `~/.codex/claude-codex-adapter/runs.jsonl` by default. The registry redacts
 prompt-like fields, model responses, and secret-like values before writing. Set
-`CLAUDE_CODEX_RUN_LOG=0` to disable it, or set `CLAUDE_CODEX_RUN_LOG=/path/log`
+`ANYENGINE_RUN_LOG=0` to disable it, or set `ANYENGINE_RUN_LOG=/path/log`
 to choose a different JSONL file.
 
 Optional per-thread worktree isolation is controlled with
-`CLAUDE_CODEX_WORKTREE_ROOT`. Thread ids are mapped to root-confined,
+`ANYENGINE_WORKTREE_ROOT`. Thread ids are mapped to root-confined,
 collision-resistant labels, and an existing worktree is reused when present.
 If worktree setup fails, the adapter logs the failure and keeps the original
 cwd so the app-server session can continue.

@@ -177,7 +177,7 @@ function looksLikeAdapterShim(path) {
     if (stat.size > 128_000) return false
     const text = readFileSync(path, 'utf8')
     return (
-      text.includes('CLAUDE_CODEX_ADAPTER') ||
+      text.includes('ANYENGINE_ADAPTER') ||
       text.includes('codex shim') ||
       text.includes('CODEX_REAL')
     )

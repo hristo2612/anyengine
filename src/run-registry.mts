@@ -19,7 +19,7 @@ export interface RunRegistryWriteResult {
 }
 
 export function runRegistryPath(env: NodeJS.ProcessEnv = process.env): string | null {
-  const configured = env.CLAUDE_CODEX_RUN_LOG
+  const configured = env.ANYENGINE_RUN_LOG
   if (configured === '0' || configured === 'false') return null
   return resolve(configured || join(adapterHome(), 'runs.jsonl'))
 }

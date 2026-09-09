@@ -283,8 +283,8 @@ state, fixtures, or Codex App config responses.
 
 - Should provider and loop descriptors live in `src/runtime-config.mts`, a new
   `src/provider-descriptors.mts`, or generated config schema?
-- Should `CLAUDE_CODEX_RUNTIME_TYPE` remain the primary selector, or should a
-  later `CLAUDE_CODEX_PROVIDER` plus `CLAUDE_CODEX_AGENT_LOOP` pair become the
+- Should `ANYENGINE_RUNTIME_TYPE` remain the primary selector, or should a
+  later `ANYENGINE_PROVIDER` plus `ANYENGINE_AGENT_LOOP` pair become the
   stable user-facing model?
 - Which credential source labels should be considered stable public API?
 - Should organization gateway support require an allowlist of header env var

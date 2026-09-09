@@ -43,7 +43,7 @@ bridge (`claude-codex-mode model <alias>`).
 :::
 
 ::: warning Native codex passthrough
-In `CLAUDE_CODEX_RUNTIME_TYPE=codex` the shim launches the real Codex
+In `ANYENGINE_RUNTIME_TYPE=codex` the shim launches the real Codex
 app-server, so the adapter is not in the process and cannot switch back from
 in-App controls. Use `claude-codex-mode set codex` / `set agent-sdk-sidecar` on
 the host and reconnect.
@@ -51,7 +51,7 @@ the host and reconnect.
 
 ## agent-http / Channels
 
-Loads the bridge from `$CLAUDE_CODEX_AGENT_HTTP_DIR` (or `~/agent-http`) but
+Loads the bridge from `$ANYENGINE_AGENT_HTTP_DIR` (or `~/agent-http`) but
 launches Claude Code from the thread cwd. Uses `POST /message`, `GET /messages`,
 `GET /status`, `GET /events`; streams message-level deltas only (no semantic
 tool / thinking / permission events).
@@ -79,9 +79,9 @@ final assistant text. Not streaming, no `turn/steer`; defaults to one-shot turns
 `--input-file`).
 
 ```bash
-export CLAUDE_CODEX_RUNTIME_TYPE="claude-p"
-export CLAUDE_CODEX_CLAUDE_P_COMMAND="claude-p"
-# export CLAUDE_CODEX_CLAUDE_P_RESUME=1   # only after verifying --resume + --input-file
+export ANYENGINE_RUNTIME_TYPE="claude-p"
+export ANYENGINE_CLAUDE_P_COMMAND="claude-p"
+# export ANYENGINE_CLAUDE_P_RESUME=1   # only after verifying --resume + --input-file
 ```
 
 ## anyengine (interactive `claude` in a PTY)
@@ -93,8 +93,8 @@ usage, which is the reason this backend exists. The technique is ported from a p
 self-contained in `src/anyengine-*.mts`.
 
 ```bash
-export CLAUDE_CODEX_RUNTIME_TYPE="anyengine"   # aliases: pty, claude-pty
-# export CLAUDE_CODEX_CLI="$HOME/.local/bin/claude"
+export ANYENGINE_RUNTIME_TYPE="anyengine"   # aliases: pty, claude-pty
+# export ANYENGINE_CLI="$HOME/.local/bin/claude"
 ```
 
 How a turn works:
@@ -132,7 +132,7 @@ How a turn works:
    running, or has finished but the main agent has not yet answered its
    notification, keeps the turn open and the later text streams into the
    same turn. The turn completes on the `Stop` after the last result has been
-   consumed, or after `CLAUDE_CODEX_PTY_ASYNC_SUBAGENT_TIMEOUT_MS`
+   consumed, or after `ANYENGINE_PTY_ASYNC_SUBAGENT_TIMEOUT_MS`
    (default 10 min) with what it has; sub-agents that never report get a
    failed placeholder result.
 5. **Streaming.** `ANTHROPIC_BASE_URL` points the CLI at a per-PTY loopback
@@ -145,7 +145,7 @@ How a turn works:
    the turn's prompt-acceptance epoch (`UserPromptSubmit`); requests that
    began before the prompt was accepted, after a held `Stop`, or with no turn
    active are dropped, which keeps the CLI's post-`Stop` follow-up-suggestion
-   call out of the next turn. Set `CLAUDE_CODEX_PTY_STREAM_PROXY=0` to
+   call out of the next turn. Set `ANYENGINE_PTY_STREAM_PROXY=0` to
    disable the proxy — the final text then arrives as one delta at `Stop`.
 6. **Safety prompts.** Claude Code keeps a few hardcoded prompts (dangerous
    `rm`, `&` background operator) that ignore hook decisions. When the CLI
@@ -153,7 +153,7 @@ How a turn works:
    screen and answers it consistently with the App's decision for that tool.
 
 Daemon lifetime: because PTYs stay warm between turns, this runtime defaults
-`CLAUDE_CODEX_IDLE_EXIT_MS` to `0` (never idle-exit). `stop()` kills every PTY
+`ANYENGINE_IDLE_EXIT_MS` to `0` (never idle-exit). `stop()` kills every PTY
 the adapter spawned by pid.
 
 Known limits: `AskUserQuestion` and `ExitPlanMode` are disallowed (they render
@@ -186,7 +186,7 @@ How it works (`src/codex-upstream.mts`, `src/codex-mux.mts`):
    The child is restarted with backoff (1 s, 2 s, 4 s) if it exits and is
    killed by pid when the adapter exits.
 2. **Routing.** `thread/start` picks the owner from the model id: `claude-*`,
-   `opus`, `sonnet`, `haiku`, `fable` and any id in `CLAUDE_CODEX_MODELS` stay
+   `opus`, `sonnet`, `haiku`, `fable` and any id in `ANYENGINE_MODELS` stay
    local; `gpt-*` and anything else go to the child. The owner map is
    persisted in the adapter store (`native_codex_threads`), learned from every
    `thread/started` / `thread/list` the child emits (subagents, `codex_app
@@ -210,16 +210,16 @@ How it works (`src/codex-upstream.mts`, `src/codex-mux.mts`):
 
 ```bash
 # Binary resolution order for the child:
-export CLAUDE_CODEX_REAL_CODEX="/Applications/ChatGPT.app/Contents/Resources/codex"
-#   1. CLAUDE_CODEX_REAL_CODEX   2. the bundled desktop binary above, if present
+export ANYENGINE_REAL_CODEX="/Applications/ChatGPT.app/Contents/Resources/codex"
+#   1. ANYENGINE_REAL_CODEX   2. the bundled desktop binary above, if present
 #   3. CODEX_REAL               (nothing found = multiplexer off, local-only as before)
 
-export CLAUDE_CODEX_GPT_ROUTE="native"   # default; `exec` restores the codex-exec proxy
-export CLAUDE_CODEX_TITLE_ROUTE="real"   # default; `local` answers the desktop's hidden
+export ANYENGINE_GPT_ROUTE="native"   # default; `exec` restores the codex-exec proxy
+export ANYENGINE_TITLE_ROUTE="real"   # default; `local` answers the desktop's hidden
                                          # title/summary threads locally (no ChatGPT quota)
 ```
 
-With `CLAUDE_CODEX_MOCK=1` only an explicit `CLAUDE_CODEX_REAL_CODEX` enables
+With `ANYENGINE_MOCK=1` only an explicit `ANYENGINE_REAL_CODEX` enables
 the multiplexer (the unit tests point it at
 `test/fixtures/fake-codex-app-server.mjs`). The shim must pass the desktop's
 leading `-c` globals through (`scripts/codex-shim` does since this feature
@@ -255,20 +255,20 @@ App's own command / file-change approval. The technique is ported from a prior g
 
 You do not switch the whole adapter to this backend: **picking a `grok-*` model
 in the Codex App's model picker routes that thread to grok**, whatever
-`CLAUDE_CODEX_RUNTIME_TYPE` is (the same rule that sends `gpt-*` to
+`ANYENGINE_RUNTIME_TYPE` is (the same rule that sends `gpt-*` to
 `codex-proxy`). The models appear in the picker whenever a `grok` binary is
-resolvable (`CLAUDE_CODEX_GROK_BIN`, `PATH`, `~/.local/bin/grok`) and are read
+resolvable (`ANYENGINE_GROK_BIN`, `PATH`, `~/.local/bin/grok`) and are read
 from `grok models` (currently `grok-4.6`, `grok-4.5`), shown as "Grok 4.6" and
 "Grok 4.5". Log in once with `grok login`; the adapter never handles xAI
 credentials.
 
 ```bash
 # Optional: pin the binary and the picker entries.
-export CLAUDE_CODEX_GROK_BIN="$HOME/.local/bin/grok"
-export CLAUDE_CODEX_GROK_MODELS="grok-4.6,grok-4.5"   # or a JSON array of ids / {id, displayName}
-# export CLAUDE_CODEX_GROK_ARGS="--debug"              # extra `grok agent` flags
-# export CLAUDE_CODEX_GROK_IDLE_MS=600000              # reap an idle grok process (0 = keep)
-# export CLAUDE_CODEX_DISABLE_GROK=1                   # hide the Grok models
+export ANYENGINE_GROK_BIN="$HOME/.local/bin/grok"
+export ANYENGINE_GROK_MODELS="grok-4.6,grok-4.5"   # or a JSON array of ids / {id, displayName}
+# export ANYENGINE_GROK_ARGS="--debug"              # extra `grok agent` flags
+# export ANYENGINE_GROK_IDLE_MS=600000              # reap an idle grok process (0 = keep)
+# export ANYENGINE_DISABLE_GROK=1                   # hide the Grok models
 ```
 
 How a turn works:

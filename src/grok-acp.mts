@@ -100,7 +100,7 @@ export function normalizeGrokEffort(value: string | null | undefined): string | 
 // `grok agent [-m model] [--reasoning-effort e] [--always-approve] stdio`.
 // The model/effort flags belong to the `agent` subcommand, not `stdio`.
 // ACP `session/new` / `session/load` mcpServers: the stdio entries of the
-// adapter's MCP record (CLAUDE_CODEX_MCP_SERVERS plus the bridge server),
+// adapter's MCP record (ANYENGINE_MCP_SERVERS plus the bridge server),
 // env as ACP's [{name, value}] list. Verified against grok 1.0.x: the server
 // is spawned by grok and its tools reach the model through search_tool /
 // use_tool.

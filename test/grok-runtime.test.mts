@@ -72,7 +72,7 @@ async function harness(env: Record<string, string> = {}): Promise<Harness> {
   const applied = {
     FAKE_GROK_ARGS_FILE: argsFile,
     FAKE_GROK_EVENTS_FILE: eventsFile,
-    CLAUDE_CODEX_DEBUG_LOG: join(home, 'debug.jsonl'),
+    ANYENGINE_DEBUG_LOG: join(home, 'debug.jsonl'),
     ...env,
   }
   for (const [key, value] of Object.entries(applied)) {
@@ -172,21 +172,21 @@ test('grok helpers: model detection, session ids, argv, display names', () => {
     ['grok-4.6', 'grok-4.5'],
   )
   assert.deepEqual(
-    grokModelOptions({ CLAUDE_CODEX_GROK_MODELS: 'grok-4.6, grok-4.5' }).map((m) => m.displayName),
+    grokModelOptions({ ANYENGINE_GROK_MODELS: 'grok-4.6, grok-4.5' }).map((m) => m.displayName),
     ['Grok 4.6', 'Grok 4.5'],
   )
   assert.deepEqual(
     grokModelOptions({
-      CLAUDE_CODEX_GROK_MODELS: '["grok-4.6",{"id":"grok-4.5","displayName":"Grok Fast"}]',
+      ANYENGINE_GROK_MODELS: '["grok-4.6",{"id":"grok-4.5","displayName":"Grok Fast"}]',
     }).map((m) => [m.id, m.displayName]),
     [
       ['grok-4.6', 'Grok 4.6'],
       ['grok-4.5', 'Grok Fast'],
     ],
   )
-  assert.deepEqual(grokModelOptions({ CLAUDE_CODEX_MOCK: '1', PATH: '' }), [])
+  assert.deepEqual(grokModelOptions({ ANYENGINE_MOCK: '1', PATH: '' }), [])
   assert.deepEqual(
-    grokModelOptions({ CLAUDE_CODEX_GROK_MODELS: 'grok-4.6', CLAUDE_CODEX_DISABLE_GROK: '1' }),
+    grokModelOptions({ ANYENGINE_GROK_MODELS: 'grok-4.6', ANYENGINE_DISABLE_GROK: '1' }),
     [],
   )
 })
@@ -525,16 +525,16 @@ test('adapter routes a grok-* thread to the grok runtime and lists Grok models',
     env: {
       ...process.env,
       CODEX_HOME: home,
-      CLAUDE_CODEX_HOME: join(home, 'adapter-home'),
-      CLAUDE_CODEX_DEBUG_LOG: join(home, 'debug.jsonl'),
+      ANYENGINE_HOME: join(home, 'adapter-home'),
+      ANYENGINE_DEBUG_LOG: join(home, 'debug.jsonl'),
       // Configured default is the mock runtime; the grok-* model must still
       // select the grok runtime per thread (mirrors gpt-* -> codex-proxy).
-      CLAUDE_CODEX_RUNTIME_TYPE: 'mock',
-      CLAUDE_CODEX_MOCK: '',
-      CLAUDE_CODEX_DISABLE_CODEX_PROXY: '1',
-      CLAUDE_CODEX_MODELS: 'sonnet',
-      CLAUDE_CODEX_GROK_BIN: fakeGrok,
-      CLAUDE_CODEX_GROK_MODELS: 'grok-4.6,grok-4.5',
+      ANYENGINE_RUNTIME_TYPE: 'mock',
+      ANYENGINE_MOCK: '',
+      ANYENGINE_DISABLE_CODEX_PROXY: '1',
+      ANYENGINE_MODELS: 'sonnet',
+      ANYENGINE_GROK_BIN: fakeGrok,
+      ANYENGINE_GROK_MODELS: 'grok-4.6,grok-4.5',
       FAKE_GROK_ARGS_FILE: argsFile,
       FAKE_GROK_EVENTS_FILE: eventsFile,
       NODE_NO_WARNINGS: '1',

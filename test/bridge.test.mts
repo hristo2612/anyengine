@@ -98,20 +98,20 @@ function socketPathFor(home: string): string {
 function launchAdapter(home: string): LineClient {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    CLAUDE_CODEX_MOCK: '1',
-    CLAUDE_CODEX_HOME: home,
-    CLAUDE_CODEX_DEBUG_LOG: join(home, 'debug.jsonl'),
-    CLAUDE_CODEX_REAL_CODEX: fakeCodex,
-    CLAUDE_CODEX_MODELS: 'opus,sonnet',
-    CLAUDE_CODEX_DEFAULT_MODEL: 'opus',
-    CLAUDE_CODEX_RUNTIME_TYPE: 'mock',
-    CLAUDE_CODEX_BRIDGE_SOCKET: socketPathFor(home),
-    CLAUDE_CODEX_BRIDGE_TOKEN: TOKEN,
-    CLAUDE_CODEX_SUBAGENT_COMPLETED: '1',
+    ANYENGINE_MOCK: '1',
+    ANYENGINE_HOME: home,
+    ANYENGINE_DEBUG_LOG: join(home, 'debug.jsonl'),
+    ANYENGINE_REAL_CODEX: fakeCodex,
+    ANYENGINE_MODELS: 'opus,sonnet',
+    ANYENGINE_DEFAULT_MODEL: 'opus',
+    ANYENGINE_RUNTIME_TYPE: 'mock',
+    ANYENGINE_BRIDGE_SOCKET: socketPathFor(home),
+    ANYENGINE_BRIDGE_TOKEN: TOKEN,
+    ANYENGINE_SUBAGENT_COMPLETED: '1',
   }
-  delete env.CLAUDE_CODEX_GPT_ROUTE
-  delete env.CLAUDE_CODEX_RUNTIME_ENV
-  delete env.CLAUDE_CODEX_NATIVE_CODEX
+  delete env.ANYENGINE_GPT_ROUTE
+  delete env.ANYENGINE_RUNTIME_ENV
+  delete env.ANYENGINE_NATIVE_CODEX
   const child = spawn(process.execPath, [adapter, 'app-server'], {
     env,
     stdio: ['pipe', 'pipe', 'inherit'],
@@ -123,11 +123,11 @@ function launchAdapter(home: string): LineClient {
 function launchBridge(home: string, threadId: string | null): LineClient {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
-    CLAUDE_CODEX_BRIDGE_SOCKET: socketPathFor(home),
-    CLAUDE_CODEX_BRIDGE_TOKEN: TOKEN,
+    ANYENGINE_BRIDGE_SOCKET: socketPathFor(home),
+    ANYENGINE_BRIDGE_TOKEN: TOKEN,
   }
-  if (threadId) env.CLAUDE_CODEX_BRIDGE_THREAD = threadId
-  else delete env.CLAUDE_CODEX_BRIDGE_THREAD
+  if (threadId) env.ANYENGINE_BRIDGE_THREAD = threadId
+  else delete env.ANYENGINE_BRIDGE_THREAD
   const child = spawn(process.execPath, [adapter, 'bridge-mcp'], {
     env,
     stdio: ['pipe', 'pipe', 'inherit'],
@@ -211,17 +211,15 @@ test('bridge: pure helpers (routing, MCP records, codex override, rendering)', (
   const spec = merged.anyengine as Record<string, any>
   assert.equal(spec.command, process.execPath)
   assert.equal(spec.args[1], 'bridge-mcp')
-  assert.equal(spec.env.CLAUDE_CODEX_BRIDGE_THREAD, 'thread-1')
-  assert.equal(spec.env.CLAUDE_CODEX_BRIDGE_TOKEN, 'secret-token')
+  assert.equal(spec.env.ANYENGINE_BRIDGE_THREAD, 'thread-1')
+  assert.equal(spec.env.ANYENGINE_BRIDGE_TOKEN, 'secret-token')
   assert.deepEqual(mcpServerRecord(null), {})
 
   const acp = acpMcpServers(merged)
   assert.equal(acp.length, 2)
   const bridgeAcp = acp.find((s) => s.name === 'anyengine') as Record<string, any>
   assert.ok(
-    bridgeAcp.env.some(
-      (e: any) => e.name === 'CLAUDE_CODEX_BRIDGE_THREAD' && e.value === 'thread-1',
-    ),
+    bridgeAcp.env.some((e: any) => e.name === 'ANYENGINE_BRIDGE_THREAD' && e.value === 'thread-1'),
   )
 
   const codexArgs = control.codexConfigArgs()
@@ -229,7 +227,7 @@ test('bridge: pure helpers (routing, MCP records, codex override, rendering)', (
   assert.match(codexArgs[1] ?? '', /^mcp_servers\.anyengine=\{command=/)
   assert.match(codexArgs[1] ?? '', /tool_timeout_sec=3600/)
   assert.ok(!codexArgs[1]?.includes('secret-token'), 'token never appears in argv')
-  assert.equal(control.codexChildEnv().CLAUDE_CODEX_BRIDGE_TOKEN, 'secret-token')
+  assert.equal(control.codexChildEnv().ANYENGINE_BRIDGE_TOKEN, 'secret-token')
 
   assert.deepEqual(
     BRIDGE_TOOLS.map((t) => t.name),
@@ -561,8 +559,8 @@ test('bridge: standing instructions are generated from the catalog and toggled b
   assert.equal(appendBridgeInstructions(null, ALIAS_CATALOG), text)
 
   assert.equal(bridgeInstructionsEnabled({}), true)
-  assert.equal(bridgeInstructionsEnabled({ CLAUDE_CODEX_BRIDGE_INSTRUCTIONS: '0' }), false)
-  assert.equal(bridgeInstructionsEnabled({ CLAUDE_CODEX_BRIDGE_INSTRUCTIONS: '1' }), true)
+  assert.equal(bridgeInstructionsEnabled({ ANYENGINE_BRIDGE_INSTRUCTIONS: '0' }), false)
+  assert.equal(bridgeInstructionsEnabled({ ANYENGINE_BRIDGE_INSTRUCTIONS: '1' }), true)
 })
 
 // The same addendum reaches every engine: Claude through the per-turn

@@ -306,7 +306,7 @@ export interface RuntimeTurnContext {
   systemPromptAddendum: string | null
   // Drive Claude SDK permission_mode='plan' for this turn — Claude generates
   // a plan but does not execute tools. Set when the App requests `planMode`
-  // on turn/start (or when CLAUDE_CODEX_PERMISSION_MODE=plan globally).
+  // on turn/start (or when ANYENGINE_PERMISSION_MODE=plan globally).
   planMode: boolean
   // Multimodal input attached to the turn. localImage gets read + base64
   // encoded; image (URL) is passed through as-is. Sidecar reshapes the

@@ -551,8 +551,8 @@ export class AnyengineRuntime implements ClaudeRuntime {
     // the "resume from summary?" picker so --resume always full-resumes.
     env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN = '1'
     env.CLAUDE_CODE_RESUME_TOKEN_THRESHOLD = '999999999'
-    env.CLAUDE_CODEX_PTY_HOOK_URL = this.hooks.url
-    env.CLAUDE_CODEX_PTY_HOOK_TOKEN = this.hooks.token
+    env.ANYENGINE_PTY_HOOK_URL = this.hooks.url
+    env.ANYENGINE_PTY_HOOK_TOKEN = this.hooks.token
     if (proxy) {
       env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${proxy.port}`
       // The proxy forwards unchanged, so this still is a first-party session;
@@ -983,7 +983,8 @@ export class AnyengineRuntime implements ClaudeRuntime {
       await turn.handlers.onEvent({
         type: 'notice',
         level: 'warning',
-        message: 'anyengine: Claude Code is blocked on a safety prompt; auto-answering is disabled.',
+        message:
+          'anyengine: Claude Code is blocked on a safety prompt; auto-answering is disabled.',
       })
       return
     }

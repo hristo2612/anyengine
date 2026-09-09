@@ -1,5 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync } from 'node:fs'
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+} from 'node:fs'
 import { homedir, platform, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { ImageInput } from './types.mjs'
@@ -21,7 +30,7 @@ export function codexHome(): string {
 }
 
 export function adapterHome(): string {
-  return resolve(process.env.CLAUDE_CODEX_HOME || join(codexHome(), 'claude-codex-adapter'))
+  return resolve(process.env.ANYENGINE_HOME || join(codexHome(), 'claude-codex-adapter'))
 }
 
 // Unix domain socket paths are bounded by sockaddr_un.sun_path — roughly 104
@@ -43,9 +52,8 @@ export function ensureParent(path: string): void {
 }
 
 export function debugLog(event: string, data: Record<string, unknown> = {}): void {
-  if (process.env.CLAUDE_CODEX_DEBUG_LOG === '0' || process.env.CLAUDE_CODEX_DEBUG_LOG === 'false')
-    return
-  const path = resolve(process.env.CLAUDE_CODEX_DEBUG_LOG || join(adapterHome(), 'debug.jsonl'))
+  if (process.env.ANYENGINE_DEBUG_LOG === '0' || process.env.ANYENGINE_DEBUG_LOG === 'false') return
+  const path = resolve(process.env.ANYENGINE_DEBUG_LOG || join(adapterHome(), 'debug.jsonl'))
   try {
     ensureParent(path)
     rotateLogIfNeeded(path)
@@ -67,9 +75,9 @@ export function debugLog(event: string, data: Record<string, unknown> = {}): voi
 // dropping anything older. Sized envs override; failures swallow because the
 // debug log is best-effort and must never break the main flow.
 export function rotateLogIfNeeded(path: string): void {
-  const maxBytes = numericEnv('CLAUDE_CODEX_DEBUG_LOG_MAX_BYTES', 50 * 1024 * 1024)
+  const maxBytes = numericEnv('ANYENGINE_DEBUG_LOG_MAX_BYTES', 50 * 1024 * 1024)
   if (maxBytes <= 0) return
-  const keep = Math.max(1, numericEnv('CLAUDE_CODEX_DEBUG_LOG_KEEP', 3))
+  const keep = Math.max(1, numericEnv('ANYENGINE_DEBUG_LOG_KEEP', 3))
   let size = 0
   try {
     size = statSync(path).size
@@ -121,12 +129,12 @@ export function platformOs(): string {
 // generate:schema`). The 0.130 -> 0.142 delta is additive/widening (new
 // optional methods + enum variants), so reporting 0.142 stays compatible with
 // older Codex App builds while satisfying newer ones' minimum-version probe.
-// Override per host with CLAUDE_CODEX_COMPAT_VERSION.
+// Override per host with ANYENGINE_COMPAT_VERSION.
 const DEFAULT_CODEX_COMPAT_VERSION = '0.142.3'
 
 export function codexCompatVersion(): string {
   return (
-    process.env.CLAUDE_CODEX_COMPAT_VERSION ||
+    process.env.ANYENGINE_COMPAT_VERSION ||
     process.env.CODEX_SHIM_COMPAT_VERSION ||
     DEFAULT_CODEX_COMPAT_VERSION
   )
@@ -134,12 +142,12 @@ export function codexCompatVersion(): string {
 
 // Distinguishing tag appended after the (clean, probe-parseable) version so the
 // Claude adapter is identifiable next to a real `codex` that now reports the
-// same version. Set CLAUDE_CODEX_VERSION_SUFFIX="" to disable and behave exactly
+// same version. Set ANYENGINE_VERSION_SUFFIX="" to disable and behave exactly
 // like upstream codex.
 const DEFAULT_VERSION_SUFFIX = 'claude-codex'
 
 export function codexVersionSuffix(): string {
-  return process.env.CLAUDE_CODEX_VERSION_SUFFIX ?? DEFAULT_VERSION_SUFFIX
+  return process.env.ANYENGINE_VERSION_SUFFIX ?? DEFAULT_VERSION_SUFFIX
 }
 
 export function codexCliVersion(): string {
@@ -325,7 +333,7 @@ function getDiscoveredRouterModelsCached(): Set<string> {
 }
 
 let cachedClaudeModelOptions: { expiresAt: number; data: Array<any> } | null = null
-let cachedCodexProxyModelOptions: { expiresAt: number; data: Array<any> } | null = null
+const cachedCodexProxyModelOptions: { expiresAt: number; data: Array<any> } | null = null
 
 export function claudeModelOptions(): Array<{
   id: string
@@ -334,7 +342,7 @@ export function claudeModelOptions(): Array<{
   description: string
   isDefault?: boolean
 }> {
-  const configured = process.env.CLAUDE_CODEX_MODELS
+  const configured = process.env.ANYENGINE_MODELS
   if (configured) {
     try {
       const parsed = JSON.parse(configured)
@@ -418,13 +426,12 @@ export function resolveClaudeModel(
   const raw = (model ?? '').trim()
   if (purpose === 'summary') {
     const summaryModel =
-      process.env.CLAUDE_CODEX_SUMMARY_MODEL || process.env.CLAUDE_CODEX_TITLE_MODEL || 'haiku'
+      process.env.ANYENGINE_SUMMARY_MODEL || process.env.ANYENGINE_TITLE_MODEL || 'haiku'
     if (isCodexOpenAiModel(raw) || !raw) return summaryModel
   }
   if (!raw || raw === 'default' || raw === 'claude-default')
-    return process.env.CLAUDE_CODEX_DEFAULT_MODEL || null
-  if (raw === 'claude-code' || raw === 'custom')
-    return process.env.CLAUDE_CODEX_DEFAULT_MODEL || null
+    return process.env.ANYENGINE_DEFAULT_MODEL || null
+  if (raw === 'claude-code' || raw === 'custom') return process.env.ANYENGINE_DEFAULT_MODEL || null
   const aliases: Record<string, string> = {
     'claude-sonnet': 'sonnet',
     'claude-opus': 'opus',
@@ -434,13 +441,16 @@ export function resolveClaudeModel(
     'opus-plan': 'opusplan',
     'claude-opus-plan': 'opusplan',
   }
-  const envAliases = parseJsonObject(process.env.CLAUDE_CODEX_MODEL_ALIASES)
+  const envAliases = parseJsonObject(process.env.ANYENGINE_MODEL_ALIASES)
   const mapped = typeof envAliases[raw] === 'string' ? envAliases[raw] : aliases[raw]
   if (mapped) return mapped
   // Case-insensitive match against configured models (e.g. GLM-5.3 -> glm-5.3)
-  const configured = process.env.CLAUDE_CODEX_MODELS
+  const configured = process.env.ANYENGINE_MODELS
   if (configured) {
-    const list = configured.split(',').map((s) => s.trim()).filter(Boolean)
+    const list = configured
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
     const matched = list.find((m) => m.toLowerCase() === raw.toLowerCase())
     if (matched) return matched
   }
@@ -450,11 +460,11 @@ export function resolveClaudeModel(
     if (id.toLowerCase() === raw.toLowerCase()) return id
   }
   if (isNativeClaudeModel(raw)) return raw
-  return process.env.CLAUDE_CODEX_DEFAULT_MODEL || null
+  return process.env.ANYENGINE_DEFAULT_MODEL || null
 }
 
 export function defaultAllowedTools(): string[] | null {
-  const raw = process.env.CLAUDE_CODEX_ALLOWED_TOOLS
+  const raw = process.env.ANYENGINE_ALLOWED_TOOLS
   if (raw == null || raw.trim() === '') return null
   const value = raw.trim()
   if (value === '*' || value.toLowerCase() === 'default') return null
@@ -485,7 +495,7 @@ export function resolveClaudeEffort(
   value: string | null | undefined,
 ): 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null {
   const raw = (value ?? '').trim()
-  const envAliases = parseJsonObject(process.env.CLAUDE_CODEX_EFFORT_ALIASES)
+  const envAliases = parseJsonObject(process.env.ANYENGINE_EFFORT_ALIASES)
   const mapped = typeof envAliases[raw] === 'string' ? envAliases[raw] : raw
   if (
     mapped === 'low' ||
@@ -561,8 +571,8 @@ export function codexProxyModelOptions(): Array<{
   // Suppressed in mock / opt-out flows. Mock runtime tests assume a clean
   // Claude-only model list; environments without a real Codex shouldn't see
   // unusable picker entries.
-  if (process.env.CLAUDE_CODEX_MOCK === '1') return []
-  if (process.env.CLAUDE_CODEX_DISABLE_CODEX_PROXY === '1') return []
+  if (process.env.ANYENGINE_MOCK === '1') return []
+  if (process.env.ANYENGINE_DISABLE_CODEX_PROXY === '1') return []
   // Retired as the default gpt-* route: the native-codex multiplexer forwards
   // gpt-* threads to a real `codex app-server` child. `codex exec` remains
   // opt-in for hosts without the desktop binary.
@@ -572,10 +582,13 @@ export function codexProxyModelOptions(): Array<{
   if (cachedCodexProxyModelOptions && cachedCodexProxyModelOptions.expiresAt > now) {
     return cachedCodexProxyModelOptions.data
   }
-  const env = process.env.CLAUDE_CODEX_CODEX_MODELS
+  const env = process.env.ANYENGINE_CODEX_MODELS
   let ids: string[] = []
   if (env && env.trim()) {
-    ids = env.split(',').map((s) => s.trim()).filter(Boolean)
+    ids = env
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
   } else {
     const catalogCandidates = [
       '/data00/home/zhengyongchuan/.codex/model_catalog.json',
@@ -605,11 +618,11 @@ export function codexProxyModelOptions(): Array<{
   }))
 }
 
-// CLAUDE_CODEX_GPT_ROUTE=exec keeps the legacy `codex exec` proxy for gpt-*
+// ANYENGINE_GPT_ROUTE=exec keeps the legacy `codex exec` proxy for gpt-*
 // threads. Anything else (default `native`) routes gpt-* to the real
 // app-server child via the multiplexer.
 export function codexExecRouteEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = (env.CLAUDE_CODEX_GPT_ROUTE ?? '').trim().toLowerCase()
+  const raw = (env.ANYENGINE_GPT_ROUTE ?? '').trim().toLowerCase()
   return raw === 'exec' || raw === 'codex-exec' || raw === 'proxy'
 }
 
@@ -621,7 +634,10 @@ export function resolveCodexBinary(): string | null {
   if (explicit && explicit.trim()) return explicit.trim()
   const knownCandidates = [
     '/data00/home/zhengyongchuan/.local/node/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex.real',
-    join(homedir(), '.local/node/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex.real'),
+    join(
+      homedir(),
+      '.local/node/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex.real',
+    ),
   ]
   for (const c of knownCandidates) {
     if (existsSync(c)) return c
@@ -629,7 +645,7 @@ export function resolveCodexBinary(): string | null {
   // PATH walk is mostly for dev — production deployments should set
   // CODEX_REAL explicitly in the shim env (~/.zshenv).
   const paths = (process.env.PATH ?? '').split(':').filter(Boolean)
-  
+
   for (const dir of paths) {
     const candidate = `${dir}/codex`
     try {
@@ -638,7 +654,7 @@ export function resolveCodexBinary(): string | null {
       // Skip our shim — a hashbang + 'CLAUDE_CODEX' header is a strong
       // signal it's our codex-shim and would recurse.
       const head = readFileSync(candidate, { encoding: 'utf8' }).slice(0, 200)
-      if (head.includes('CLAUDE_CODEX_ADAPTER') || head.includes('claude-codex')) continue
+      if (head.includes('ANYENGINE_ADAPTER') || head.includes('claude-codex')) continue
       return candidate
     } catch {}
   }

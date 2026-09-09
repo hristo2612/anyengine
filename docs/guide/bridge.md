@@ -52,14 +52,14 @@ in `src/bridge-instructions.mts`):
   (`turn/start` has no instruction fields in the v2 schema). The desktop's
   own instructions stay first; a resend never stacks a second copy.
 
-`CLAUDE_CODEX_BRIDGE_INSTRUCTIONS=0` turns the injection off (the tools stay
+`ANYENGINE_BRIDGE_INSTRUCTIONS=0` turns the injection off (the tools stay
 available; the model then needs to be told about them).
 
 ## Tools
 
 | Tool | What it does |
 | --- | --- |
-| `list_models()` | The merged catalog (`model/list`): GPT ids from the native child when attached, the Claude entries from `CLAUDE_CODEX_MODELS`, the Grok models. Ids, display names, provider. |
+| `list_models()` | The merged catalog (`model/list`): GPT ids from the native child when attached, the Claude entries from `ANYENGINE_MODELS`, the Grok models. Ids, display names, provider. |
 | `spawn_session({ model, prompt, cwd?, title?, wait?, timeoutMs? })` | New top-level thread (visible in the App sidebar), one turn. Waits for the answer by default (10 min). Returns `{ threadId, turnId, status, text }`. |
 | `spawn_subagents({ tasks: [{ model, prompt, name? }], cwd?, timeoutMs?, parentThreadId? })` | Runs the tasks in parallel as **children of the calling thread**; returns every result. The App shows them as native sub-agents under the parent. |
 | `send_to_session({ threadId, prompt, wait?, timeoutMs? })` | Another turn on an existing thread (spawned or not). |
@@ -98,20 +98,20 @@ The adapter builds the server spec once per thread:
 ```json
 { "anyengine": { "type": "stdio",
                    "command": "<node>", "args": ["<dist>/src/adapter.mjs", "bridge-mcp"],
-                   "env": { "CLAUDE_CODEX_BRIDGE_SOCKET": "…/bridge-<pid>.sock",
-                            "CLAUDE_CODEX_BRIDGE_TOKEN": "<per-process>",
-                            "CLAUDE_CODEX_BRIDGE_THREAD": "<calling thread id>" } } }
+                   "env": { "ANYENGINE_BRIDGE_SOCKET": "…/bridge-<pid>.sock",
+                            "ANYENGINE_BRIDGE_TOKEN": "<per-process>",
+                            "ANYENGINE_BRIDGE_THREAD": "<calling thread id>" } } }
 ```
 
 - **Claude (`anyengine`, native SDK)** — merged into the turn's `mcpServers`
-  next to `CLAUDE_CODEX_MCP_SERVERS`; `anyengine` writes it to the
+  next to `ANYENGINE_MCP_SERVERS`; `anyengine` writes it to the
   `--mcp-config` file it already passes to `claude`. One PTY per thread, so
   the thread id rides the server env.
 - **Grok** — the same record converted to ACP `session/new` / `session/load`
   `mcpServers` (`env` as `[{name, value}]`). Grok reaches the tools through its
   `search_tool` / `use_tool` pair.
 - **GPT (native child)** — the adapter appends
-  `-c mcp_servers.anyengine={command=…,args=[…],env_vars=["CLAUDE_CODEX_BRIDGE_SOCKET","CLAUDE_CODEX_BRIDGE_TOKEN"],tool_timeout_sec=3600,enabled=true}`
+  `-c mcp_servers.anyengine={command=…,args=[…],env_vars=["ANYENGINE_BRIDGE_SOCKET","ANYENGINE_BRIDGE_TOKEN"],tool_timeout_sec=3600,enabled=true}`
   to the child's argv (after the desktop's own `-c` globals) and puts the two
   variables in the child's environment; the token never appears in argv.
   Codex spawns one bridge per process, so there is no thread id: the adapter
@@ -126,8 +126,8 @@ three variables set.
 `bridge-control.mts` listens on a unix socket under the adapter home
 (`bridge-<pid>.sock`, dir mode 0700) and requires `Authorization: Bearer
 <token>` on the WebSocket upgrade; the token is random per adapter process.
-Both can be pinned (`CLAUDE_CODEX_BRIDGE_SOCKET`, `CLAUDE_CODEX_BRIDGE_TOKEN`;
-the tests do). `CLAUDE_CODEX_BRIDGE=0` disables the bridge entirely. Stale
+Both can be pinned (`ANYENGINE_BRIDGE_SOCKET`, `ANYENGINE_BRIDGE_TOKEN`;
+the tests do). `ANYENGINE_BRIDGE=0` disables the bridge entirely. Stale
 sockets from dead adapters are reaped on start.
 
 ## Testing

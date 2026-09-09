@@ -34,7 +34,7 @@ versioning or publishing metadata.
   `config.provider_loop_config` field through `config/read`.
 - Added explicit provider/agent-loop selection for known descriptor ids and loop
   ids. Selection maps only to existing runtime backends, preserves legacy
-  runtime environment overrides and `CLAUDE_CODEX_MOCK=1` precedence, filters
+  runtime environment overrides and `ANYENGINE_MOCK=1` precedence, filters
   raw saved selection keys from public `config/read`, and exposes sanitized
   selection metadata through `config.provider_loop_config.selection`.
 - Added tests proving built-in descriptors validate cleanly, unsupported
@@ -63,8 +63,8 @@ versioning or publishing metadata.
   descriptor and selection boundaries, supported credential ownership models,
   unsupported subscription/session/private endpoint/bypass behavior, and release
   verification expectations.
-- Documented provider selection configuration for `CLAUDE_CODEX_PROVIDER`,
-  `CLAUDE_CODEX_AGENT_LOOP`, saved provider-loop config keys, precedence rules,
+- Documented provider selection configuration for `ANYENGINE_PROVIDER`,
+  `ANYENGINE_AGENT_LOOP`, saved provider-loop config keys, precedence rules,
   and sanitized `config.provider_loop_config.selection` projection.
 - Documented the current shippable baseline: TypeScript remains the production
   path; Rust pieces are opt-in protocol boundary work; provider/loop descriptors

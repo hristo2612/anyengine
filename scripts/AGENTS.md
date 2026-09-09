@@ -7,7 +7,7 @@ plain `.mjs` / shell.
 ## Map
 
 - `codex-shim` — the `PATH` shim Codex App invokes. Routes `codex app-server`
-  into the adapter (`CLAUDE_CODEX_ADAPTER`), passing the desktop's leading `-c`
+  into the adapter (`ANYENGINE_ADAPTER`), passing the desktop's leading `-c`
   globals through so the adapter can replay them to the real child; forwards
   everything else to the real Codex CLI (`CODEX_REAL`). Keep it
   dependency-free and bash-3.2 safe (macOS `/bin/bash`).

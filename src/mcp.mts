@@ -10,7 +10,7 @@ export interface McpConfigSnapshot {
 }
 
 export function readMcpConfig(): McpConfigSnapshot {
-  const raw = process.env.CLAUDE_CODEX_MCP_SERVERS
+  const raw = process.env.ANYENGINE_MCP_SERVERS
   if (!raw) return { sdkValue: null, listStatuses: [], startupStatuses: [] }
 
   try {
@@ -28,8 +28,8 @@ export function readMcpConfig(): McpConfigSnapshot {
     const message = error instanceof Error ? error.message : String(error)
     return {
       sdkValue: null,
-      listStatuses: [listStatusEntry('CLAUDE_CODEX_MCP_SERVERS')],
-      startupStatuses: [{ name: 'CLAUDE_CODEX_MCP_SERVERS', status: 'failed', error: message }],
+      listStatuses: [listStatusEntry('ANYENGINE_MCP_SERVERS')],
+      startupStatuses: [{ name: 'ANYENGINE_MCP_SERVERS', status: 'failed', error: message }],
     }
   }
 }
@@ -271,7 +271,7 @@ function getServerConfig(serverName: string): Record<string, unknown> {
   const snapshot = readMcpConfig()
   const value = snapshot.sdkValue
   if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error('CLAUDE_CODEX_MCP_SERVERS is not an object config')
+    throw new Error('ANYENGINE_MCP_SERVERS is not an object config')
   const config = (value as Record<string, unknown>)[serverName]
   if (!config || typeof config !== 'object' || Array.isArray(config))
     throw new Error(`unknown MCP server: ${serverName}`)

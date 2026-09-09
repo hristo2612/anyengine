@@ -22,7 +22,7 @@ command-line Codex usage.
 
 - **Node.js 24+** — the thread store uses `node:sqlite`, which Node 22 hides
   behind `--experimental-sqlite`. The adapter does not pass that flag, so it
-  crashes at runtime on 22. Pin a binary with `CLAUDE_CODEX_NODE` if needed.
+  crashes at runtime on 22. Pin a binary with `ANYENGINE_NODE` if needed.
 - **Claude Code auth** — provide your own `ANTHROPIC_API_KEY`, supported
   cloud-provider credentials, or a local `claude /login` session. Inject
   credentials through your shell or secret manager; do not commit keys, OAuth
@@ -50,10 +50,10 @@ The only runtime dependency for Claude itself is
 
 ## Local protocol testing
 
-Set `CLAUDE_CODEX_MOCK=1` to exercise the protocol without Claude credentials:
+Set `ANYENGINE_MOCK=1` to exercise the protocol without Claude credentials:
 
 ```bash
-CLAUDE_CODEX_MOCK=1 node dist/src/adapter.mjs app-server --listen ws://127.0.0.1:8788
+ANYENGINE_MOCK=1 node dist/src/adapter.mjs app-server --listen ws://127.0.0.1:8788
 ```
 
 ## Transports / modes

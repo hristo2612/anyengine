@@ -13,7 +13,7 @@ import { claudeModelOptions, codexExecRouteEnabled, debugLog, isCodexOpenAiModel
 // decides per message which side owns it:
 //
 // - Claude threads (model claude-*/opus/sonnet/haiku/fable or any id in
-//   CLAUDE_CODEX_MODELS) stay on the local runtime exactly as before.
+//   ANYENGINE_MODELS) stay on the local runtime exactly as before.
 // - gpt-* and every other model, plus every thread the child created itself
 //   (subagents, `codex_app create_thread`, CLI resumes), belong to the child.
 //   Ownership is learned from the child's `thread/started` / list results and
@@ -300,7 +300,7 @@ export class NativeCodexMux {
       params.threadSource === 'memory_consolidation'
     if (
       isTitleOrHelper &&
-      (process.env.CLAUDE_CODEX_TITLE_ROUTE ?? '').trim().toLowerCase() === 'local'
+      (process.env.ANYENGINE_TITLE_ROUTE ?? '').trim().toLowerCase() === 'local'
     ) {
       // Free title shortcut: the local runtime answers structured summary
       // turns without spending ChatGPT quota, regardless of the model id.
@@ -532,7 +532,7 @@ export class NativeCodexMux {
   private rateLimitReachedCache: { at: number; reached: boolean } | null = null
 
   private async shouldHideReserveModels(): Promise<boolean> {
-    if ((process.env.CLAUDE_CODEX_HIDE_RATE_LIMIT_UPSELL ?? '').trim() !== '1') return false
+    if ((process.env.ANYENGINE_HIDE_RATE_LIMIT_UPSELL ?? '').trim() !== '1') return false
     const now = Date.now()
     if (this.rateLimitReachedCache && now - this.rateLimitReachedCache.at < RATE_LIMIT_CACHE_MS)
       return this.rateLimitReachedCache.reached

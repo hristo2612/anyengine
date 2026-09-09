@@ -75,15 +75,15 @@ Run events are appended to:
 ```
 
 The registry redacts prompt-like fields, model responses, and secret-like
-values before writing. Set `CLAUDE_CODEX_RUN_LOG=0` to disable the registry, or
-set `CLAUDE_CODEX_RUN_LOG=/path/to/runs.jsonl` to choose another JSONL file.
+values before writing. Set `ANYENGINE_RUN_LOG=0` to disable the registry, or
+set `ANYENGINE_RUN_LOG=/path/to/runs.jsonl` to choose another JSONL file.
 
 The registry is for operational evidence, not transcript storage. Do not depend
 on it for raw prompt, response, credential, or user-secret recovery.
 
 ## Worktree isolation
 
-Set `CLAUDE_CODEX_WORKTREE_ROOT` to enable optional per-thread git worktrees.
+Set `ANYENGINE_WORKTREE_ROOT` to enable optional per-thread git worktrees.
 Each thread id is mapped to a root-confined, collision-resistant label. If the
 worktree already exists, it is reused. If setup fails, the adapter logs the
 failure and keeps the original cwd so the app-server session can continue.

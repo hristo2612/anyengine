@@ -11,9 +11,9 @@ const root = resolve('.')
 const adapter = resolve('dist/src/adapter.mjs')
 const nodeBin = process.execPath
 const remotePath = process.env.PATH ?? ''
-const claudeCli = process.env.CLAUDE_CODEX_CLI ?? findExecutable('claude')
-const host = process.env.CLAUDE_CODEX_GUI_SSH_HOST || 'localhost'
-const requireRealRuntime = process.env.CLAUDE_CODEX_GUI_SSH_REQUIRE_REAL === '1'
+const claudeCli = process.env.ANYENGINE_CLI ?? findExecutable('claude')
+const host = process.env.ANYENGINE_GUI_SSH_HOST || 'localhost'
+const requireRealRuntime = process.env.ANYENGINE_GUI_SSH_REQUIRE_REAL === '1'
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
 const base = resolve('.claude-codex', `gui-ssh-localhost-${stamp}`)
 const home = join(base, 'codex-home')
@@ -50,7 +50,7 @@ async function main() {
     // node_modules, no Python sidecar to probe anymore.
     const probe = runSsh(
       remoteShell(
-        `${remoteEnv()}; cd ${shQuote(root)}; printf "codex=%s\\n" "$(command -v codex)"; codex --version; printf "adapter=%s\\n" "$CLAUDE_CODEX_ADAPTER"; "$CLAUDE_CODEX_NODE" -e "import(\\"@anthropic-ai/claude-agent-sdk\\").then(()=>console.log(\\"sdk-ok\\"))"`,
+        `${remoteEnv()}; cd ${shQuote(root)}; printf "codex=%s\\n" "$(command -v codex)"; codex --version; printf "adapter=%s\\n" "$ANYENGINE_ADAPTER"; "$ANYENGINE_NODE" -e "import(\\"@anthropic-ai/claude-agent-sdk\\").then(()=>console.log(\\"sdk-ok\\"))"`,
       ),
     )
     assert.match(
@@ -68,7 +68,7 @@ async function main() {
       }
       useMockRuntime = true
       console.warn(
-        `Remote Claude auth unavailable over SSH; using CLAUDE_CODEX_MOCK=1 (${authProbe.message})`,
+        `Remote Claude auth unavailable over SSH; using ANYENGINE_MOCK=1 (${authProbe.message})`,
       )
     }
 
@@ -243,11 +243,11 @@ function remoteEnv(options = {}) {
   const exports = [
     `export PATH=${shQuote(shimDir)}:${shQuote(remotePath)}`,
     `export CODEX_HOME=${shQuote(home)}`,
-    `export CLAUDE_CODEX_ADAPTER=${shQuote(adapter)}`,
-    `export CLAUDE_CODEX_NODE=${shQuote(nodeBin)}`,
+    `export ANYENGINE_ADAPTER=${shQuote(adapter)}`,
+    `export ANYENGINE_NODE=${shQuote(nodeBin)}`,
   ]
-  if (claudeCli) exports.push(`export CLAUDE_CODEX_CLI=${shQuote(claudeCli)}`)
-  if (options.mock) exports.push('export CLAUDE_CODEX_MOCK=1')
+  if (claudeCli) exports.push(`export ANYENGINE_CLI=${shQuote(claudeCli)}`)
+  if (options.mock) exports.push('export ANYENGINE_MOCK=1')
   return exports.join('; ')
 }
 

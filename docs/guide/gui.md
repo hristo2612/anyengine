@@ -30,9 +30,9 @@ these lightweight exports in `~/.zshenv`:
 ```bash
 REPO="$HOME/path/to/claude-codex"
 export PATH="$HOME/bin:$PATH"
-export CLAUDE_CODEX_ADAPTER="$REPO/dist/src/adapter.mjs"
-export CLAUDE_CODEX_NODE="$(command -v node)"
-export CLAUDE_CODEX_CLI="$(command -v claude)"
+export ANYENGINE_ADAPTER="$REPO/dist/src/adapter.mjs"
+export ANYENGINE_NODE="$(command -v node)"
+export ANYENGINE_CLI="$(command -v claude)"
 export CODEX_REAL="$(command -v codex)"
 ```
 

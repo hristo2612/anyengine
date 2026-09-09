@@ -36,7 +36,7 @@
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "test": "npm run build && CLAUDE_CODEX_NATIVE_CODEX=0 node --test dist/test/*.mjs",
+    "test": "npm run build && ANYENGINE_NATIVE_CODEX=0 node --test dist/test/*.mjs",
     "doctor": "node scripts/doctor.mjs",
     "workflow": "npm run build && node dist/src/workflow-cli.mjs",
     "workflow:schedule": "npm run workflow -- schedule",

@@ -21,7 +21,7 @@ try {
   adapterProc = spawn(process.execPath, [adapter, 'app-server', '--listen', remote], {
     cwd: root,
     stdio: ['ignore', 'ignore', 'pipe'],
-    env: { ...process.env, CODEX_HOME: adapterHome, CLAUDE_CODEX_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    env: { ...process.env, CODEX_HOME: adapterHome, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   adapterProc.stderr.setEncoding('utf8')
   adapterProc.stderr.on('data', (chunk) => {
@@ -129,7 +129,7 @@ try {
   if (!(error instanceof ProbeDone)) throw error
 } finally {
   adapterProc?.kill()
-  if (process.env.CLAUDE_CODEX_CLEAN_PROBE_ARTIFACTS === '1') {
+  if (process.env.ANYENGINE_CLEAN_PROBE_ARTIFACTS === '1') {
     await rm(home, { recursive: true, force: true })
   }
 }

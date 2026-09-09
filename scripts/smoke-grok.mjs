@@ -4,8 +4,8 @@
 // runtime regardless of the configured default backend), runs a text-only turn,
 // then a Bash turn and asserts the App-side approval round-trips. Needs a
 // logged-in `grok` CLI (`grok login`). Usage: npm run smoke:grok
-//   CLAUDE_CODEX_SMOKE_PORT   listener port (default 8793)
-//   CLAUDE_CODEX_SMOKE_MODEL  grok model id (default: first Grok entry in model/list)
+//   ANYENGINE_SMOKE_PORT   listener port (default 8793)
+//   ANYENGINE_SMOKE_MODEL  grok model id (default: first Grok entry in model/list)
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, rm } from 'node:fs/promises'
@@ -13,11 +13,11 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import WebSocket from 'ws'
 
-const root = resolve(process.env.CLAUDE_CODEX_SMOKE_ROOT ?? tmpdir())
+const root = resolve(process.env.ANYENGINE_SMOKE_ROOT ?? tmpdir())
 const home = await mkdtemp(join(root, 'claude-codex-grok-smoke-'))
 const workspace = join(home, 'workspace')
 await mkdir(workspace, { recursive: true })
-const port = Number(process.env.CLAUDE_CODEX_SMOKE_PORT ?? 8793)
+const port = Number(process.env.ANYENGINE_SMOKE_PORT ?? 8793)
 const listen = `ws://127.0.0.1:${port}`
 
 const adapter = spawn(
@@ -29,10 +29,10 @@ const adapter = spawn(
       ...process.env,
       // Default route stays whatever the host uses; the grok-* model selects
       // the grok runtime per thread. Mock must be off for that rule to apply.
-      CLAUDE_CODEX_MOCK: '',
-      CLAUDE_CODEX_HOME: join(home, 'adapter-home'),
+      ANYENGINE_MOCK: '',
+      ANYENGINE_HOME: join(home, 'adapter-home'),
       CODEX_HOME: join(home, 'codex-home'),
-      CLAUDE_CODEX_DEBUG_LOG: join(home, 'debug.jsonl'),
+      ANYENGINE_DEBUG_LOG: join(home, 'debug.jsonl'),
       NODE_NO_WARNINGS: '1',
     },
   },
@@ -161,7 +161,7 @@ try {
   const grokModels = models.data.filter((entry) => /^grok/i.test(entry.id))
   log(`model/list grok entries: ${JSON.stringify(grokModels.map((m) => [m.id, m.displayName]))}`)
   assert.ok(grokModels.length > 0, 'model/list exposes Grok models')
-  const model = process.env.CLAUDE_CODEX_SMOKE_MODEL ?? grokModels[0].id
+  const model = process.env.ANYENGINE_SMOKE_MODEL ?? grokModels[0].id
 
   const started = await rpc.request('thread/start', {
     cwd: workspace,
