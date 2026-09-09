@@ -22,10 +22,12 @@ Node 24. Both blockers are cleared: `npm test` terminates in one run (197
 tests, 197 pass) and `npm run check` is clean. The repository is public at
 <https://github.com/hristo2612/anyengine>.
 
-## A3 — live flip, with rollback
+## A3 — live flip, with rollback (done)
 
 Install the rebranded build alongside the current one and point the `codex`
-shim at it, on this Mac.
+shim at it, on this Mac. Done 2026-09-10; what actually changed, the timings,
+the rollback command and the two environment limits found on the way are in
+[evidence/a3-flip.md](evidence/a3-flip.md).
 
 1. Back up first: copy the installed `codex` shim and the current
    `runtime.env` somewhere outside the repo. These two files are the whole

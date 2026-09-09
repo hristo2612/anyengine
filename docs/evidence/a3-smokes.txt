@@ -1,0 +1,105 @@
+# A3 smokes — 2026-09-09T23:13:58Z — live ~/.anyengine/runtime.env sourced
+# node v24.13.0, adapter $HOME/Projects/anyengine/dist/src/adapter.mjs, route anyengine
+
+=== npm run smoke:anyengine ===
+
+> anyengine@0.1.0 smoke:anyengine
+> npm run build && node scripts/smoke-anyengine.mjs
+
+
+> anyengine@0.1.0 build
+> tsc -p tsconfig.json
+
+[anyengine] listening on ws://127.0.0.1:8791
+WARNING: proceeding, even though we could not create PATH aliases: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+Error: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+[smoke-anyengine] thread 52515430-aa00-468c-88ae-46f887eba1bb cwd=$TMPDIR/<scratch>
+WARNING: proceeding, even though we could not create PATH aliases: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+Error: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+WARNING: proceeding, even though we could not create PATH aliases: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+Error: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+[smoke-anyengine] turn 1 status=completed deltas=3 text="PONG"
+[smoke-anyengine] approval requested for: echo hi -> accept
+WARNING: proceeding, even though we could not create PATH aliases: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+Error: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+[anyengine] codex upstream unavailable: codex upstream exited 4 times
+[smoke-anyengine] turn 2 status=completed approvals=["echo hi"] commands=["echo hi"] text="hi"
+[smoke-anyengine] thread/read turns=2
+[smoke-anyengine] anyengine smoke passed
+--- smoke:anyengine EXIT ok
+
+=== npm run smoke:grok ===
+
+> anyengine@0.1.0 smoke:grok
+> npm run build && node scripts/smoke-grok.mjs
+
+
+> anyengine@0.1.0 build
+> tsc -p tsconfig.json
+
+[anyengine] listening on ws://127.0.0.1:8793
+WARNING: proceeding, even though we could not create PATH aliases: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+Error: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+[smoke-grok] model/list grok entries: [["grok-4.6","Grok 4.6"],["grok-4.5","Grok 4.5"]]
+[smoke-grok] thread c7adab37-ec70-40f8-ae0d-8deea2addd5d model=grok-4.6 cwd=$TMPDIR/<scratch>
+WARNING: proceeding, even though we could not create PATH aliases: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+Error: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+[smoke-grok] turn 1 status=completed deltas=2 reasoningDeltas=58 text="PONG"
+WARNING: proceeding, even though we could not create PATH aliases: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+Error: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+[smoke-grok] turn 2 status=completed approvals=[] commands=["echo hi"] text="I'll run that exact command and then reply with only its output.hi"
+WARNING: proceeding, even though we could not create PATH aliases: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+Error: CODEX_HOME points to "$TMPDIR/<scratch>", but that path does not exist
+[anyengine] codex upstream unavailable: codex upstream exited 4 times
+[smoke-grok] approval requested for: rm -f nothing-to-remove.txt -> accept
+[smoke-grok] turn 3 status=completed approvals=["rm -f nothing-to-remove.txt"] commands=["rm -f nothing-to-remove.txt"] text="DONE"
+[smoke-grok] thread/read turns=3
+[smoke-grok] grok smoke passed
+--- smoke:grok EXIT ok
+
+=== node scripts/smoke-bridge.mjs claude ===
+[smoke-bridge:claude] adapter pid=92905 listen=ws://127.0.0.1:8797 home=$HOME/Projects/anyengine/.anyengine/bridge-smoke-claude-2026-09-09T23-14-25-479Z
+[anyengine] listening on ws://127.0.0.1:8797
+[smoke-bridge:claude] model/list: fable, opus, sonnet, haiku, grok-4.6, grok-4.5
+[smoke-bridge:claude] thread 487e7908-0581-43f2-87b1-49250b83d670 model=sonnet provider=claude-code cwd=$HOME/Projects/anyengine/.anyengine/bridge-smoke
+[smoke-bridge:claude] turn1-bridge: turn/start -> inProgress
+[smoke-bridge:claude] turn1-bridge: status=completed 9856 ms children=1 approvals=0 errors=0
+[smoke-bridge:claude] turn1-bridge: final=["GROK SAID: GROKPONG"]
+[smoke-bridge:claude] turn1-bridge: streamed="GROK SAID: GROKPONG"
+[smoke-bridge:claude] turn1-bridge: methods={"account/updated":1,"thread/started":2,"thread/status/changed":4,"turn/started":2,"item/started(mcpToolCall:claude-code/ToolSearch)":1,"item/completed(mcpToolCall:claude-code/ToolSearch)":1,"turn/diff/updated":4,"item/started(mcpToolCall:claude-code/mcp__anyengine__spawn_session)":1,"item/started(reasoning)":1,"item/reasoning/summaryTextDelta":37,"item/reasoning/textDelta":37,"item/started(agentMessage)":2,"item/agentMessage/delta":6,"thread/tokenUsage/updated":1,"item/completed(reasoning)":1,"item/completed(agentMessage)":2,"turn/completed":2,"item/completed(mcpToolCall:claude-code/mcp__anyengine__spawn_session)":1}
+[smoke-bridge:claude] verdict=pass missing=[] children=[{"id":"e97f406b-faf8-4b66-bb72-963601dd5b59","parentThreadId":null}]
+[smoke-bridge:claude] thread/read items=["userMessage","mcpToolCall:ToolSearch","mcpToolCall:mcp__anyengine__spawn_session","agentMessage"]
+[smoke-bridge:claude] debug.jsonl bridge events: ["{\"ts\":\"2026-09-09T23:14:26.473Z\",\"pid\":92905,\"event\":\"bridge.listen\",\"socketPath\":\"$TMPDIR/<scratch>"}","{\"ts\":\"2026-09-09T23:14:32.038Z\",\"pid\":92905,\"event\":\"bridge.connect\",\"callerThreadId\":\"487e7908-0581-43f2-87b1-49250b83d670\",\"connections\":1}","{\"ts\":\"2026-09-09T23:14:32.041Z\",\"pid\":92905,\"event\":\"bridge.spawnSession\",\"callerThreadId\":\"487e7908-0581-43f2-87b1-49250b83d670\",\"threadId\":\"e97f406b-faf8-4b66-bb72-963601dd5b59\",\"model\":\"grok-4.6\",\"cwd\":\"$HOME/Projects/anyengine/.anyengine/bridge-smoke\"}"]
+[smoke-bridge:claude] report $HOME/Projects/anyengine/.anyengine/bridge-smoke-claude-2026-09-09T23-14-25-479Z/report.json
+--- smoke:bridge EXIT ok
+
+=== npm run smoke:native-codex ===
+
+> anyengine@0.1.0 smoke:native-codex
+> npm run build && node scripts/smoke-native-codex.mjs
+
+
+> anyengine@0.1.0 build
+> tsc -p tsconfig.json
+
+[smoke-native-codex] initialize userAgent="smoke-native-codex/0.153.4 (Mac OS 15.6.0; arm64) xterm-256color (smoke-native-codex; 0)" codexHome=$HOME/.codex
+[smoke-native-codex] model/list ids=["gpt-6-astra","gpt-5.6-sol","gpt-5.6-terra","gpt-5.6-luna","gpt-5.5","gpt-5.3-codex-spark","fable","opus","sonnet","haiku","grok-4.6","grok-4.5"] gpt=gpt-6-astra
+[smoke-native-codex] getAuthStatus (default route) -> {"authMethod":"chatgpt","authToken":null,"requiresOpenaiAuth":true}
+[smoke-native-codex] gpt thread 01a08873-b760-7242-85c8-70606d618225 model=gpt-6-astra provider=openai
+[smoke-native-codex] GPT TURNS SKIPPED: native usage-limit error forwarded from the child: You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Sep 15th, 2026 9:28 PM.
+[smoke-native-codex] claude thread e230c41e-029e-4e4d-af50-67f8d30ea31b model=opus provider=claude-code
+[smoke-native-codex] claude turn status=completed deltas=2 text="PONG"
+[smoke-native-codex] thread/list page1 has gpt=true claude=true nextCursor=false
+[smoke-native-codex] native-codex smoke passed WITHOUT gpt turns (usage limit); rerun when quota resets
+--- smoke:native-codex EXIT ok
+
+# finished 2026-09-09T23:14:49Z
+
+# --- post-flip re-check (live wiring) ---
+# 23:22Z npm run smoke:anyengine (re-run while debugging the app-side Claude failure): PASS, turn 1 text="PONG"
+# Root cause of the in-app Claude failure on the REMOTE (ssh localhost) host:
+#   $ ssh -o BatchMode=yes localhost 'security find-generic-password -s "Claude Code-credentials" -a "$USER" -w; echo rc=$?'
+#   rc=36            # errSecInteractionNotAllowed - an SSH session cannot read the login keychain
+# The claude CLI keeps its subscription OAuth token in the macOS keychain, so a PTY spawned from the
+# SSH twin fails instantly with StopFailure(authentication_failed). Same error is present in the OLD
+# claude-codex adapter log (2026-09-09T07:55:03Z, pid 75430), so it predates this flip.
