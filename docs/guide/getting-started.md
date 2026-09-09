@@ -1,6 +1,6 @@
 # Getting started
 
-The Claude Codex Adapter lets the **Codex desktop app** talk to **Claude Code**
+The anyengine lets the **Codex desktop app** talk to **Claude Code**
 through the native Codex `app-server` protocol. Codex App still runs its normal
 SSH version probe, bootstrap, and `app-server proxy` flow — but `codex
 app-server` is handled by this adapter instead of the real Codex runtime.
@@ -10,7 +10,7 @@ app-server` is handled by this adapter instead of the real Codex runtime.
 ```
 Codex App  ──SSH──▶  login shell  ──▶  codex (shim, earlier in PATH)
                                           │
-                       app-server calls ──┘──▶  Claude Codex Adapter ──▶ Claude Code
+                       app-server calls ──┘──▶  anyengine ──▶ Claude Code
                        everything else  ──────▶ real Codex CLI (CODEX_REAL)
 ```
 

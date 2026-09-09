@@ -99,9 +99,7 @@ async function main(): Promise<void> {
   // "loading" forever after a restart.
   const recovered = store.recoverStaleInProgressTurns()
   if (recovered > 0) {
-    process.stderr.write(
-      `[claude-codex-adapter] recovered ${recovered} stale in-progress turn(s)\n`,
-    )
+    process.stderr.write(`[anyengine] recovered ${recovered} stale in-progress turn(s)\n`)
   }
   const runtime = createRuntime()
   const server = new CodexClaudeAppServer(store, runtime)
@@ -123,7 +121,7 @@ async function main(): Promise<void> {
       await bridge.start()
     } catch (error) {
       process.stderr.write(
-        `[claude-codex-adapter] bridge disabled: ${error instanceof Error ? error.message : String(error)}\n`,
+        `[anyengine] bridge disabled: ${error instanceof Error ? error.message : String(error)}\n`,
       )
       server.setBridge(null)
     }
@@ -183,9 +181,7 @@ async function main(): Promise<void> {
       return
     idleTimer = setTimeout(() => {
       debugLog('adapter.idleExit', { idleExitMs, pid: process.pid })
-      process.stderr.write(
-        `[claude-codex-adapter] no active peers for ${idleExitMs}ms, shutting down\n`,
-      )
+      process.stderr.write(`[anyengine] no active peers for ${idleExitMs}ms, shutting down\n`)
       void shutdown('idleExit')
     }, idleExitMs)
     idleTimer.unref()
@@ -270,9 +266,7 @@ function ensureSingleUnixDaemon(listen: string): string {
   if (existsSync(pidFile)) {
     const pid = Number(readFileSync(pidFile, 'utf8'))
     if (Number.isFinite(pid) && processIsAlive(pid)) {
-      process.stderr.write(
-        `[claude-codex-adapter] app-server already running at ${socketPath} (pid ${pid})\n`,
-      )
+      process.stderr.write(`[anyengine] app-server already running at ${socketPath} (pid ${pid})\n`)
       process.exit(0)
     }
   }
@@ -297,10 +291,10 @@ function processIsAlive(pid: number): boolean {
 
 function usage(code: number): never {
   const text = `Usage:
-  claude-codex-adapter app-server --listen stdio://
-  claude-codex-adapter app-server --listen unix://
-  claude-codex-adapter app-server --listen ws://127.0.0.1:8788
-  claude-codex-adapter app-server proxy [--sock PATH]
+  anyengine app-server --listen stdio://
+  anyengine app-server --listen unix://
+  anyengine app-server --listen ws://127.0.0.1:8788
+  anyengine app-server proxy [--sock PATH]
 `
   ;(code === 0 ? process.stdout : process.stderr).write(text)
   process.exit(code)
@@ -308,7 +302,7 @@ function usage(code: number): never {
 
 main().catch((error) => {
   process.stderr.write(
-    `[claude-codex-adapter] ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+    `[anyengine] ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
   )
   process.exit(1)
 })

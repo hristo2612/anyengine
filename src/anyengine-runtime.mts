@@ -748,7 +748,7 @@ export class AnyengineRuntime implements ClaudeRuntime {
 
     if (!this.needsApproval(turn.context, toolName)) {
       pending.decision = 'allow'
-      return permissionOutput('allow', 'auto-approved by claude-codex')
+      return permissionOutput('allow', 'auto-approved by anyengine')
     }
     const requestId = `${turn.context.threadId}:${turn.context.turnId}:${toolName}:${toolUseId}`
     let decision: PermissionDecision
@@ -1410,5 +1410,5 @@ export function defaultRelayScript(): string {
 }
 
 export function defaultStateDir(): string {
-  return join(tmpdir(), `claude-codex-pty-${process.pid}`)
+  return join(tmpdir(), `anyengine-pty-${process.pid}`)
 }

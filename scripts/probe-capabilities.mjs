@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { codexCompatVersion } from '../dist/src/util.mjs'
 
-const home = await mkdtemp(join(tmpdir(), 'claude-codex-capability-probe-'))
+const home = await mkdtemp(join(tmpdir(), 'anyengine-capability-probe-'))
 const adapter = resolve('dist/src/adapter.mjs')
 const expectedCompatVersion = codexCompatVersion()
 const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {

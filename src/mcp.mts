@@ -210,7 +210,7 @@ async function runMcpRequest(
     await request('initialize', {
       protocolVersion: '2024-11-05',
       capabilities: {},
-      clientInfo: { name: 'claude-codex-adapter', version: '0.1.0' },
+      clientInfo: { name: 'anyengine', version: '0.1.0' },
     })
     child.stdin.write(
       `${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized', params: {} })}\n`,
@@ -241,7 +241,7 @@ async function runHttpMcpRequest(
     params: {
       protocolVersion: '2024-11-05',
       capabilities: {},
-      clientInfo: { name: 'claude-codex-adapter', version: '0.1.0' },
+      clientInfo: { name: 'anyengine', version: '0.1.0' },
     },
   })
   if (asRecord(initialize).error) throw new Error(JSON.stringify(asRecord(initialize).error))

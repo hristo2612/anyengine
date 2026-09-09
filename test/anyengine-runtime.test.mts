@@ -305,7 +305,7 @@ test('screen parsers recognise safety prompts and the workspace trust dialog', (
 })
 
 test('transcript helpers pick the last assistant text of the turn', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'claude-codex-transcript-'))
+  const dir = await mkdtemp(join(tmpdir(), 'anyengine-transcript-'))
   const file = join(dir, 't.jsonl')
   const line = (ts: string, text: string) =>
     JSON.stringify({
@@ -664,7 +664,7 @@ test('task notifications are parsed from prompts and transcripts', async () => {
     parseTaskNotifications('<task-notification><status>completed</status></task-notification>'),
     [],
   )
-  const dir = await mkdtemp(join(tmpdir(), 'claude-codex-notify-'))
+  const dir = await mkdtemp(join(tmpdir(), 'anyengine-notify-'))
   const file = join(dir, 't.jsonl')
   const line = (type: string, ts: string, content: unknown) =>
     JSON.stringify({ type, timestamp: ts, message: { role: type, content } })

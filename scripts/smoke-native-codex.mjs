@@ -7,7 +7,7 @@
 //      item/commandExecution/requestApproval which this client answers,
 //   3. Claude thread (model `opus`): PONG through the configured Claude runtime.
 // Needs the ChatGPT login in ~/.codex (spends a little quota) and a logged-in
-// `claude` CLI with the runtime env sourced (`source ~/.claude-codex/runtime.env`).
+// `claude` CLI with the runtime env sourced (`source ~/.anyengine/runtime.env`).
 // Usage: npm run smoke:native-codex
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
@@ -17,7 +17,7 @@ import { join, resolve } from 'node:path'
 import readline from 'node:readline'
 
 const root = resolve(process.env.ANYENGINE_SMOKE_ROOT ?? tmpdir())
-const home = await mkdtemp(join(root, 'claude-codex-native-smoke-'))
+const home = await mkdtemp(join(root, 'anyengine-native-smoke-'))
 const workspace = join(home, 'workspace')
 await mkdir(workspace, { recursive: true })
 const claudeModel = process.env.ANYENGINE_SMOKE_CLAUDE_MODEL ?? 'opus'

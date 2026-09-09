@@ -6,7 +6,7 @@
 // the streamed vs. final text, timings, and adapter debug/error events.
 //
 // Usage:
-//   source ~/.claude-codex/runtime.env
+//   source ~/.anyengine/runtime.env
 //   ANYENGINE_NATIVE_CODEX=0 node scripts/smoke-subagents.mjs claude   # port 8795
 //   ANYENGINE_NATIVE_CODEX=0 node scripts/smoke-subagents.mjs grok     # port 8796
 //   ANYENGINE_SMOKE_PORT / ANYENGINE_SMOKE_MODEL / ANYENGINE_SMOKE_CWD override;
@@ -20,11 +20,9 @@ import WebSocket from 'ws'
 
 const runtime = process.argv[2] === 'grok' ? 'grok' : 'claude'
 const repo = resolve(process.cwd())
-const cwd = resolve(
-  process.env.ANYENGINE_SMOKE_CWD ?? join(repo, '.claude-codex', 'subagent-smoke'),
-)
+const cwd = resolve(process.env.ANYENGINE_SMOKE_CWD ?? join(repo, '.anyengine', 'subagent-smoke'))
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-const home = join(repo, '.claude-codex', `subagent-smoke-home-${runtime}-${stamp}`)
+const home = join(repo, '.anyengine', `subagent-smoke-home-${runtime}-${stamp}`)
 await mkdir(cwd, { recursive: true })
 await mkdir(home, { recursive: true })
 const port = Number(process.env.ANYENGINE_SMOKE_PORT ?? (runtime === 'grok' ? 8796 : 8795))

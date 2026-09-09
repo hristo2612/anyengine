@@ -48,7 +48,7 @@ test('workflow state parser rejects unknown task statuses', () => {
 })
 
 test('workflow state store writes through an atomic JSON file', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'claude-codex-workflow-state-'))
+  const dir = await mkdtemp(join(tmpdir(), 'anyengine-workflow-state-'))
   const statePath = join(dir, 'nested', 'workflow-state.json')
   const store = new WorkflowStateStore(statePath)
   const nextState: WorkflowState = {

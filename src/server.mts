@@ -814,7 +814,7 @@ export class CodexClaudeAppServer {
         return { data: [], nextCursor: null }
       case 'mcpServer/oauth/login':
         return {
-          authorizationUrl: `https://localhost.invalid/claude-codex/mcp-oauth/${encodeURIComponent(stringOr(asRecord(params).name, 'server'))}`,
+          authorizationUrl: `https://localhost.invalid/anyengine/mcp-oauth/${encodeURIComponent(stringOr(asRecord(params).name, 'server'))}`,
         }
       case 'config/mcpServer/reload':
         return {}
@@ -4083,7 +4083,7 @@ export class CodexClaudeAppServer {
     const candidates = [
       join(file, '../../../scripts/pty-bridge.py'),
       join(file, '../../scripts/pty-bridge.py'),
-      join(homedir(), '.local/share/claude-codex/scripts/pty-bridge.py'),
+      join(homedir(), '.local/share/anyengine/scripts/pty-bridge.py'),
     ]
     const ptyBridge = candidates.find((c) => c && existsSync(c))
     if (isTty && ptyBridge && existsSync(ptyBridge)) {
@@ -4299,7 +4299,7 @@ export class CodexClaudeAppServer {
     const remotePluginId = stringOr(params.remotePluginId, `local-${newId()}`)
     return {
       remotePluginId,
-      shareUrl: `https://localhost.invalid/claude-codex/plugin-share/${encodeURIComponent(remotePluginId)}`,
+      shareUrl: `https://localhost.invalid/anyengine/plugin-share/${encodeURIComponent(remotePluginId)}`,
     }
   }
 
@@ -4342,7 +4342,7 @@ export class CodexClaudeAppServer {
     const filePath = stringOr(params.filePath, `${codexHome()}/config.toml`)
     return {
       status: 'ok',
-      version: `claude-codex-${nowSeconds()}`,
+      version: `anyengine-${nowSeconds()}`,
       filePath,
       overriddenMetadata: null,
     }

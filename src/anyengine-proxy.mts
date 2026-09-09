@@ -17,7 +17,7 @@ export interface SseDataEvent {
 // system prompt (no marker) and auxiliary calls (title generation, quota
 // checks) carry no tools, so neither leaks into the App transcript. HTML
 // comment so the model ignores it.
-export const MAIN_AGENT_SENTINEL = '<!-- claude-codex-main-agent:7f2a -->'
+export const MAIN_AGENT_SENTINEL = '<!-- anyengine-main-agent:7f2a -->'
 
 type UpstreamRequestFn = (
   options: https.RequestOptions,

@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-const home = await mkdtemp(join(tmpdir(), 'claude-codex-real-smoke-'))
+const home = await mkdtemp(join(tmpdir(), 'anyengine-real-smoke-'))
 const adapter = resolve('dist/src/adapter.mjs')
 const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
   stdio: ['pipe', 'pipe', 'pipe'],
@@ -74,7 +74,7 @@ try {
     method: 'turn/start',
     params: {
       threadId,
-      input: [{ type: 'text', text: 'Reply with exactly: claude-codex-ok', text_elements: [] }],
+      input: [{ type: 'text', text: 'Reply with exactly: anyengine-ok', text_elements: [] }],
     },
   })
   await nextResponse(3)
@@ -84,7 +84,7 @@ try {
     if (message.method === 'item/agentMessage/delta') text += message.params.delta
     if (message.method === 'turn/completed') break
   }
-  assert.match(text, /claude-codex-ok/i)
+  assert.match(text, /anyengine-ok/i)
   console.log('real Claude smoke passed')
 } finally {
   clearTimeout(timeout)

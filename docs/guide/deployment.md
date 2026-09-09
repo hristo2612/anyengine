@@ -18,7 +18,7 @@ so non-interactive SSH sees them too:
 ```bash
 export PATH="$HOME/bin:$PATH"
 export ANTHROPIC_API_KEY="<your-anthropic-api-key>" # or sign in with `claude /login`
-export ANYENGINE_ADAPTER="/opt/claude-codex-adapter/dist/src/adapter.mjs"
+export ANYENGINE_ADAPTER="/opt/anyengine/dist/src/adapter.mjs"
 export ANYENGINE_NODE="/absolute/path/to/node" # optional
 export CODEX_REAL="/usr/local/bin/codex.real"     # optional native-Codex fallback
 ```
@@ -52,13 +52,13 @@ mkdir -p ~/.local/npm-global
 ~/.local/npm-global/bin/claude /login        # interactive: claude.ai OAuth
 
 # 3. Adapter checkout + build.
-git clone https://github.com/fuergaosi233/claude-codex ~/claude-codex && cd ~/claude-codex
+git clone <your anyengine remote> ~/anyengine && cd ~/anyengine
 npm install && npm run build
 
 # 4. Persist PATH + adapter pointers for non-interactive SSH.
 cat >>~/.zshenv <<'EOF'
 export PATH="$HOME/.local/npm-global/bin:$HOME/.local/node-v24.11.0-darwin-arm64/bin:$HOME/.local/bin:$PATH"
-export ANYENGINE_ADAPTER="$HOME/claude-codex/dist/src/adapter.mjs"
+export ANYENGINE_ADAPTER="$HOME/anyengine/dist/src/adapter.mjs"
 export ANYENGINE_NODE="$HOME/.local/node-v24.11.0-darwin-arm64/bin/node"
 EOF
 cp scripts/codex-shim ~/.local/bin/codex && chmod +x ~/.local/bin/codex

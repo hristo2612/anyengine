@@ -28,7 +28,7 @@ runtime invokes the Claude Code CLI directly — no external daemon to manage. P
 these lightweight exports in `~/.zshenv`:
 
 ```bash
-REPO="$HOME/path/to/claude-codex"
+REPO="$HOME/path/to/anyengine"
 export PATH="$HOME/bin:$PATH"
 export ANYENGINE_ADAPTER="$REPO/dist/src/adapter.mjs"
 export ANYENGINE_NODE="$(command -v node)"

@@ -1,20 +1,12 @@
 {
-  "name": "claude-codex-adapter",
+  "name": "anyengine",
   "version": "0.1.0",
   "private": true,
-  "description": "Remote-mode adapter that lets the Codex desktop app talk to Claude Code through the Codex app-server protocol.",
+  "description": "Run Claude, Grok and GPT inside the ChatGPT desktop app.",
   "license": "MIT",
-  "homepage": "https://fuergaosi233.github.io/claude-codex/",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/fuergaosi233/claude-codex.git"
-  },
-  "bugs": {
-    "url": "https://github.com/fuergaosi233/claude-codex/issues"
-  },
   "type": "module",
   "bin": {
-    "claude-codex-adapter": "dist/src/adapter.mjs"
+    "anyengine": "dist/src/adapter.mjs"
   },
   "files": [
     "dist/",

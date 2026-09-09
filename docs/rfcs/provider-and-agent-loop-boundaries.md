@@ -2,7 +2,7 @@
 
 ## Summary
 
-Claude Codex Adapter should separate three concerns that are currently easy to
+anyengine should separate three concerns that are currently easy to
 discuss as one vague feature:
 
 - **Runtime backends** execute a turn through Claude Code, Codex CLI, or a bridge.

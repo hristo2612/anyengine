@@ -85,7 +85,7 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
       timeoutMs: numericEnv(env.ANYENGINE_HTTP_TIMEOUT_MS, 5 * 60_000, 1_000, 24 * 60 * 60_000),
       sendInterruptRaw: envFlag(env.ANYENGINE_HTTP_INTERRUPT_RAW, false),
       manageBridge: envFlag(env.ANYENGINE_HTTP_MANAGE_BRIDGE, false),
-      modeCommand: env.ANYENGINE_MODE_COMMAND || 'claude-codex-mode',
+      modeCommand: env.ANYENGINE_MODE_COMMAND || 'anyengine-mode',
     },
     claudeP: {
       command: env.ANYENGINE_CLAUDE_P_COMMAND || env.CLAUDE_P || 'claude-p',

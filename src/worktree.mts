@@ -25,16 +25,14 @@ export function maybeCreateThreadWorktree(threadId: string, cwd: string): Worktr
       cwd,
       stdio: ['ignore', 'ignore', 'ignore'],
     })
-    execFileSync('git', ['worktree', 'add', '-b', `claude-codex/${label}`, worktreePath, 'HEAD'], {
+    execFileSync('git', ['worktree', 'add', '-b', `anyengine/${label}`, worktreePath, 'HEAD'], {
       cwd,
       stdio: ['ignore', 'ignore', 'pipe'],
     })
     return { cwd: worktreePath, created: true }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    process.stderr.write(
-      `[claude-codex-adapter] failed to create worktree for ${threadId}: ${message}\n`,
-    )
+    process.stderr.write(`[anyengine] failed to create worktree for ${threadId}: ${message}\n`)
     return { cwd, created: false }
   }
 }

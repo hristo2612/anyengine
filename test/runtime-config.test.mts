@@ -227,7 +227,7 @@ test('manual workflow normalization preserves attached image blocks', async () =
 })
 
 test('native SDK runtime projects workflow journal agents into separate live Agent lifecycles', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-workflow-journal-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-workflow-journal-'))
   const runId = 'wf_test_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   await mkdir(transcriptDir, { recursive: true })
@@ -404,7 +404,7 @@ test('native SDK runtime projects workflow journal agents into separate live Age
 })
 
 test('native SDK runtime waits for a slightly delayed workflow journal result', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-delayed-workflow-result-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-delayed-workflow-result-'))
   const runId = 'wf_delayed_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const agentId = 'dddddddd44444444'
@@ -499,7 +499,7 @@ test('native SDK runtime waits for a slightly delayed workflow journal result', 
 })
 
 test('native SDK parent result does not cap workflow runtime at three seconds', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-parent-result-workflow-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-parent-result-workflow-'))
   const runId = 'wf_parent_result_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const agentId = 'fafafafa191919191'
@@ -633,7 +633,7 @@ test('native SDK parent result does not cap workflow runtime at three seconds', 
 })
 
 test('native SDK runtime waits for the workflow agent prompt file before projecting it', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-delayed-workflow-prompt-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-delayed-workflow-prompt-'))
   const runId = 'wf_delayed_prompt_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const agentId = 'dadadada131313131'
@@ -708,7 +708,7 @@ test('native SDK runtime waits for the workflow agent prompt file before project
 })
 
 test('native SDK runtime attaches a deferred Workflow launch after task_started arrives', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-deferred-workflow-launch-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-deferred-workflow-launch-'))
   const runId = 'wf_deferred_launch_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const agentId = 'dededede171717171'
@@ -781,7 +781,7 @@ test('native SDK runtime attaches a deferred Workflow launch after task_started 
 })
 
 test('native SDK runtime falls back to aggregate Agent when workflow journal stays empty', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-empty-workflow-journal-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-empty-workflow-journal-'))
   const runId = 'wf_empty_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   await mkdir(transcriptDir, { recursive: true })
@@ -923,7 +923,7 @@ test('native SDK runtime accepts the declared SDK task_notification shape', asyn
 })
 
 test('native SDK runtime accepts Workflow launch metadata after the old fallback window', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-late-workflow-launch-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-late-workflow-launch-'))
   const runId = 'wf_late_launch_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const agentId = 'acacacac999999999'
@@ -998,7 +998,7 @@ test('native SDK runtime accepts Workflow launch metadata after the old fallback
 })
 
 test('native SDK runtime hides skip_transcript workflow journals', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-hidden-workflow-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-hidden-workflow-'))
   const runId = 'wf_hidden_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const agentId = 'bcbcbcbc101010101'
@@ -1081,7 +1081,7 @@ test('native SDK runtime hides skip_transcript workflow journals', async () => {
 })
 
 test('native SDK runtime ignores workflow-shaped metadata from a non-Workflow tool', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-untrusted-workflow-result-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-untrusted-workflow-result-'))
   const runId = 'wf_untrusted_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const agentId = 'eeeeeeee55555555'
@@ -1149,7 +1149,7 @@ test('native SDK runtime ignores workflow-shaped metadata from a non-Workflow to
 })
 
 test('native SDK runtime rejects Workflow launch metadata bound to a different task', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-mismatched-workflow-task-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-mismatched-workflow-task-'))
   const runId = 'wf_mismatched_task_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const agentId = 'abababab151515151'
@@ -1217,7 +1217,7 @@ test('native SDK runtime rejects Workflow launch metadata bound to a different t
 })
 
 test('native SDK runtime rejects ambiguous batched Workflow tool results', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-ambiguous-workflow-result-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-ambiguous-workflow-result-'))
   const runId = 'wf_ambiguous_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const agentId = 'edededed888888888'
@@ -1290,7 +1290,7 @@ test('native SDK runtime rejects ambiguous batched Workflow tool results', async
 })
 
 test('native SDK runtime rejects a symlinked workflow journal file', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-workflow-journal-symlink-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-workflow-journal-symlink-'))
   const runId = 'wf_journal_symlink_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const outsideJournal = join(root, 'outside-journal.jsonl')
@@ -1377,7 +1377,7 @@ test('native SDK runtime rejects a symlinked workflow journal file', async () =>
 })
 
 test('native SDK runtime rejects workflow transcript symlinks that escape the trusted root', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-workflow-symlink-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-workflow-symlink-'))
   const trustedRoot = join(root, 'trusted')
   const runId = 'wf_symlink_run'
   const transcriptDir = join(trustedRoot, 'projects', 'project', 'subagents', 'workflows', runId)
@@ -1466,7 +1466,7 @@ test('native SDK runtime rejects workflow transcript symlinks that escape the tr
 })
 
 test('native SDK runtime rejects a workflow directory replaced after canonical validation', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-workflow-directory-swap-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-workflow-directory-swap-'))
   const runId = 'wf_directory_swap_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const archivedDir = join(root, 'archived-transcript')
@@ -1748,7 +1748,7 @@ test('native SDK runtime closes projected workflow agents when workflow monitori
 })
 
 test('workflow journal monitor reads the final assistant transcript when result is empty', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-empty-workflow-result-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-empty-workflow-result-'))
   const runId = 'wf_empty_result_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const agentId = 'abababab202020202'
@@ -1800,7 +1800,7 @@ test('workflow journal monitor reads the final assistant transcript when result 
 })
 
 test('workflow journal monitor does not commit started bookkeeping after stop', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'claude-codex-stopped-workflow-monitor-'))
+  const root = await mkdtemp(join(tmpdir(), 'anyengine-stopped-workflow-monitor-'))
   const runId = 'wf_stopped_monitor_run'
   const transcriptDir = join(root, 'projects', 'project', 'subagents', 'workflows', runId)
   const agentId = 'cdcdcdcd161616161'
@@ -1929,7 +1929,7 @@ test('HTTP agent runtime streams agentapi-compatible message updates', async () 
     timeoutMs: 2_000,
     sendInterruptRaw: false,
     manageBridge: false,
-    modeCommand: 'claude-codex-mode',
+    modeCommand: 'anyengine-mode',
   })
   const deltas: string[] = []
   try {
@@ -2023,7 +2023,7 @@ test('HTTP agent runtime uses one managed bridge URL per cwd/model key', async (
 
   const a = await startServer('a')
   const b = await startServer('b')
-  const tmp = await mkdtemp(join(tmpdir(), 'claude-codex-bridge-test-'))
+  const tmp = await mkdtemp(join(tmpdir(), 'anyengine-bridge-test-'))
   const cwdA = join(tmp, 'a')
   const cwdB = join(tmp, 'b')
   await mkdir(cwdA)
@@ -2103,7 +2103,7 @@ test('HTTP agent runtime uses one managed bridge URL per cwd/model key', async (
 })
 
 test('claude-p runtime runs each turn in its own cwd', async () => {
-  const tmp = await mkdtemp(join(tmpdir(), 'claude-codex-claude-p-test-'))
+  const tmp = await mkdtemp(join(tmpdir(), 'anyengine-claude-p-test-'))
   const cwdA = join(tmp, 'a')
   const cwdB = join(tmp, 'b')
   await mkdir(cwdA)
@@ -2179,7 +2179,7 @@ test('claude-p runtime runs each turn in its own cwd', async () => {
 })
 
 test('claude-p runtime timeout terminates spawned process tree', async () => {
-  const tmp = await mkdtemp(join(tmpdir(), 'claude-codex-claude-p-timeout-test-'))
+  const tmp = await mkdtemp(join(tmpdir(), 'anyengine-claude-p-timeout-test-'))
   const command = join(tmp, 'hanging-claude-p.mjs')
   const childPidFile = join(tmp, 'child.pid')
   await writeFile(
@@ -2242,7 +2242,7 @@ test('claude-p runtime timeout terminates spawned process tree', async () => {
 })
 
 test('claude-p runtime retries an empty StopTimeout once', async () => {
-  const tmp = await mkdtemp(join(tmpdir(), 'claude-codex-claude-p-retry-test-'))
+  const tmp = await mkdtemp(join(tmpdir(), 'anyengine-claude-p-retry-test-'))
   const command = join(tmp, 'flaky-claude-p.mjs')
   const countFile = join(tmp, 'count.txt')
   await writeFile(
@@ -2310,7 +2310,7 @@ test('claude-p runtime retries an empty StopTimeout once', async () => {
 })
 
 test('claude-p runtime retries a process timeout once', async () => {
-  const tmp = await mkdtemp(join(tmpdir(), 'claude-codex-claude-p-timeout-retry-test-'))
+  const tmp = await mkdtemp(join(tmpdir(), 'anyengine-claude-p-timeout-retry-test-'))
   const command = join(tmp, 'timeout-then-ok-claude-p.mjs')
   const countFile = join(tmp, 'count.txt')
   await writeFile(
@@ -2426,7 +2426,7 @@ test('HTTP agent runtime keeps recoverable SSE fallback out of the conversation'
     timeoutMs: 2_000,
     sendInterruptRaw: false,
     manageBridge: false,
-    modeCommand: 'claude-codex-mode',
+    modeCommand: 'anyengine-mode',
   })
   const deltas: string[] = []
   const notices: string[] = []
@@ -2522,7 +2522,7 @@ test('agentapi runtime polls running terminal output before final status-only sc
     timeoutMs: 2_000,
     sendInterruptRaw: false,
     manageBridge: false,
-    modeCommand: 'claude-codex-mode',
+    modeCommand: 'anyengine-mode',
   })
   const deltas: string[] = []
   try {

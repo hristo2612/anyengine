@@ -65,7 +65,7 @@ interface Harness {
 }
 
 async function harness(env: Record<string, string> = {}): Promise<Harness> {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-grok-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-grok-test-'))
   const argsFile = join(home, 'args.jsonl')
   const eventsFile = join(home, 'events.jsonl')
   const previous: Record<string, string | undefined> = {}
@@ -517,7 +517,7 @@ test('grok runtime: interrupt cancels the in-flight prompt', async () => {
 })
 
 test('adapter routes a grok-* thread to the grok runtime and lists Grok models', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-grok-adapter-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-grok-adapter-'))
   const argsFile = join(home, 'args.jsonl')
   const eventsFile = join(home, 'events.jsonl')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {

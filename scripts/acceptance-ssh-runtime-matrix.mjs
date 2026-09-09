@@ -15,7 +15,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 
 const DEFAULT_MODES = ['codex', 'agent-sdk-sidecar', 'agent-http', 'agentapi', 'claude-p']
-const TOKEN_FILE = '.claude-codex-mode-matrix-token'
+const TOKEN_FILE = '.anyengine-mode-matrix-token'
 const MODEL = process.env.MODE_MATRIX_MODEL || 'haiku'
 const TURN_TIMEOUT_MS = Number(process.env.TURN_TIMEOUT_MS || 180_000)
 const RESTORE_ENV = process.env.MODE_MATRIX_RESTORE_ENV !== '0'
@@ -27,7 +27,7 @@ async function runOverSsh(args) {
   if (cwds.length < 2)
     throw new Error('usage: acceptance-ssh-runtime-matrix.mjs <ssh-host> <cwd-a> <cwd-b>')
   const self = fileURLToPath(import.meta.url)
-  const remoteScript = `/tmp/claude-codex-runtime-matrix-${Date.now()}-${process.pid}.mjs`
+  const remoteScript = `/tmp/anyengine-runtime-matrix-${Date.now()}-${process.pid}.mjs`
 
   runChecked('scp', ['-q', self, `${host}:${remoteScript}`])
   try {
@@ -44,7 +44,7 @@ async function runOverSsh(args) {
       .join(' ')
     const command = [
       'set -e',
-      '. "$HOME/.claude-codex/runtime.env"',
+      '. "$HOME/.anyengine/runtime.env"',
       'node_bin="${ANYENGINE_NODE:-node}"',
       `${env} "$node_bin" ${shQuote(remoteScript)} --runner ${cwdArgs}`,
     ].join('; ')
@@ -78,13 +78,13 @@ async function runMatrix(cwds) {
   const fromModes = modesFromEnv('MODE_MATRIX_FROM_MODES', modes)
   const toModes = modesFromEnv('MODE_MATRIX_TO_MODES', modes)
   const envFile =
-    process.env.ANYENGINE_RUNTIME_ENV || join(process.env.HOME || '', '.claude-codex/runtime.env')
+    process.env.ANYENGINE_RUNTIME_ENV || join(process.env.HOME || '', '.anyengine/runtime.env')
   const originalEnv = existsSync(envFile) ? readFileSync(envFile, 'utf8') : null
-  const helper = process.env.ANYENGINE_MODE_COMMAND || 'claude-codex-mode'
+  const helper = process.env.ANYENGINE_MODE_COMMAND || 'anyengine-mode'
   const codexReal = requireEnv('CODEX_REAL')
   const nodeBin = process.env.ANYENGINE_NODE || process.execPath
   const adapter = requireEnv('ANYENGINE_ADAPTER')
-  const scratch = mkdtempSync(join(tmpdir(), 'claude-codex-runtime-matrix-'))
+  const scratch = mkdtempSync(join(tmpdir(), 'anyengine-runtime-matrix-'))
   const results = []
   const runId = Date.now().toString(36)
 
@@ -204,7 +204,7 @@ function modesFromEnv(key, fallback) {
 function requireEnv(key) {
   const value = process.env[key]
   if (!value)
-    throw new Error(`missing ${key}; source ~/.claude-codex/runtime.env before running the matrix`)
+    throw new Error(`missing ${key}; source ~/.anyengine/runtime.env before running the matrix`)
   return value
 }
 
@@ -277,7 +277,7 @@ function runCodex(codexReal, cwd, expected, scratch) {
 
 async function runAdapter({ nodeBin, adapter, cwd, expected, mode }) {
   const envFile =
-    process.env.ANYENGINE_RUNTIME_ENV || join(process.env.HOME || '', '.claude-codex/runtime.env')
+    process.env.ANYENGINE_RUNTIME_ENV || join(process.env.HOME || '', '.anyengine/runtime.env')
   const proc = spawn(
     'bash',
     [

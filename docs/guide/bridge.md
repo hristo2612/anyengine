@@ -134,7 +134,7 @@ sockets from dead adapters are reaped on start.
 
 ```bash
 npm run build && node --test dist/test/bridge.test.mjs   # fake child + mock runtime
-source ~/.claude-codex/runtime.env
+source ~/.anyengine/runtime.env
 node scripts/smoke-bridge.mjs claude   # sonnet thread spawns a grok-4.6 session
 node scripts/smoke-bridge.mjs grok     # grok thread fans out 2 haiku + 2 grok sub-agents
 node scripts/smoke-bridge.mjs gpt      # gpt thread spawns a haiku session (records usage limits)

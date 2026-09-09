@@ -39,7 +39,7 @@ for (const helper of candidates) {
     await chmod(helper, (mode & 0o7777) | 0o755)
   } catch (error) {
     process.stderr.write(
-      `claude-codex postinstall: could not chmod ${helper} (${error?.message ?? error})\n`,
+      `anyengine postinstall: could not chmod ${helper} (${error?.message ?? error})\n`,
     )
   }
 }

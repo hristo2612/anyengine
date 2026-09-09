@@ -40,7 +40,7 @@ test('run registry can be disabled without touching the filesystem', () => {
 })
 
 test('run registry appends redacted JSONL entries', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'claude-codex-run-registry-'))
+  const dir = await mkdtemp(join(tmpdir(), 'anyengine-run-registry-'))
   const path = join(dir, 'runs.jsonl')
 
   const result = recordRunEvent(

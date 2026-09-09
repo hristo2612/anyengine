@@ -24,7 +24,7 @@ export class ClaudePTranscriptRuntime implements ClaudeRuntime {
   }
 
   async runTurn(context: RuntimeTurnContext, handlers: RuntimeHandlers): Promise<void> {
-    const tmp = await mkdtemp(join(tmpdir(), 'claude-codex-claude-p-'))
+    const tmp = await mkdtemp(join(tmpdir(), 'anyengine-claude-p-'))
     const inputFile = join(tmp, 'prompt.txt')
     await writeFile(inputFile, context.prompt, 'utf8')
 

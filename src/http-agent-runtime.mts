@@ -90,7 +90,7 @@ export class HttpAgentRuntime implements ClaudeRuntime {
       const initialMessages = await this.fetchMessages(baseUrl, abort.signal)
       if (this.options.kind === 'agentapi' && hasAgentapiTrustPrompt(initialMessages)) {
         const message =
-          'agentapi is waiting at Claude Code workspace trust prompt; run `claude-codex-mode trust` on the remote host after reviewing the path, then retry.'
+          'agentapi is waiting at Claude Code workspace trust prompt; run `anyengine-mode trust` on the remote host after reviewing the path, then retry.'
         await handlers.onEvent({ type: 'notice', level: 'warning', message })
         throw new Error(message)
       }
@@ -119,7 +119,7 @@ export class HttpAgentRuntime implements ClaudeRuntime {
           const latestMessages = await this.fetchMessages(baseUrl, abort.signal).catch(() => null)
           if (latestMessages && hasAgentapiTrustPrompt(latestMessages)) {
             throw new Error(
-              'agentapi is waiting at Claude Code workspace trust prompt; run `claude-codex-mode trust` on the remote host after reviewing the path, then retry.',
+              'agentapi is waiting at Claude Code workspace trust prompt; run `anyengine-mode trust` on the remote host after reviewing the path, then retry.',
             )
           }
         }

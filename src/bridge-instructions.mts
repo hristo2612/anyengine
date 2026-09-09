@@ -73,7 +73,7 @@ export function providerFor(model: string): BridgeProvider {
 export function bridgeInstructions(catalog: BridgeCatalogModel[]): string {
   const lines = [
     BRIDGE_INSTRUCTIONS_HEADING,
-    'You run inside the Codex desktop through the claude-codex adapter. The `anyengine` MCP tools start sessions and parallel sub-agents on the other engines from this thread:',
+    'You run inside the Codex desktop through the anyengine adapter. The `anyengine` MCP tools start sessions and parallel sub-agents on the other engines from this thread:',
   ]
   for (const provider of PROVIDER_ORDER) {
     const entries = catalog.filter((model) => model.provider === provider)

@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: Claude Codex Adapter
+  name: anyengine
   text: Claude Code inside the Codex app
   tagline: A production TypeScript adapter that speaks the native Codex app-server protocol, so the Codex desktop app drives Claude Code over your normal SSH Remote flow.
   actions:
@@ -14,7 +14,7 @@ hero:
       link: /guide/configuration
     - theme: alt
       text: View on GitHub
-      link: https://github.com/fuergaosi233/claude-codex
+      link: /guide/backends
 
 features:
   - icon: 🔌

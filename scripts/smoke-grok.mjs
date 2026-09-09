@@ -14,7 +14,7 @@ import { join, resolve } from 'node:path'
 import WebSocket from 'ws'
 
 const root = resolve(process.env.ANYENGINE_SMOKE_ROOT ?? tmpdir())
-const home = await mkdtemp(join(root, 'claude-codex-grok-smoke-'))
+const home = await mkdtemp(join(root, 'anyengine-grok-smoke-'))
 const workspace = join(home, 'workspace')
 await mkdir(workspace, { recursive: true })
 const port = Number(process.env.ANYENGINE_SMOKE_PORT ?? 8793)

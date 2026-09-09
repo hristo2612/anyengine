@@ -1,6 +1,6 @@
 # Changelog
 
-All notable public-facing changes for Claude Codex Adapter are summarized here.
+All notable public-facing changes for anyengine are summarized here.
 The project is still private in `package.json`; this file tracks release notes
 for maintainers preparing the next public release and does not change package
 versioning or publishing metadata.
@@ -11,7 +11,7 @@ versioning or publishing metadata.
 
 - Updated the adapter to advertise Codex app-server protocol v2 compatibility at
   the current pinned Codex CLI compatibility version, while keeping a
-  `claude-codex` suffix so hosts can distinguish the adapter from upstream
+  `anyengine` suffix so hosts can distinguish the adapter from upstream
   Codex.
 - Expanded Codex App Remote coverage across thread lifecycle, turn envelopes,
   item streaming, approvals, MCP status, fuzzy file search sessions, Claude

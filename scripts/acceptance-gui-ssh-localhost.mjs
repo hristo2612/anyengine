@@ -15,12 +15,12 @@ const claudeCli = process.env.ANYENGINE_CLI ?? findExecutable('claude')
 const host = process.env.ANYENGINE_GUI_SSH_HOST || 'localhost'
 const requireRealRuntime = process.env.ANYENGINE_GUI_SSH_REQUIRE_REAL === '1'
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-const base = resolve('.claude-codex', `gui-ssh-localhost-${stamp}`)
+const base = resolve('.anyengine', `gui-ssh-localhost-${stamp}`)
 const home = join(base, 'codex-home')
 const workspace = join(base, 'workspace')
 const socketPath = join(home, 'app-server-control', 'app-server-control.sock')
-const targetFile = join(workspace, 'claude-codex-gui-ssh-acceptance.txt')
-const expectedText = 'claude-codex-gui-ssh-ok'
+const targetFile = join(workspace, 'anyengine-gui-ssh-acceptance.txt')
+const expectedText = 'anyengine-gui-ssh-ok'
 
 let daemon = null
 let proxy = null
@@ -140,7 +140,7 @@ async function main() {
             type: 'text',
             text: [
               'Use Claude Code tools in the current working directory.',
-              `Create or overwrite a file named claude-codex-gui-ssh-acceptance.txt with exactly this content and no extra whitespace: ${expectedText}`,
+              `Create or overwrite a file named anyengine-gui-ssh-acceptance.txt with exactly this content and no extra whitespace: ${expectedText}`,
               `After the file is written, reply with exactly: ${expectedText}`,
             ].join('\n'),
             text_elements: [],
@@ -177,7 +177,7 @@ async function main() {
         'expected at least one file-change approval bridged through Codex',
       )
       assert.ok(diff.length > 0, 'expected a turn/diff/updated event')
-      assert.match(diff, /claude-codex-gui-ssh-acceptance\.txt/)
+      assert.match(diff, /anyengine-gui-ssh-acceptance\.txt/)
       assert.equal((await readFile(targetFile, 'utf8')).trim(), expectedText)
 
       rpc.close()
@@ -286,7 +286,7 @@ function probeRemoteClaudeAuth() {
       message: 'claude CLI not found on local PATH for remote auth preflight',
     }
   }
-  const marker = 'claude-codex-auth-ok'
+  const marker = 'anyengine-auth-ok'
   const result = spawnSync(
     'ssh',
     [
@@ -352,7 +352,7 @@ async function waitForSocket(path) {
 }
 
 function daemonSocketPathFromStderr() {
-  const marker = '[claude-codex-adapter] listening on '
+  const marker = '[anyengine] listening on '
   const index = daemonStderr.lastIndexOf(marker)
   if (index < 0) return null
   const line = daemonStderr

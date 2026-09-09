@@ -15,13 +15,15 @@ anyengine_adopt_legacy_env() {
   done <<EOF
 $(env | sed -n 's/^\(CLAUDE_CODEX_[A-Za-z0-9_]*\)=.*/\1/p')
 EOF
+  # `set -e` is on: pin the status so an empty list is not a failure.
+  return 0
 }
 
 anyengine_adopt_legacy_env
 
-STATE_DIR="${ANYENGINE_STATE_DIR:-$HOME/.claude-codex}"
+STATE_DIR="${ANYENGINE_STATE_DIR:-$HOME/.anyengine}"
 ENV_FILE="${ANYENGINE_RUNTIME_ENV:-$STATE_DIR/runtime.env}"
-ADAPTER_DEBUG_LOG="${ANYENGINE_DEBUG_LOG:-${CODEX_HOME:-$HOME/.codex}/claude-codex-adapter/debug.jsonl}"
+ADAPTER_DEBUG_LOG="${ANYENGINE_DEBUG_LOG:-${CODEX_HOME:-$HOME/.codex}/anyengine/debug.jsonl}"
 AGENT_HTTP_LOG="$STATE_DIR/agent-http.log"
 AGENTAPI_LOG="$STATE_DIR/agentapi.log"
 BRIDGE_LOCK="$STATE_DIR/bridge.lock"
@@ -42,38 +44,38 @@ export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$HOME/.local/node-v24.11.0-l
 usage() {
   cat <<'EOF'
 usage:
-  claude-codex-mode list
-  claude-codex-mode show
-  claude-codex-mode set <mode> [model] [cwd]
-  claude-codex-mode ensure-bridge <agent-http|agentapi> [model] <cwd>
-  claude-codex-mode model [model]
-  claude-codex-mode trust
-  claude-codex-mode status|read
-  claude-codex-mode stop-bridges [agent-http|agentapi]
-  claude-codex-mode prune-bridges
-  claude-codex-mode last-turn
-  claude-codex-mode last-user-turn
-  claude-codex-mode logs [adapter|agent-http|agentapi] [lines]
-  claude-codex-mode tail [adapter|agent-http|agentapi]
+  anyengine-mode list
+  anyengine-mode show
+  anyengine-mode set <mode> [model] [cwd]
+  anyengine-mode ensure-bridge <agent-http|agentapi> [model] <cwd>
+  anyengine-mode model [model]
+  anyengine-mode trust
+  anyengine-mode status|read
+  anyengine-mode stop-bridges [agent-http|agentapi]
+  anyengine-mode prune-bridges
+  anyengine-mode last-turn
+  anyengine-mode last-user-turn
+  anyengine-mode logs [adapter|agent-http|agentapi] [lines]
+  anyengine-mode tail [adapter|agent-http|agentapi]
 
 aliases:
   sdk -> agent-sdk-sidecar
   channels -> agent-http
   claudep -> claude-p
 
-Changing mode rewrites ~/.claude-codex/runtime.env, prepares the matching
+Changing mode rewrites ~/.anyengine/runtime.env, prepares the matching
 bridge daemon when needed, and stops the current app-server so Codex App can
 reconnect into the new route.
 
 For agent-http/agentapi, model selection is a bridge startup setting. Use
-`claude-codex-mode model opus` or `claude-codex-mode set agent-http opus` to
+`anyengine-mode model opus` or `anyengine-mode set agent-http opus` to
 restart the bridge with `claude --model opus`.
 
 When Codex App sends a turn, the adapter calls `ensure-bridge` so HTTP bridge
 sessions are pooled by mode + cwd + model instead of sharing one global port.
 
 agentapi runs Claude Code inside a PTY. If Claude Code opens its workspace trust
-prompt, run `claude-codex-mode trust` to accept it after reviewing the path.
+prompt, run `anyengine-mode trust` to accept it after reviewing the path.
 EOF
 }
 
@@ -469,7 +471,7 @@ wait_http() {
       local pid
       pid="$(cat "$pidfile" 2>/dev/null || true)"
       if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
-        echo "$name exited before becoming ready; read log with: claude-codex-mode logs $name" >&2
+        echo "$name exited before becoming ready; read log with: anyengine-mode logs $name" >&2
         tail -n 40 "$log" 2>/dev/null || true
         return 1
       fi
@@ -480,7 +482,7 @@ wait_http() {
     fi
     sleep 0.25
   done
-  echo "$name did not become ready at $base; read log with: claude-codex-mode logs $name" >&2
+  echo "$name did not become ready at $base; read log with: anyengine-mode logs $name" >&2
   tail -n 20 "$log" 2>/dev/null || true
   return 1
 }
@@ -500,7 +502,7 @@ print_agentapi_trust_hint() {
     cat <<EOF
 agentapi is waiting at Claude Code's workspace trust prompt.
 Review the workspace path in the agentapi screen, then run:
-  claude-codex-mode trust
+  anyengine-mode trust
 EOF
   fi
 }
@@ -810,7 +812,7 @@ status() {
       printf '  %s %-16s port=%s model=%s cwd=%s pid=%s\n' "$(basename "$dir")" "$mode" "$port" "${model:-default}" "$cwd" "$pid"
       if [ "$mode" = "agentapi" ] && agentapi_trust_pending "$base"; then
         trust=1
-        echo "    trust prompt pending; run: claude-codex-mode trust $base"
+        echo "    trust prompt pending; run: anyengine-mode trust $base"
       fi
     fi
   done < <(pool_dirs)

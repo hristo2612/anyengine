@@ -1,12 +1,10 @@
 import { defineConfig } from 'vitepress'
 
-const repo = 'https://github.com/fuergaosi233/claude-codex'
-
 export default defineConfig({
-  title: 'Claude Codex Adapter',
+  title: 'anyengine',
   description:
     'Use Claude Code inside the Codex desktop app over the native Codex app-server protocol.',
-  base: '/claude-codex/',
+  base: '/anyengine/',
   lastUpdated: true,
   cleanUrls: true,
   ignoreDeadLinks: true,
@@ -57,7 +55,6 @@ export default defineConfig({
         },
       ],
     },
-    socialLinks: [{ icon: 'github', link: repo }],
     search: { provider: 'local' },
     editLink: {
       pattern: `${repo}/edit/main/docs/:path`,
@@ -65,7 +62,7 @@ export default defineConfig({
     },
     footer: {
       message: 'Released under the MIT License.',
-      copyright: `Copyright © ${repo.split('/').slice(-2)[0]}`,
+      copyright: 'Copyright © anyengine contributors',
     },
   },
 })

@@ -18,7 +18,7 @@ test('worktree label keeps thread ids root-confined and collision-resistant', ()
 })
 
 test('auto worktree creates and then reuses an existing per-thread worktree', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-worktree-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-worktree-test-'))
   const repo = join(home, 'repo')
   const root = join(home, 'worktrees')
   const threadId = '../same-prefix-thread'
@@ -49,7 +49,7 @@ test('auto worktree creates and then reuses an existing per-thread worktree', as
 })
 
 test('auto worktree falls back to original cwd outside git repositories', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-worktree-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-worktree-test-'))
   const root = join(home, 'worktrees')
   const restore = withWorktreeEnv(root)
   try {

@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 
 const root = resolve('.')
 const adapter = resolve('dist/src/adapter.mjs')
-const probeRoot = resolve('.claude-codex')
+const probeRoot = resolve('.anyengine')
 await mkdir(probeRoot, { recursive: true })
 const home = await mkdtemp(join(probeRoot, 'codex-cli-remote-probe-'))
 const adapterHome = join(home, 'adapter-home')

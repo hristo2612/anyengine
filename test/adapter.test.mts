@@ -129,7 +129,7 @@ test('server dispatch covers current Codex app-server client method surface', as
 })
 
 test('stdio initialize -> thread/start -> turn/start streams mock response', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -197,7 +197,7 @@ test('stdio initialize -> thread/start -> turn/start streams mock response', asy
 })
 
 test('permission profile selection applies full access without legacy sandbox fields', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -262,7 +262,7 @@ test('permission profile selection applies full access without legacy sandbox fi
 })
 
 test('run registry records thread and turn lifecycle without raw prompt or response text', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const runLog = join(home, 'runs.jsonl')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -330,7 +330,7 @@ test('primary turn lifecycle keeps lightweight notLoaded envelopes', async () =>
   // turn/start and turn/started are metadata-only. Primary-thread completion
   // remains item-stream driven here; subagent completion is covered separately
   // because its terminal envelope must carry the final response for review UI.
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -395,7 +395,7 @@ test('primary turn lifecycle keeps lightweight notLoaded envelopes', async () =>
 })
 
 test('thread/turns/list honors default summary and explicit itemsView', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -451,7 +451,7 @@ test('thread/turns/list honors default summary and explicit itemsView', async ()
 })
 
 test('mcpServerStatus/list and startup notifications use conformant Codex v2 shapes', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -509,7 +509,7 @@ test('mcpServerStatus/list and startup notifications use conformant Codex v2 sha
 })
 
 test('thread/start with a gpt-* model marks the thread runtimeBackend=codex', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -555,7 +555,7 @@ test('thread/start with a gpt-* model marks the thread runtimeBackend=codex', as
 })
 
 test('model/list exposes Claude model aliases and Codex-safe reasoning efforts', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -665,7 +665,7 @@ test('model/list exposes Claude model aliases and Codex-safe reasoning efforts',
 })
 
 test('config/read exposes sanitized provider loop selection over stdio', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -722,7 +722,7 @@ test('config/read exposes sanitized provider loop selection over stdio', async (
 })
 
 test('config/read resolves saved provider loop selection without projecting raw keys', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -786,7 +786,7 @@ test('config/read resolves saved provider loop selection without projecting raw 
 })
 
 test('config writes persist across adapter restarts', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   try {
     const first = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -849,9 +849,9 @@ test('config writes persist across adapter restarts', async () => {
 })
 
 test('invalid persisted model selections are repaired to a selectable model', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   try {
-    const adapterConfigDir = join(home, 'claude-codex-adapter')
+    const adapterConfigDir = join(home, 'anyengine')
     await mkdir(adapterConfigDir, { recursive: true })
     await writeFile(
       join(adapterConfigDir, 'config.json'),
@@ -901,7 +901,7 @@ test('invalid persisted model selections are repaired to a selectable model', as
 })
 
 test('Codex++ model and effort selections map into Claude runtime context', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -967,7 +967,7 @@ test('Codex++ model and effort selections map into Claude runtime context', asyn
 })
 
 test('Codex app config payload model and effort map into Claude runtime context', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -1025,7 +1025,7 @@ test('Codex app config payload model and effort map into Claude runtime context'
 })
 
 test('Codex app model ids and outputSchema map into Claude runtime context', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -1099,7 +1099,7 @@ test('Codex title-generation turn runs through the runtime instead of a hardcode
   // model would have produced. Now the turn flows through runRuntimeTurn just
   // like any other structured output turn — the model maps to the summary
   // alias (haiku) and the user message is recorded.
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const debugLog = join(home, 'debug.jsonl')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -1201,7 +1201,7 @@ test('Codex title-generation turn runs through the runtime instead of a hardcode
 })
 
 test('stateful HTTP bridge runtimes keep Codex title-generation turns local', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const debugLog = join(home, 'debug.jsonl')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -1269,7 +1269,7 @@ test('stateful HTTP bridge runtimes keep Codex title-generation turns local', as
 })
 
 test('default runtime tool policy leaves Claude Code tools unrestricted unless env overrides', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -1318,7 +1318,7 @@ test('default runtime tool policy leaves Claude Code tools unrestricted unless e
 })
 
 test('unix websocket app-server accepts initialize', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   // Keep the socket path short — a mkdtemp dir nested under macOS tmpdir blows
   // past the ~104-byte sockaddr_un limit, which surfaced as a bind EINVAL.
   const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
@@ -1362,7 +1362,7 @@ test('unix websocket app-server accepts initialize', async () => {
 })
 
 test('unix daemon keeps active turns alive across peer reconnect', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
@@ -1440,7 +1440,7 @@ test('unix daemon keeps active turns alive across peer reconnect', async () => {
 })
 
 test('unix daemon recovers stale in-progress turns after process restart', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
   let proc = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
@@ -1520,7 +1520,7 @@ test('unix daemon recovers stale in-progress turns after process restart', async
 })
 
 test('stdio app-server recovers stale in-progress turns after process restart', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   let proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -1583,7 +1583,7 @@ test('stdio app-server recovers stale in-progress turns after process restart', 
 })
 
 test('startup recovery terminalizes persisted in-progress item liveness', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const store = new SessionStore(join(home, 'state.sqlite'))
   const threadId = randomUUID()
   const childThreadId = randomUUID()
@@ -1691,7 +1691,7 @@ test('startup recovery terminalizes persisted in-progress item liveness', async 
 })
 
 test('startup recovery repairs stale items on already-terminal turns and is idempotent', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const store = new SessionStore(join(home, 'state.sqlite'))
   const threadId = randomUUID()
   const turnId = randomUUID()
@@ -1773,7 +1773,7 @@ test('startup recovery repairs stale items on already-terminal turns and is idem
 })
 
 test('startup recovery removes legacy activity markers from completed subagent turns', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const store = new SessionStore(join(home, 'state.sqlite'))
   const threadId = randomUUID()
   const turnId = randomUUID()
@@ -1862,7 +1862,7 @@ test('startup recovery removes legacy activity markers from completed subagent t
 })
 
 test('app-server proxy forwards websocket handshake bytes to unix daemon', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   // Keep the socket path short — a mkdtemp dir nested under macOS tmpdir blows
   // past the ~104-byte sockaddr_un limit, which surfaced as a bind EINVAL.
   const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
@@ -1898,7 +1898,7 @@ test('app-server proxy forwards websocket handshake bytes to unix daemon', async
 })
 
 test('app-server proxy carries websocket JSON-RPC traffic over stdio', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   // Keep the socket path short — a mkdtemp dir nested under macOS tmpdir blows
   // past the ~104-byte sockaddr_un limit, which surfaced as a bind EINVAL.
   const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
@@ -1949,7 +1949,7 @@ test('app-server proxy carries websocket JSON-RPC traffic over stdio', async () 
 })
 
 test('remote shim launches daemon and proxy with Codex-compatible commands', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   // Keep the socket path short — a mkdtemp dir nested under macOS tmpdir blows
   // past the ~104-byte sockaddr_un limit, which surfaced as a bind EINVAL.
   const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
@@ -1961,6 +1961,8 @@ test('remote shim launches daemon and proxy with Codex-compatible commands', asy
       ANYENGINE_ADAPTER: adapter,
       ANYENGINE_MOCK: '1',
       NODE_NO_WARNINGS: '1',
+      // Keep the shim hermetic: never source the developer's own runtime.env.
+      ANYENGINE_RUNTIME_ENV: '/dev/null',
     },
   })
   const proxy = spawn(shim, ['app-server', 'proxy', '--sock', sock], {
@@ -1971,6 +1973,8 @@ test('remote shim launches daemon and proxy with Codex-compatible commands', asy
       ANYENGINE_ADAPTER: adapter,
       ANYENGINE_MOCK: '1',
       NODE_NO_WARNINGS: '1',
+      // Keep the shim hermetic: never source the developer's own runtime.env.
+      ANYENGINE_RUNTIME_ENV: '/dev/null',
     },
   })
   try {
@@ -2014,7 +2018,7 @@ test('remote shim launches daemon and proxy with Codex-compatible commands', asy
 })
 
 test('remote utility methods use v2 response shapes', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2023,10 +2027,7 @@ test('remote utility methods use v2 response shapes', async () => {
   try {
     proc.stdin.write(json({ id: 1, method: 'fs/readFile', params: { path: resolve('README.md') } }))
     const file = await reader.nextResponse(1)
-    assert.match(
-      Buffer.from(file.result.dataBase64, 'base64').toString('utf8'),
-      /Claude Codex Adapter/,
-    )
+    assert.match(Buffer.from(file.result.dataBase64, 'base64').toString('utf8'), /anyengine/)
 
     proc.stdin.write(
       json({ id: 2, method: 'fs/getMetadata', params: { path: resolve('README.md') } }),
@@ -2063,7 +2064,7 @@ test('remote utility methods use v2 response shapes', async () => {
 })
 
 test('process/spawn supports shell strings, errors, and debug logs terminal lifecycle', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const debugLog = join(home, 'adapter-debug.jsonl')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -2107,7 +2108,7 @@ test('process/spawn supports shell strings, errors, and debug logs terminal life
         method: 'process/spawn',
         params: {
           processHandle: 'missing-process',
-          command: ['/definitely/missing/claude-codex-test'],
+          command: ['/definitely/missing/anyengine-test'],
           cwd: process.cwd(),
         },
       }),
@@ -2138,7 +2139,7 @@ test('process/spawn supports shell strings, errors, and debug logs terminal life
 })
 
 test('review/start and thread/compact/start emit real turn items', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2211,7 +2212,7 @@ test('review/start and thread/compact/start emit real turn items', async () => {
 })
 
 test('Claude thinking maps to Codex reasoning summary and content deltas', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2259,7 +2260,7 @@ test('Claude thinking maps to Codex reasoning summary and content deltas', async
 })
 
 test('Claude token usage maps to thread/tokenUsage/updated notifications', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2321,7 +2322,7 @@ test('Claude token usage maps to thread/tokenUsage/updated notifications', async
 })
 
 test('baseInstructions / developerInstructions / personality flow into the system prompt addendum', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2374,7 +2375,7 @@ test('baseInstructions / developerInstructions / personality flow into the syste
 })
 
 test('Claude hook events are rendered as Codex hookPrompt ThreadItems', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2422,7 +2423,7 @@ test('Claude hook events are rendered as Codex hookPrompt ThreadItems', async ()
 })
 
 test('thread/compact/start drives Claude (summary model) instead of the local stringified summary', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2483,7 +2484,7 @@ test('thread/compact/start drives Claude (summary model) instead of the local st
 })
 
 test('localImage user input becomes a multimodal Claude prompt + an imageView ThreadItem', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   // Tiny 1x1 PNG to avoid pulling a real image binary.
   const png1x1 = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
@@ -2545,7 +2546,7 @@ test('localImage user input becomes a multimodal Claude prompt + an imageView Th
 })
 
 test('Claude WebSearch tool maps to native Codex webSearch ThreadItem with action', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2601,7 +2602,7 @@ test('Claude WebSearch tool maps to native Codex webSearch ThreadItem with actio
 })
 
 test('modelProvider/capabilities/read advertises webSearch=true unless ANYENGINE_WEBSEARCH=0', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2618,7 +2619,7 @@ test('modelProvider/capabilities/read advertises webSearch=true unless ANYENGINE
 })
 
 test('config/value/write persists arbitrary settings keys across restarts', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const env = { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' }
   // Round 1: write a custom key + a known typed key.
   const proc1 = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
@@ -2678,7 +2679,7 @@ test('config/value/write persists arbitrary settings keys across restarts', asyn
 })
 
 test('thread/inject_items appends a synthetic turn carrying the injected text', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2749,7 +2750,7 @@ test('thread/inject_items appends a synthetic turn carrying the injected text', 
 })
 
 test('turn/start planMode=true flows into Claude SDK permission_mode plan', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2793,7 +2794,7 @@ test('turn/start planMode=true flows into Claude SDK permission_mode plan', asyn
 })
 
 test('TodoWrite maps to a Codex v2 turn/plan/updated notification, not a timeline item', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2846,7 +2847,7 @@ test('TodoWrite maps to a Codex v2 turn/plan/updated notification, not a timelin
 })
 
 test('Codex App approvalPolicy=never + sandbox=danger-full-access auto-accepts tool calls', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2909,7 +2910,7 @@ test('Codex App approvalPolicy=never + sandbox=danger-full-access auto-accepts t
 })
 
 test('Task subagent emits the canonical activity lifecycle and leaves wait as the terminal display state', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -3422,7 +3423,7 @@ test('Task subagent emits the canonical activity lifecycle and leaves wait as th
 })
 
 test('Codex cc 26.818 settles subagents without the unsupported completed activity kind', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3533,7 +3534,7 @@ test('Codex cc 26.818 settles subagents without the unsupported completed activi
 })
 
 test('subagent without a terminal result emits interrupted activity and failed wait', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3604,7 +3605,7 @@ test('subagent without a terminal result emits interrupted activity and failed w
 })
 
 test('bare /workflows lists prior workflow runs without invoking the model', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3661,7 +3662,7 @@ test('bare /workflows lists prior workflow runs without invoking the model', asy
 })
 
 test('thread/start picks up effort from config.model_reasoning_effort when top-level effort is absent', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3717,7 +3718,7 @@ test('thread/start picks up effort from config.model_reasoning_effort when top-l
 })
 
 test('thread/start coerces invalid threadSource / source values so Codex App never sees a non-enum', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3782,7 +3783,7 @@ test('thread/start coerces invalid threadSource / source values so Codex App nev
 
 test('legacy DB rows with invalid thread_source / source are sanitized on startup', async () => {
   const { SessionStore } = await import(resolve('dist/src/store.mjs'))
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-migrate-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-migrate-'))
   const dbPath = join(home, 'state.sqlite')
   try {
     // First open: create schema, then poison the rows directly via raw SQL
@@ -3841,7 +3842,7 @@ test('legacy DB rows with invalid thread_source / source are sanitized on startu
 })
 
 test('thread/start with ephemeral=true is hidden from thread/list and surfaces threadSource', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3888,7 +3889,7 @@ test('thread/start with ephemeral=true is hidden from thread/list and surfaces t
 
 test('debug.jsonl rotates once it crosses ANYENGINE_DEBUG_LOG_MAX_BYTES', async () => {
   const util = await import(resolve('dist/src/util.mjs'))
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-rotate-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-rotate-'))
   const logPath = join(home, 'debug.jsonl')
   const prevPath = process.env.ANYENGINE_DEBUG_LOG
   const prevMax = process.env.ANYENGINE_DEBUG_LOG_MAX_BYTES
@@ -3938,7 +3939,7 @@ test('defaultSocketPath stays within the platform sun_path limit', async () => {
 })
 
 test('approval requests round-trip through Codex server requests', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4007,7 +4008,7 @@ test('approval requests round-trip through Codex server requests', async () => {
 })
 
 test('generic Claude tools complete as Codex mcpToolCall items', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4064,7 +4065,7 @@ test('generic Claude tools complete as Codex mcpToolCall items', async () => {
 })
 
 test('turn/steer appends user input to an active Claude turn', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4140,7 +4141,7 @@ test('AskUserQuestion is bridged to Codex item/tool/requestUserInput', async () 
   // card. We bridge them to Codex's native request_user_input reverse RPC
   // so the App pops its structured picker, then route the user's answer
   // back to the model.
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4243,7 +4244,7 @@ test('AskUserQuestion is bridged to Codex item/tool/requestUserInput', async () 
 })
 
 test('compatibility-only UI methods return schema-shaped responses', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4303,7 +4304,7 @@ test('compatibility-only UI methods return schema-shaped responses', async () =>
 })
 
 test('file change approval emits patch and git diff updates', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const repo = join(home, 'repo')
   execFileSync('mkdir', ['-p', repo])
   execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' })
@@ -4372,7 +4373,7 @@ test('file change approval emits patch and git diff updates', async () => {
 })
 
 test('gitDiffToRemote includes untracked files for Codex diff review', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const repo = join(home, 'repo')
   execFileSync('mkdir', ['-p', repo])
   execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' })
@@ -4402,7 +4403,7 @@ test('gitDiffToRemote includes untracked files for Codex diff review', async () 
 })
 
 test('thread resume, fork, and interrupt lifecycle methods are stable', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4454,7 +4455,7 @@ test('thread resume, fork, and interrupt lifecycle methods are stable', async ()
 })
 
 test('turn interrupt completes requested in-progress turn after reconnect', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   try {
     execFileSync(
       process.execPath,
@@ -4552,7 +4553,7 @@ test('turn interrupt completes requested in-progress turn after reconnect', asyn
 })
 
 test('runtime settlement cannot overwrite an interrupted turn', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   try {
     execFileSync(
       process.execPath,
@@ -4711,7 +4712,7 @@ test('runtime settlement cannot overwrite an interrupted turn', async () => {
 })
 
 test('subagent watchdog terminalizes a runtime that never returns', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   try {
     execFileSync(
       process.execPath,
@@ -4803,7 +4804,7 @@ test('subagent watchdog terminalizes a runtime that never returns', async () => 
 })
 
 test('workflow watchdog terminalizes a launch that never publishes a result', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   try {
     execFileSync(
       process.execPath,
@@ -4898,7 +4899,7 @@ test('workflow watchdog terminalizes a launch that never publishes a result', as
 })
 
 test('workflow watchdog disarms when the original Workflow tool result arrives', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   try {
     execFileSync(
       process.execPath,
@@ -4982,7 +4983,7 @@ test('workflow watchdog disarms when the original Workflow tool result arrives',
 })
 
 test('server shutdown terminalizes active child turns before closing the store', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const database = join(home, 'state.sqlite')
   try {
     execFileSync(
@@ -5071,7 +5072,7 @@ test('server shutdown terminalizes active child turns before closing the store',
 })
 
 test('interrupt during final git diff cannot overwrite an interrupted turn', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const repo = join(home, 'repo')
   const bin = join(home, 'bin')
   const diffStarted = join(home, 'git-diff-started')
@@ -5207,7 +5208,7 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
 })
 
 test('mcp status list reflects configured Claude SDK MCP servers', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -5241,7 +5242,7 @@ test('mcp status list reflects configured Claude SDK MCP servers', async () => {
 })
 
 test('direct MCP stdio resource and tool calls work', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const fixture = resolve('test/fixtures/mcp-stdio-server.mjs')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -5285,7 +5286,7 @@ test('direct MCP stdio resource and tool calls work', async () => {
 })
 
 test('mcpServerStatus/list enumerates tools and resources from the server', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const fixture = resolve('test/fixtures/mcp-stdio-server.mjs')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -5317,7 +5318,7 @@ test('mcpServerStatus/list enumerates tools and resources from the server', asyn
 })
 
 test('fuzzyFileSearch session streams updated and completed notifications', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   await writeFile(join(home, 'findme-fixture.txt'), 'x')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -5376,7 +5377,7 @@ test('fuzzyFileSearch session streams updated and completed notifications', asyn
 })
 
 test('skills/list and hooks/list surface Claude Code skills and settings hooks', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const workspace = join(home, 'ws')
   await mkdir(join(home, '.claude', 'skills', 'user-skill'), { recursive: true })
   await writeFile(
@@ -5465,7 +5466,7 @@ test('skills/list and hooks/list surface Claude Code skills and settings hooks',
 })
 
 test('direct MCP HTTP tool calls work', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const httpServer = http.createServer((req, res) => {
     let body = ''
     req.setEncoding('utf8')
@@ -5536,7 +5537,7 @@ test('direct MCP HTTP tool calls work', async () => {
 })
 
 test('optional auto worktree binds new threads to isolated git worktrees', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'claude-codex-test-'))
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const repo = join(home, 'repo')
   const worktrees = join(home, 'worktrees')
   await writeFile(join(home, 'placeholder'), '')

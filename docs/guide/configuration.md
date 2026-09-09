@@ -1,7 +1,7 @@
 # Configuration
 
 All configuration is environment-driven (`ANYENGINE_*`). Set these in the
-remote login shell (e.g. `~/.zshenv`) or in `~/.claude-codex/runtime.env`.
+remote login shell (e.g. `~/.zshenv`) or in `~/.anyengine/runtime.env`.
 
 ## Runtime backend
 
@@ -91,7 +91,7 @@ export ANYENGINE_BRIDGE=1
 # adapter home and a random per-process token). The three variables below are
 # what the adapter passes to each engine's bridge process; set them by hand
 # only for a hand-written MCP config that runs scripts/bridge-mcp.mjs.
-# export ANYENGINE_BRIDGE_SOCKET="$HOME/.codex/claude-codex-adapter/bridge.sock"
+# export ANYENGINE_BRIDGE_SOCKET="$HOME/.codex/anyengine/bridge.sock"
 # export ANYENGINE_BRIDGE_TOKEN="..."
 # export ANYENGINE_BRIDGE_THREAD="<calling thread id>"
 ```
@@ -101,7 +101,7 @@ export ANYENGINE_BRIDGE=1
 ```bash
 # Per-thread git worktree isolation (off by default — it creates branches).
 export ANYENGINE_AUTO_WORKTREE=1
-export ANYENGINE_WORKTREE_ROOT="$HOME/.claude-codex/worktrees"
+export ANYENGINE_WORKTREE_ROOT="$HOME/.anyengine/worktrees"
 ```
 
 When enabled, each new Codex thread runs in a dedicated `git worktree`.
@@ -137,7 +137,7 @@ export ANYENGINE_PTY_ARGS=""
 # Advanced: relay script, node binary for hooks, and the private state dir.
 # export ANYENGINE_PTY_HOOK_RELAY="/path/to/scripts/anyengine-hook-relay.mjs"
 # export ANYENGINE_PTY_NODE="/absolute/path/to/node"
-# export ANYENGINE_PTY_STATE_DIR="/tmp/claude-codex-pty"
+# export ANYENGINE_PTY_STATE_DIR="/tmp/anyengine-pty"
 ```
 
 ## Daemon
@@ -158,7 +158,7 @@ export ANYENGINE_NODE="/absolute/path/to/node"
 | `ANYENGINE_ADAPTER` | Path to `dist/src/adapter.mjs` (used by the shim). |
 | `ANYENGINE_NODE` | Node binary the shim launches. |
 | `ANYENGINE_COMPAT_VERSION` | Codex app-server version advertised (default `0.142.3`). |
-| `ANYENGINE_VERSION_SUFFIX` | Tag after the version to distinguish the adapter from real codex (default `claude-codex`; set `""` to behave exactly like upstream codex). |
+| `ANYENGINE_VERSION_SUFFIX` | Tag after the version to distinguish the adapter from real codex (default `anyengine`; set `""` to behave exactly like upstream codex). |
 | `CODEX_REAL` | Real Codex CLI for non-app-server commands / `codex` passthrough. |
 | `ANYENGINE_REAL_CODEX` | Real `codex` binary spawned as the native-codex child (default: the bundled desktop binary, then `CODEX_REAL`). |
 | `ANYENGINE_NATIVE_CODEX` | `0` disables auto-detecting the real binary (explicit `ANYENGINE_REAL_CODEX` still applies). |

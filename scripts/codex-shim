@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-codex shim. ChatGPT.app 26.9xx launches
+# anyengine codex shim (marker: ANYENGINE_ADAPTER). ChatGPT.app 26.9xx launches
 # `codex -c features.code_mode_host=true app-server --listen unix://`, so the
 # subcommand is not argv[1]. Strip leading global options before deciding.
 set -euo pipefail
@@ -18,13 +18,15 @@ anyengine_adopt_legacy_env() {
   done <<EOF
 $(env | sed -n 's/^\(CLAUDE_CODEX_[A-Za-z0-9_]*\)=.*/\1/p')
 EOF
+  # `set -e` is on: pin the status so an empty list is not a failure.
+  return 0
 }
 anyengine_adopt_legacy_env
 
 RUNTIME_ENV="${ANYENGINE_RUNTIME_ENV:-${CLAUDE_CODEX_RUNTIME_ENV:-}}"
 if [ -z "$RUNTIME_ENV" ]; then
   RUNTIME_ENV="$HOME/.anyengine/runtime.env"
-  # Legacy state directory, honoured while the old one is the only one there.
+  # Pre-rebrand state directory, honoured while it is the only one present.
   [ -f "$RUNTIME_ENV" ] || [ ! -f "$HOME/.claude-codex/runtime.env" ] || \
     RUNTIME_ENV="$HOME/.claude-codex/runtime.env"
 fi
@@ -34,10 +36,10 @@ if [ -f "$RUNTIME_ENV" ]; then
   anyengine_adopt_legacy_env
 fi
 
-ADAPTER="${ANYENGINE_ADAPTER:-/opt/claude-codex-adapter/dist/src/adapter.mjs}"
+ADAPTER="${ANYENGINE_ADAPTER:-/opt/anyengine/dist/src/adapter.mjs}"
 NODE_BIN="${ANYENGINE_NODE:-node}"
 COMPAT_VERSION="${ANYENGINE_COMPAT_VERSION:-${CODEX_SHIM_COMPAT_VERSION:-0.142.3}}"
-VERSION_SUFFIX="${ANYENGINE_VERSION_SUFFIX-claude-codex}"
+VERSION_SUFFIX="${ANYENGINE_VERSION_SUFFIX-anyengine}"
 MODE="${ANYENGINE_ROUTE:-${ANYENGINE_RUNTIME_TYPE:-agent-sdk-sidecar}}"
 
 resolve_real_codex() {

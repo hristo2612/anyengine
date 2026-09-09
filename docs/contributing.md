@@ -51,7 +51,7 @@ the deployed artifact needs only `node` — no TS toolchain, no dependence on a
 - `src/store.mts` — SQLite thread/turn persistence (`node:sqlite`).
 - `src/*-runtime.mts` + `runtime-factory.mts` — pluggable Claude backends.
 - `scripts/codex-shim` — the `PATH` shim Codex App invokes.
-- `scripts/claude-codex-mode` — host helper to switch backends.
+- `scripts/anyengine-mode` — host helper to switch backends.
 - `test/` — `node:test` suites against `dist/`.
 
 The repo also ships progressive `AGENTS.md` files (root + `src/` + `scripts/` +

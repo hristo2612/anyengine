@@ -5,7 +5,7 @@
 // `anyengine` MCP tools; records every notification the App would see and
 // asserts the cross-engine answer made it back.
 //
-//   source ~/.claude-codex/runtime.env
+//   source ~/.anyengine/runtime.env
 //   node scripts/smoke-bridge.mjs claude   # sonnet thread spawns a grok-4.6 session (port 8797)
 //   node scripts/smoke-bridge.mjs grok     # grok thread fans out 2x haiku + 2x grok sub-agents (8798)
 //   node scripts/smoke-bridge.mjs gpt      # gpt thread (native child) spawns a haiku session (8799);
@@ -15,7 +15,7 @@
 //                                          # 2 with grok and 2 with claude, ..." in a grok thread (8796)
 //   ANYENGINE_SMOKE_PORT / ANYENGINE_SMOKE_MODEL / ANYENGINE_SMOKE_CWD override.
 // The adapter process it spawns is the only pid it kills. Report + debug log
-// land under .claude-codex/bridge-smoke-<engine>-<stamp>/.
+// land under .anyengine/bridge-smoke-<engine>-<stamp>/.
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -26,9 +26,9 @@ const engine = ['claude', 'grok', 'gpt', 'natural'].includes(process.argv[2])
   ? process.argv[2]
   : 'claude'
 const repo = resolve(process.cwd())
-const cwd = resolve(process.env.ANYENGINE_SMOKE_CWD ?? join(repo, '.claude-codex', 'bridge-smoke'))
+const cwd = resolve(process.env.ANYENGINE_SMOKE_CWD ?? join(repo, '.anyengine', 'bridge-smoke'))
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-const home = join(repo, '.claude-codex', `bridge-smoke-${engine}-${stamp}`)
+const home = join(repo, '.anyengine', `bridge-smoke-${engine}-${stamp}`)
 await mkdir(cwd, { recursive: true })
 await mkdir(home, { recursive: true })
 const port = Number(

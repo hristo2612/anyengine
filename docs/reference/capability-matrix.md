@@ -19,7 +19,7 @@ Agent SDK sidecar; runtime selection is pluggable. Status legend: **Supported**,
 
 | Backend | Status | Notes |
 | --- | --- | --- |
-| Selection mechanism | Supported | `ANYENGINE_RUNTIME_TYPE` picks native `codex` passthrough (shim) or adapter runtimes. Switch with `claude-codex-mode` on the host and reconnect. |
+| Selection mechanism | Supported | `ANYENGINE_RUNTIME_TYPE` picks native `codex` passthrough (shim) or adapter runtimes. Switch with `anyengine-mode` on the host and reconnect. |
 | agent-sdk-sidecar (default) | Supported | In-process Claude Agent SDK; full tool/permission/reasoning events. |
 | agent-http / Channels | Experimental | Consumes `POST /message`, `GET /messages|/status|/events`; message-level deltas only, no semantic tool/permission/reasoning events. |
 | agentapi | Experimental | Same HTTP/SSE client against coder/agentapi; terminal-derived text only, no structured tool events. |
@@ -88,7 +88,7 @@ schema under `generated/` with `npm run generate:schema` (needs a matching
 
 Because the adapter now reports the same version as a real `codex`, it appends a
 distinguishing suffix: `codex --version` prints `codex-cli 0.142.3
-(claude-codex)` and the `initialize` userAgent carries `claude-codex` in its
+(anyengine)` and the `initialize` userAgent carries `anyengine` in its
 originator field. The version number stays first so the App's semver probe still
 parses it. Set `ANYENGINE_VERSION_SUFFIX=""` to behave exactly like upstream
 codex.

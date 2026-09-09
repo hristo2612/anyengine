@@ -320,7 +320,7 @@ export class GrokRuntime implements ClaudeRuntime {
       {
         protocolVersion: ACP_PROTOCOL_VERSION,
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
-        clientInfo: { name: 'claude-codex-adapter', version: '0.1.0' },
+        clientInfo: { name: 'anyengine', version: '0.1.0' },
       },
       this.options.startupTimeoutMs,
     )
@@ -515,7 +515,7 @@ export class GrokRuntime implements ClaudeRuntime {
       this.write(gp, {
         jsonrpc: '2.0',
         id,
-        error: { code: -32601, message: `${method} is not supported by claude-codex-adapter` },
+        error: { code: -32601, message: `${method} is not supported by anyengine` },
       })
       return
     }

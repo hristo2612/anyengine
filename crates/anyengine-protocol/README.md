@@ -1,6 +1,6 @@
-# claude-codex-protocol
+# anyengine-protocol
 
-Experimental Rust protocol smoke crate for `claude-codex`.
+Experimental Rust protocol smoke crate for `anyengine`.
 
 This crate is not used by production. The TypeScript app-server adapter remains
 the shipping runtime path. The crate only checks a small set of representative

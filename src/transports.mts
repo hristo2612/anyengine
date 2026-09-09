@@ -128,9 +128,9 @@ export async function startWebSocketTransport(
   })
 
   if (parsed.kind === 'unix') {
-    process.stderr.write(`[claude-codex-adapter] listening on ${parsed.path}\n`)
+    process.stderr.write(`[anyengine] listening on ${parsed.path}\n`)
   } else {
-    process.stderr.write(`[claude-codex-adapter] listening on ws://${parsed.host}:${parsed.port}\n`)
+    process.stderr.write(`[anyengine] listening on ws://${parsed.host}:${parsed.port}\n`)
   }
 
   return {
@@ -164,13 +164,13 @@ export async function runProxy(socketPath: string, timeoutMs = 10_000): Promise<
         const swallow = (label: string) => (error: NodeJS.ErrnoException) => {
           if (error.code === 'EPIPE' || error.code === 'ECONNRESET' || error.code === 'EBADF')
             return
-          process.stderr.write(`[claude-codex-adapter] proxy ${label} error: ${error.message}\n`)
+          process.stderr.write(`[anyengine] proxy ${label} error: ${error.message}\n`)
         }
         process.stdin.on('error', swallow('stdin'))
         process.stdout.on('error', swallow('stdout'))
         socket.on('close', () => resolve())
         socket.on('error', (error) => {
-          process.stderr.write(`[claude-codex-adapter] proxy socket error: ${error.message}\n`)
+          process.stderr.write(`[anyengine] proxy socket error: ${error.message}\n`)
           resolve()
         })
       })

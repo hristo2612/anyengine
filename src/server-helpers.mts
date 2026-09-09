@@ -109,7 +109,7 @@ export function configEdits(
 export function configLayerMetadata(): unknown {
   return {
     name: { type: 'user', file: `${codexHome()}/config.toml` },
-    version: `claude-codex-${nowSeconds()}`,
+    version: `anyengine-${nowSeconds()}`,
   }
 }
 

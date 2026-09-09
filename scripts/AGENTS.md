@@ -14,8 +14,8 @@ plain `.mjs` / shell.
 - `smoke-native-codex.mjs` — real smoke for the native-codex multiplexer
   (`npm run smoke:native-codex`): gpt PONG through the bundled app-server,
   native command approval, then a Claude PONG.
-- `claude-codex-mode` — host helper to switch runtime backends, restart bridges,
-  and read status/logs. Writes `~/.claude-codex/runtime.env`.
+- `anyengine-mode` — host helper to switch runtime backends, restart bridges,
+  and read status/logs. Writes `~/.anyengine/runtime.env`.
 - `hooks/guard.mjs` — Claude Code hook enforcing project conventions (blocks
   build-artifact edits; warns on non-`.mts` src, misplaced runtime code, and
   files > ~1000 lines). Wired in `.claude/settings.json`. Must exit 0 on any
@@ -36,7 +36,7 @@ plain `.mjs` / shell.
 - `fix-node-pty-permissions.mjs` — `postinstall`: restores the exec bit on
   node-pty's `spawn-helper`.
 - `acceptance-*.mjs` — end-to-end checks (local-remote, gui-ssh-localhost,
-  ssh-runtime-matrix); transcripts land under git-ignored `.claude-codex/`.
+  ssh-runtime-matrix); transcripts land under git-ignored `.anyengine/`.
 - `probe-*.mjs` — capability / codex-cli-remote probes.
 
 ## Conventions
@@ -48,4 +48,4 @@ plain `.mjs` / shell.
 - When adding a hook, branch on `hook_event_name`, read JSON from stdin, and
   fail open (exit 0) on error.
 - `.mjs` scripts are Biome-formatted (`npm run format` covers `scripts/`); the
-  shell scripts (`codex-shim`, `claude-codex-mode`) are left untouched.
+  shell scripts (`codex-shim`, `anyengine-mode`) are left untouched.

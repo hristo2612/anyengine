@@ -30,7 +30,7 @@ export function codexHome(): string {
 }
 
 export function adapterHome(): string {
-  return resolve(process.env.ANYENGINE_HOME || join(codexHome(), 'claude-codex-adapter'))
+  return resolve(process.env.ANYENGINE_HOME || join(codexHome(), 'anyengine'))
 }
 
 // Unix domain socket paths are bounded by sockaddr_un.sun_path — roughly 104
@@ -144,7 +144,7 @@ export function codexCompatVersion(): string {
 // Claude adapter is identifiable next to a real `codex` that now reports the
 // same version. Set ANYENGINE_VERSION_SUFFIX="" to disable and behave exactly
 // like upstream codex.
-const DEFAULT_VERSION_SUFFIX = 'claude-codex'
+const DEFAULT_VERSION_SUFFIX = 'anyengine'
 
 export function codexVersionSuffix(): string {
   return process.env.ANYENGINE_VERSION_SUFFIX ?? DEFAULT_VERSION_SUFFIX
@@ -651,10 +651,11 @@ export function resolveCodexBinary(): string | null {
     try {
       const st = statSync(candidate)
       if (!st.isFile()) continue
-      // Skip our shim — a hashbang + 'CLAUDE_CODEX' header is a strong
-      // signal it's our codex-shim and would recurse.
+      // Skip our shim — an 'anyengine' marker in the header is a strong signal
+      // it's our codex-shim and would recurse. 'claude-codex' covers a
+      // pre-rebrand shim still installed on the host.
       const head = readFileSync(candidate, { encoding: 'utf8' }).slice(0, 200)
-      if (head.includes('ANYENGINE_ADAPTER') || head.includes('claude-codex')) continue
+      if (head.includes('anyengine') || head.includes('claude-codex')) continue
       return candidate
     } catch {}
   }

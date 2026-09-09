@@ -8,7 +8,7 @@ complete.
 The default state file is:
 
 ```text
-~/.codex/claude-codex-adapter/workflow-state.json
+~/.codex/anyengine/workflow-state.json
 ```
 
 ## Core loop
@@ -71,7 +71,7 @@ be stolen.
 Run events are appended to:
 
 ```text
-~/.codex/claude-codex-adapter/runs.jsonl
+~/.codex/anyengine/runs.jsonl
 ```
 
 The registry redacts prompt-like fields, model responses, and secret-like

@@ -11,14 +11,14 @@ const root = resolve('.')
 const adapter = resolve('dist/src/adapter.mjs')
 const shimSource = resolve('scripts/codex-shim')
 const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-const base = resolve('.claude-codex', `local-remote-acceptance-${stamp}`)
+const base = resolve('.anyengine', `local-remote-acceptance-${stamp}`)
 const home = join(base, 'codex-home')
 const bin = join(base, 'bin')
 const workspace = join(base, 'workspace')
 const shim = join(bin, 'codex')
 const socketPath = join(home, 'app-server-control', 'app-server-control.sock')
-const targetFile = join(workspace, 'claude-codex-remote-acceptance.txt')
-const expectedText = 'claude-codex-remote-file-ok'
+const targetFile = join(workspace, 'anyengine-remote-acceptance.txt')
+const expectedText = 'anyengine-remote-file-ok'
 
 let daemon = null
 let proxy = null
@@ -100,7 +100,7 @@ async function main() {
           type: 'text',
           text: [
             'Use Claude Code tools in the current working directory.',
-            `Create or overwrite a file named claude-codex-remote-acceptance.txt with exactly this content and no extra whitespace: ${expectedText}`,
+            `Create or overwrite a file named anyengine-remote-acceptance.txt with exactly this content and no extra whitespace: ${expectedText}`,
             `After the file is written, reply with exactly: ${expectedText}`,
           ].join('\n'),
           text_elements: [],
@@ -210,7 +210,7 @@ async function waitForSocket(path) {
 }
 
 function daemonSocketPathFromStderr() {
-  const marker = '[claude-codex-adapter] listening on '
+  const marker = '[anyengine] listening on '
   const index = daemonStderr.lastIndexOf(marker)
   if (index < 0) return null
   const line = daemonStderr

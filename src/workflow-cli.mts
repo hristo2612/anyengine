@@ -248,7 +248,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     },
     (error: unknown) => {
       process.stderr.write(
-        `[claude-codex-workflow] ${error instanceof Error ? error.message : String(error)}\n`,
+        `[anyengine-workflow] ${error instanceof Error ? error.message : String(error)}\n`,
       )
       process.exitCode = 1
     },

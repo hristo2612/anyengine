@@ -429,7 +429,7 @@ export class CodexUpstream {
     if (this.unavailable) return
     this.unavailable = true
     debugLog('codex.upstream.unavailable', { reason })
-    process.stderr.write(`[claude-codex-adapter] codex upstream unavailable: ${reason}\n`)
+    process.stderr.write(`[anyengine] codex upstream unavailable: ${reason}\n`)
     this.onAvailabilityChange?.(false)
   }
 }
