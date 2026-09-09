@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Fake interactive `claude` CLI for the jinn-pty runtime tests.
+// Fake interactive `claude` CLI for the anyengine runtime tests.
 //
 // Mimics just enough of the real TUI: reads the `--settings` hooks file, fires
 // the configured hook commands with payloads shaped like Claude Code's (stdin

@@ -13,7 +13,7 @@ import { adapterHome, debugLog, ensureParent, newId, socketPathLimit, stableHash
 // Cross-engine bridge, adapter side (docs/guide/bridge.md).
 //
 // Every engine process the adapter runs (interactive `claude`, `grok agent`,
-// the real `codex app-server` child) gets one extra MCP server, `jinn_bridge`
+// the real `codex app-server` child) gets one extra MCP server, `anyengine`
 // (src/bridge-mcp.mts), spawned by the engine itself. That process connects
 // back here over a loopback unix socket with a per-adapter token and asks for
 // sessions and sub-agents on ANY model. Each request is injected into the
@@ -28,7 +28,7 @@ import { adapterHome, debugLog, ensureParent, newId, socketPathLimit, stableHash
 
 export { providerFor } from './bridge-instructions.mjs'
 
-export const BRIDGE_SERVER_NAME = 'jinn_bridge'
+export const BRIDGE_SERVER_NAME = 'anyengine'
 export const BRIDGE_ENV_SOCKET = 'CLAUDE_CODEX_BRIDGE_SOCKET'
 export const BRIDGE_ENV_TOKEN = 'CLAUDE_CODEX_BRIDGE_TOKEN'
 export const BRIDGE_ENV_THREAD = 'CLAUDE_CODEX_BRIDGE_THREAD'
@@ -180,7 +180,7 @@ export class BridgeControl {
   }
 
   // The App-provided servers (CLAUDE_CODEX_MCP_SERVERS: record, {mcpServers}
-  // wrapper or a file path) plus `jinn_bridge` for this thread.
+  // wrapper or a file path) plus `anyengine` for this thread.
   mergeMcpServers(threadId: string | null, base: unknown): Record<string, unknown> {
     const servers = { ...mcpServerRecord(base) }
     servers[BRIDGE_SERVER_NAME] = this.mcpServerSpec(threadId)

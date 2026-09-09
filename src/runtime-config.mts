@@ -12,10 +12,10 @@ export type RuntimeBackendType =
   // codex-proxy = `codex exec --json` per turn. Selected per-thread when the
   // user picks a gpt-* model in the App's model dropdown.
   | 'codex-proxy'
-  // jinn-pty = the interactive `claude` TUI driven inside a long-lived PTY per
+  // anyengine = the interactive `claude` TUI driven inside a long-lived PTY per
   // thread (subscription-billed), with Claude Code hooks relayed back over
-  // loopback HTTP. Ported from Jinn's interactive engine.
-  | 'jinn-pty'
+  // loopback HTTP. Ported from a prior interactive engine of ours.
+  | 'anyengine'
   // grok = xAI's `grok agent stdio` (Agent Client Protocol) per thread.
   // Selected per-thread when the user picks a grok-* model in the App.
   | 'grok'
@@ -39,7 +39,7 @@ export interface RuntimeConfig {
     resume: boolean
     stopTimeoutRetries: number
   }
-  jinnPty: {
+  anyengine: {
     cli: string
     cols: number
     rows: number
@@ -100,7 +100,7 @@ export function resolveRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runt
       resume: envFlag(env.CLAUDE_CODEX_CLAUDE_P_RESUME, false),
       stopTimeoutRetries: numericEnv(env.CLAUDE_CODEX_CLAUDE_P_STOP_TIMEOUT_RETRIES, 1, 0, 5),
     },
-    jinnPty: {
+    anyengine: {
       cli: env.CLAUDE_CODEX_CLI || 'claude',
       cols: numericEnv(env.CLAUDE_CODEX_PTY_COLS, 120, 40, 500),
       rows: numericEnv(env.CLAUDE_CODEX_PTY_ROWS, 40, 10, 200),
@@ -185,12 +185,11 @@ export function normalizeRuntimeType(value: string | undefined): RuntimeBackendT
       // 'codex' mode (which bypasses our adapter entirely) — codex-proxy
       // keeps the adapter daemon in the loop and forwards just the turn.
       return 'codex-proxy'
-    case 'jinn-pty':
-    case 'jinn':
+    case 'anyengine':
     case 'pty':
     case 'claude-pty':
     case 'interactive':
-      return 'jinn-pty'
+      return 'anyengine'
     case 'grok':
     case 'grok-agent':
     case 'grok-acp':

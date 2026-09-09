@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Sub-agent smoke for the two local runtimes (jinn-pty Claude, grok ACP).
+// Sub-agent smoke for the two local runtimes (anyengine Claude, grok ACP).
 // Boots the adapter on a WebSocket listener, starts a thread with an
 // approval-free policy, asks the model to fan out to two sub-agents, and
 // records every notification the App would see (method, item type, tool),
@@ -46,7 +46,7 @@ const env = {
   CLAUDE_CODEX_DEBUG_LOG: debugLog,
   NODE_NO_WARNINGS: '1',
 }
-if (runtime === 'claude') env.CLAUDE_CODEX_RUNTIME_TYPE = 'jinn-pty'
+if (runtime === 'claude') env.CLAUDE_CODEX_RUNTIME_TYPE = 'anyengine'
 
 const adapter = spawn(process.execPath, [resolve('dist/src/adapter.mjs'), 'app-server', '--listen', listen], {
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -264,7 +264,7 @@ function debugSummary() {
     const ev = e.event ?? e.type ?? e.msg ?? 'unknown'
     counts[ev] = (counts[ev] ?? 0) + 1
     if (/error|fail|denied|timeout/i.test(ev) || e.error || e.data?.error) errors.push(line.slice(0, 400))
-    if (ev === 'jinnPty.hook') {
+    if (ev === 'anyengine.hook') {
       const k = `${e.data?.event ?? e.event}:${e.data?.tool ?? e.tool ?? '-'}`
       hookTools[k] = (hookTools[k] ?? 0) + 1
     }

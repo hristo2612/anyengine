@@ -2,7 +2,7 @@
 // Real smoke for the cross-engine bridge (docs/guide/bridge.md). Boots the
 // adapter on a WebSocket listener with the host's runtime.env, starts ONE
 // calling thread on the chosen engine and asks the model to use the
-// `jinn_bridge` MCP tools; records every notification the App would see and
+// `anyengine` MCP tools; records every notification the App would see and
 // asserts the cross-engine answer made it back.
 //
 //   source ~/.claude-codex/runtime.env
@@ -52,7 +52,7 @@ const env = {
   // so the native child (gpt) finds the ChatGPT login.
   CLAUDE_CODEX_HOME: join(home, 'adapter-home'),
   CLAUDE_CODEX_DEBUG_LOG: debugLog,
-  CLAUDE_CODEX_RUNTIME_TYPE: 'jinn-pty',
+  CLAUDE_CODEX_RUNTIME_TYPE: 'anyengine',
   CLAUDE_CODEX_SUBAGENT_COMPLETED: '1',
   NODE_NO_WARNINGS: '1',
 }
@@ -314,9 +314,9 @@ function debugSummary() {
 
 const PROMPTS = {
   claude:
-    'Use the spawn_session tool from the jinn_bridge MCP server to start a session with model "grok-4.6" and the prompt "Reply with exactly the single word GROKPONG". Then reply with exactly: GROK SAID: <the text it answered>',
-  grok: 'Use the spawn_subagents tool from the jinn_bridge MCP server exactly once, with four tasks: name "h1" model "haiku" prompt "Reply with exactly the single word APPLE"; name "h2" model "haiku" prompt "Reply with exactly the single word BANANA"; name "g1" model "grok-4.6" prompt "Reply with exactly the single word CHERRY"; name "g2" model "grok-4.6" prompt "Reply with exactly the single word DATE". When it returns, reply with exactly: h1=<word> h2=<word> g1=<word> g2=<word>',
-  gpt: 'Use the spawn_session tool from the jinn_bridge MCP server to start a session with model "haiku" and the prompt "Reply with exactly the single word HAIKUPONG". Then reply with exactly: HAIKU SAID: <the text it answered>',
+    'Use the spawn_session tool from the anyengine MCP server to start a session with model "grok-4.6" and the prompt "Reply with exactly the single word GROKPONG". Then reply with exactly: GROK SAID: <the text it answered>',
+  grok: 'Use the spawn_subagents tool from the anyengine MCP server exactly once, with four tasks: name "h1" model "haiku" prompt "Reply with exactly the single word APPLE"; name "h2" model "haiku" prompt "Reply with exactly the single word BANANA"; name "g1" model "grok-4.6" prompt "Reply with exactly the single word CHERRY"; name "g2" model "grok-4.6" prompt "Reply with exactly the single word DATE". When it returns, reply with exactly: h1=<word> h2=<word> g1=<word> g2=<word>',
+  gpt: 'Use the spawn_session tool from the anyengine MCP server to start a session with model "haiku" and the prompt "Reply with exactly the single word HAIKUPONG". Then reply with exactly: HAIKU SAID: <the text it answered>',
 }
 const EXPECT = {
   claude: ['GROKPONG'],

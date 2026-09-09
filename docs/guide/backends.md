@@ -10,7 +10,7 @@ default Agent SDK route.
 | `agent-http` / Channels | Experimental | Message-level deltas | No |
 | `agentapi` | Experimental | Terminal-derived text | No |
 | `claude-p` | Experimental | None (one-shot) | No |
-| `jinn-pty` | Experimental | Full (text, reasoning, tools) via SSE tee | Yes (hook-driven) |
+| `anyengine` | Experimental | Full (text, reasoning, tools) via SSE tee | Yes (hook-driven) |
 | `codex` (native passthrough) | Stable | Native Codex | Native Codex |
 | `native-codex` multiplexer (gpt-* threads) | Experimental | Native Codex | Native Codex (mid-turn approvals, steer, subagents, plan mode) |
 | `grok` (xAI Grok Build CLI, per `grok-*` model) | Experimental | Full (text, reasoning, tools) | Yes (App approvals) |
@@ -84,17 +84,16 @@ export CLAUDE_CODEX_CLAUDE_P_COMMAND="claude-p"
 # export CLAUDE_CODEX_CLAUDE_P_RESUME=1   # only after verifying --resume + --input-file
 ```
 
-## jinn-pty (interactive `claude` in a PTY)
+## anyengine (interactive `claude` in a PTY)
 
 Drives the real **interactive** `claude` TUI inside one long-lived
 pseudo-terminal per thread. Interactive use is covered by a Claude
 subscription (Max/Pro), whereas `claude -p` and the Agent SDK bill as API
-usage, which is the reason this backend exists. The technique is ported from
-[Jinn](https://github.com/hristo2612/jinn)'s interactive engine and is
-self-contained in `src/jinn-pty-*.mts`.
+usage, which is the reason this backend exists. The technique is ported from a prior interactive-CLI engine of ours and is
+self-contained in `src/anyengine-*.mts`.
 
 ```bash
-export CLAUDE_CODEX_RUNTIME_TYPE="jinn-pty"   # aliases: pty, claude-pty
+export CLAUDE_CODEX_RUNTIME_TYPE="anyengine"   # aliases: pty, claude-pty
 # export CLAUDE_CODEX_CLI="$HOME/.local/bin/claude"
 ```
 
@@ -113,7 +112,7 @@ How a turn works:
    `turn/interrupt` sends Escape.
 3. **Hooks.** The settings file wires `SessionStart`, `UserPromptSubmit`,
    `PreToolUse`, `PostToolUse`, `Stop`, `StopFailure`, `SubagentStop`,
-   `Notification` and `SessionEnd` to `scripts/jinn-pty-hook-relay.mjs`, which POSTs each payload
+   `Notification` and `SessionEnd` to `scripts/anyengine-hook-relay.mjs`, which POSTs each payload
    to a loopback HTTP server owned by the adapter (random port, token passed
    through the PTY environment only). `PreToolUse` becomes the App's native
    command / file-change approval: read-only tools (Read, Glob, Grep,
@@ -163,7 +162,7 @@ answered locally instead of through the PTY; one turn per thread at a time;
 Windows is untested.
 
 ```bash
-npm run smoke:jinn-pty   # real-Claude smoke: PONG turn + Bash approval round-trip
+npm run smoke:anyengine   # real-Claude smoke: PONG turn + Bash approval round-trip
 ```
 
 ## native-codex passthrough (multiplexer)
@@ -237,7 +236,7 @@ npm run smoke:native-codex   # real smoke: gpt PONG + native command approval + 
 ## Cross-engine bridge
 
 Every engine the adapter runs (interactive `claude`, `grok agent`, the real
-`codex app-server` child) gets one extra MCP server, `jinn_bridge`, whose
+`codex app-server` child) gets one extra MCP server, `anyengine`, whose
 tools start sessions and parallel sub-agents on **any** model: a Claude
 thread can fan out to Grok, a Grok thread can ask GPT, a GPT thread can spawn
 Claude. Requests go back through the adapter's protocol layer, so the model
@@ -251,8 +250,7 @@ Runs xAI's `grok` CLI in its agent mode (`grok agent -m <model> stdio`, the
 Agent Client Protocol over stdio) and maps the stream onto native Codex items:
 per-token answer text, reasoning, `run_terminal_command` as a command item,
 `write`/`edit` as file changes, and grok's `session/request_permission` as the
-App's own command / file-change approval. The technique is ported from
-[Jinn](https://github.com/hristo2612/jinn)'s grok engines and is self-contained in
+App's own command / file-change approval. The technique is ported from a prior grok engine of ours and is self-contained in
 `src/grok-runtime.mts` + `src/grok-acp.mts` + `src/grok-models.mts`.
 
 You do not switch the whole adapter to this backend: **picking a `grok-*` model

@@ -10,7 +10,7 @@ import {
   PtyHookServer,
   writePtyMcpConfig,
   writePtySettings,
-} from './jinn-pty-hooks.mjs'
+} from './anyengine-hooks.mjs'
 import {
   CompactionStreamGate,
   MAIN_AGENT_SENTINEL,
@@ -18,7 +18,7 @@ import {
   SsePtyProxy,
   type SseStreamInfo,
   sseEventToDeltas,
-} from './jinn-pty-proxy.mjs'
+} from './anyengine-proxy.mjs'
 import {
   chooseApproval,
   chooseRejection,
@@ -28,7 +28,7 @@ import {
   parsePermissionPrompt,
   parseStartupPrompt,
   pasteAndSubmit,
-} from './jinn-pty-screen.mjs'
+} from './anyengine-screen.mjs'
 import {
   lastAssistantTextFromTranscript,
   parseTaskNotifications,
@@ -36,7 +36,7 @@ import {
   sumTranscriptUsage,
   type TaskNotification,
   taskNotificationsFromTranscript,
-} from './jinn-pty-transcript.mjs'
+} from './anyengine-transcript.mjs'
 import type {
   ClaudeRuntime,
   PermissionDecision,
@@ -50,7 +50,7 @@ import { debugLog } from './util.mjs'
 // not need the native binding until a PTY is actually spawned.
 const require = createRequire(import.meta.url)
 
-export interface JinnPtyRuntimeOptions {
+export interface AnyengineRuntimeOptions {
   // `claude` binary (or a .mjs/.js script run under the current node, used by
   // the tests' fake CLI).
   cli: string
@@ -193,8 +193,8 @@ interface ActiveTurn {
   continuation: boolean
 }
 
-export class JinnPtyRuntime implements ClaudeRuntime {
-  private readonly options: JinnPtyRuntimeOptions
+export class AnyengineRuntime implements ClaudeRuntime {
+  private readonly options: AnyengineRuntimeOptions
   private readonly sessions = new Map<string, PtySession>()
   private readonly turns = new Map<string, ActiveTurn>()
   private readonly hooks: PtyHookServer
@@ -202,7 +202,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   private spawnSeq = 0
   private stopped = false
 
-  constructor(options: JinnPtyRuntimeOptions) {
+  constructor(options: AnyengineRuntimeOptions) {
     this.options = options
     this.hooks = new PtyHookServer((threadId, payload) => this.onHook(threadId, payload))
   }
@@ -233,7 +233,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         /No conversation found with session ID/i.test(message) ||
         /exited \(code 1\) before the turn completed/i.test(message)
       if (context.claudeSessionId && staleResume) {
-        debugLog('jinnPty.resumeFallback', {
+        debugLog('anyengine.resumeFallback', {
           threadId: context.threadId,
           staleSessionId: context.claudeSessionId,
         })
@@ -251,9 +251,9 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   }
 
   private async runTurnOnce(context: RuntimeTurnContext, handlers: RuntimeHandlers): Promise<void> {
-    if (this.stopped) throw new Error('jinn-pty runtime is stopped')
+    if (this.stopped) throw new Error('anyengine runtime is stopped')
     if (this.turns.has(context.threadId)) {
-      throw new Error('jinn-pty runtime: a turn is already running for this thread')
+      throw new Error('anyengine runtime: a turn is already running for this thread')
     }
     await this.ensureHooks()
 
@@ -326,13 +326,13 @@ export class JinnPtyRuntime implements ClaudeRuntime {
               submitted: () => turn.promptSubmitted || turn.settled,
               busy: () => turn.pendingTools.size > 0 || (active.proxy?.activeStreams ?? 0) > 0,
               onRetry: (attempt) =>
-                debugLog('jinnPty.submit.retry', { threadId: context.threadId, attempt }),
+                debugLog('anyengine.submit.retry', { threadId: context.threadId, attempt }),
               onUnconfirmed: () =>
                 void handlers.onEvent({
                   type: 'notice',
                   level: 'warning',
                   message:
-                    'jinn-pty: Claude Code never acknowledged the prompt; it may be stranded in the TUI composer.',
+                    'anyengine: Claude Code never acknowledged the prompt; it may be stranded in the TUI composer.',
                 }),
             },
       )
@@ -348,7 +348,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
 
   async steer(threadId: string, prompt: string): Promise<void> {
     const session = this.sessions.get(threadId)
-    if (!session || session.exited) throw new Error('jinn-pty runtime: no live PTY for thread')
+    if (!session || session.exited) throw new Error('anyengine runtime: no live PTY for thread')
     pasteAndSubmit(session.proc, prompt)
   }
 
@@ -366,7 +366,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   async stop(): Promise<void> {
     this.stopped = true
     for (const turn of [...this.turns.values()]) {
-      this.settle(turn, new Error('jinn-pty runtime stopped'))
+      this.settle(turn, new Error('anyengine runtime stopped'))
     }
     for (const session of [...this.sessions.values()]) this.releaseSession(session, 'stop')
     this.hooks.stop()
@@ -412,7 +412,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         proxy = candidate
       } catch (err) {
         candidate.stop()
-        debugLog('jinnPty.proxy.startFailed', {
+        debugLog('anyengine.proxy.startFailed', {
           threadId: context.threadId,
           error: err instanceof Error ? err.message : String(err),
         })
@@ -427,7 +427,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
     })
     const env = this.buildEnv(proxy)
     const { file, argv } = resolveCliInvocation(this.options.cli, args)
-    debugLog('jinnPty.spawn', {
+    debugLog('anyengine.spawn', {
       threadId: context.threadId,
       cwd: context.cwd,
       resume: context.claudeSessionId,
@@ -484,7 +484,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
               .slice(-6)
               .join('\n')
           }
-          debugLog('jinnPty.exit', { threadId: session.threadId, exitCode: event.exitCode, tail })
+          debugLog('anyengine.exit', { threadId: session.threadId, exitCode: event.exitCode, tail })
           this.disposeSession(session)
           const turn = this.turns.get(session.threadId)
           if (turn && turn.session === session && !turn.settled) {
@@ -501,7 +501,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
 
   private releaseSession(session: PtySession, reason: string): void {
     if (this.sessions.get(session.threadId) === session) this.sessions.delete(session.threadId)
-    debugLog('jinnPty.release', { threadId: session.threadId, reason, pid: session.proc.pid })
+    debugLog('anyengine.release', { threadId: session.threadId, reason, pid: session.proc.pid })
     if (!session.exited) {
       try {
         session.proc.kill('SIGTERM')
@@ -587,7 +587,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         ) {
           answers += 1
           lastAnswerAt = now
-          debugLog('jinnPty.startupPrompt', {
+          debugLog('anyengine.startupPrompt', {
             threadId: session.threadId,
             label: dialog.label,
             attempt: answers,
@@ -608,7 +608,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
       await turn.handlers.onEvent({
         type: 'notice',
         level: 'warning',
-        message: 'jinn-pty: Claude Code composer not detected in time; submitting anyway.',
+        message: 'anyengine: Claude Code composer not detected in time; submitting anyway.',
       })
     }
   }
@@ -641,7 +641,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
       await handlers.onEvent({
         type: 'notice',
         level: 'warning',
-        message: 'jinn-pty: image attachments could not be materialised; sending text only.',
+        message: 'anyengine: image attachments could not be materialised; sending text only.',
       })
       return prompt
     }
@@ -658,7 +658,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
     const session = this.sessions.get(threadId)
     const turn = this.turns.get(threadId)
     const event = payload.hook_event_name
-    debugLog('jinnPty.hook', { threadId, event, tool: payload.tool_name ?? null })
+    debugLog('anyengine.hook', { threadId, event, tool: payload.tool_name ?? null })
     if (event === 'SessionStart') {
       if (session) {
         session.sessionStarted = true
@@ -687,7 +687,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         {
           const notifications = parseTaskNotifications(String(payload.prompt ?? ''))
           if (notifications.length > 0 || turn.asyncAgents.size > 0) {
-            debugLog('jinnPty.promptAccepted', {
+            debugLog('anyengine.promptAccepted', {
               threadId,
               notifications: notifications.length,
               held: turn.heldStop !== null,
@@ -800,7 +800,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         delivered: false,
       })
       this.armAsyncTimeout(turn)
-      debugLog('jinnPty.subagent.launched', {
+      debugLog('anyengine.subagent.launched', {
         threadId: turn.context.threadId,
         agentId: launch.agentId,
         toolUseId,
@@ -837,7 +837,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   ): Promise<void> {
     if (agent.finished) return
     agent.finished = true
-    debugLog('jinnPty.subagent.finished', {
+    debugLog('anyengine.subagent.finished', {
       threadId: turn.context.threadId,
       agentId: agent.agentId,
       chars: text.length,
@@ -917,7 +917,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
     turn.promptAcceptedAt = null
     turn.continuation = true
     if (outstanding.length === 0) this.armNotifyGrace(turn)
-    debugLog('jinnPty.stop.held', {
+    debugLog('anyengine.stop.held', {
       threadId: turn.context.threadId,
       outstanding: outstanding.length,
       launched: turn.asyncAgents.size,
@@ -937,7 +937,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
   private async expireAsyncSubagents(turn: ActiveTurn): Promise<void> {
     if (turn.settled) return
     const outstanding = this.asyncAgentsOutstanding(turn)
-    debugLog('jinnPty.subagent.timeout', {
+    debugLog('anyengine.subagent.timeout', {
       threadId: turn.context.threadId,
       outstanding: outstanding.length,
     })
@@ -983,7 +983,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
       await turn.handlers.onEvent({
         type: 'notice',
         level: 'warning',
-        message: 'jinn-pty: Claude Code is blocked on a safety prompt; auto-answering is disabled.',
+        message: 'anyengine: Claude Code is blocked on a safety prompt; auto-answering is disabled.',
       })
       return
     }
@@ -1016,13 +1016,13 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         await turn.handlers.onEvent({
           type: 'notice',
           level: 'warning',
-          message: `jinn-pty: unrecognised safety prompt (${prompt.reason ?? 'no reason'}); leaving it unanswered.`,
+          message: `anyengine: unrecognised safety prompt (${prompt.reason ?? 'no reason'}); leaving it unanswered.`,
         })
         return
       }
       const target = allow ? chooseApproval(prompt) : chooseRejection(prompt)
       if (!target) return
-      debugLog('jinnPty.safetyPrompt', {
+      debugLog('anyengine.safetyPrompt', {
         threadId: turn.context.threadId,
         attempt,
         reason: prompt.reason ?? null,
@@ -1035,7 +1035,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         return await this.answerPermissionPrompt(turn, attempt + 1)
       }
     } catch (err) {
-      debugLog('jinnPty.safetyPrompt.error', {
+      debugLog('anyengine.safetyPrompt.error', {
         threadId: turn.context.threadId,
         error: err instanceof Error ? err.message : String(err),
       })
@@ -1130,7 +1130,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
           costUsd: null,
         })
       }
-      debugLog('jinnPty.turn.completed', {
+      debugLog('anyengine.turn.completed', {
         threadId: turn.context.threadId,
         turnId: turn.context.turnId,
         reason,
@@ -1150,7 +1150,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
 
   private async failTurn(turn: ActiveTurn, message: string): Promise<void> {
     if (turn.settled) return
-    debugLog('jinnPty.turn.failed', { threadId: turn.context.threadId, message })
+    debugLog('anyengine.turn.failed', { threadId: turn.context.threadId, message })
     try {
       await turn.handlers.onEvent({
         type: 'completed',
@@ -1206,7 +1206,7 @@ export class JinnPtyRuntime implements ClaudeRuntime {
         )
         return
       }
-      void this.failTurn(turn, `jinn-pty turn timed out after ${this.options.turnTimeoutMs}ms`)
+      void this.failTurn(turn, `anyengine turn timed out after ${this.options.turnTimeoutMs}ms`)
     }, this.options.turnTimeoutMs)
     turn.timeoutTimer.unref()
   }
@@ -1398,13 +1398,13 @@ export function repairNodePtySpawnHelper(): void {
 }
 
 export function defaultRelayScript(): string {
-  // dist/src/jinn-pty-runtime.mjs → <repo>/scripts/jinn-pty-hook-relay.mjs
+  // dist/src/anyengine-runtime.mjs → <repo>/scripts/anyengine-hook-relay.mjs
   return join(
     dirname(fileURLToPath(import.meta.url)),
     '..',
     '..',
     'scripts',
-    'jinn-pty-hook-relay.mjs',
+    'anyengine-hook-relay.mjs',
   )
 }
 

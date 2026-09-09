@@ -4,7 +4,7 @@ import http from 'node:http'
 import { join } from 'node:path'
 import { debugLog } from './util.mjs'
 
-// Claude Code hook payload as delivered by scripts/jinn-pty-hook-relay.mjs.
+// Claude Code hook payload as delivered by scripts/anyengine-hook-relay.mjs.
 // Field names follow Claude Code's hook JSON verbatim (snake_case).
 export interface HookPayload {
   hook_event_name: string
@@ -140,7 +140,7 @@ export class PtyHookServer {
           res.writeHead(200, { 'content-type': 'application/json' }).end(text)
         })
         .catch((err) => {
-          debugLog('jinnPty.hook.error', {
+          debugLog('anyengine.hook.error', {
             threadId,
             hook: payload.hook_event_name,
             error: err instanceof Error ? err.message : String(err),

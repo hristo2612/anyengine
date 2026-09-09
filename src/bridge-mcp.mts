@@ -9,7 +9,7 @@ import {
 } from './bridge-control.mjs'
 import { MODEL_ALIAS_TABLE } from './bridge-instructions.mjs'
 
-// `jinn_bridge`: the stdio MCP server every engine process gets
+// `anyengine`: the stdio MCP server every engine process gets
 // (`node dist/src/adapter.mjs bridge-mcp`, or scripts/bridge-mcp.mjs). It is
 // deliberately thin: JSON-RPC 2.0 over newline-delimited stdio for the MCP
 // handshake and tool surface, and one WebSocket to the adapter's bridge
@@ -273,7 +273,7 @@ async function handleMcpMessage(
         result = {
           protocolVersion: PROTOCOL_VERSIONS.has(requested) ? requested : LATEST_PROTOCOL,
           capabilities: { tools: {} },
-          serverInfo: { name: 'jinn-bridge', version: '0.1.0' },
+          serverInfo: { name: 'anyengine', version: '0.1.0' },
           instructions: `Cross-engine bridge: start conversations or parallel sub-agents on the other AI engines (Claude, Grok, GPT) from this thread. When the user names an engine or says spawn / delegate / hand off / ask X, call these tools right away without asking for confirmation. spawn_subagents for parallel work, spawn_session for a standalone conversation. ${MODEL_ALIAS_TABLE}`,
         }
         break
@@ -327,7 +327,7 @@ async function callTool(client: BridgeClient, params: Json): Promise<unknown> {
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error)
     return {
-      content: [{ type: 'text', text: `jinn_bridge ${name} failed: ${text}` }],
+      content: [{ type: 'text', text: `anyengine ${name} failed: ${text}` }],
       isError: true,
     }
   }

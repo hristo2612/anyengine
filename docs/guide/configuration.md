@@ -12,7 +12,7 @@ export CLAUDE_CODEX_RUNTIME_TYPE="agent-sdk-sidecar"
 #   agent-http - HTTP/SSE bridge for Claude Code Channels / agent-http
 #   agentapi   - HTTP/SSE bridge for coder/agentapi
 #   claude-p   - one-shot PTY/transcript wrapper via claude-p
-#   jinn-pty   - interactive `claude` TUI in a warm PTY per thread (subscription)
+#   anyengine   - interactive `claude` TUI in a warm PTY per thread (subscription)
 #   mock       - local protocol testing
 ```
 
@@ -84,7 +84,7 @@ export CLAUDE_CODEX_ENABLE_FILE_CHECKPOINTING=1
 ## Cross-engine bridge
 
 ```bash
-# The `jinn_bridge` MCP server every engine gets (docs/guide/bridge.md) is on
+# The `anyengine` MCP server every engine gets (docs/guide/bridge.md) is on
 # by default; 0 disables it.
 export CLAUDE_CODEX_BRIDGE=1
 # Pin the loopback control socket / token (default: bridge-<pid>.sock under the
@@ -106,10 +106,10 @@ export CLAUDE_CODEX_WORKTREE_ROOT="$HOME/.claude-codex/worktrees"
 
 When enabled, each new Codex thread runs in a dedicated `git worktree`.
 
-## jinn-pty runtime
+## anyengine runtime
 
 ```bash
-export CLAUDE_CODEX_RUNTIME_TYPE="jinn-pty"
+export CLAUDE_CODEX_RUNTIME_TYPE="anyengine"
 # Interactive claude binary (default: `claude` on PATH). A .mjs/.js path runs under node.
 export CLAUDE_CODEX_CLI="claude"
 # PTY geometry (defaults 120x40).
@@ -135,7 +135,7 @@ export CLAUDE_CODEX_PTY_KEEP_API_KEY="0"
 # Extra CLI flags appended to every spawn (whitespace-separated or JSON array).
 export CLAUDE_CODEX_PTY_ARGS=""
 # Advanced: relay script, node binary for hooks, and the private state dir.
-# export CLAUDE_CODEX_PTY_HOOK_RELAY="/path/to/scripts/jinn-pty-hook-relay.mjs"
+# export CLAUDE_CODEX_PTY_HOOK_RELAY="/path/to/scripts/anyengine-hook-relay.mjs"
 # export CLAUDE_CODEX_PTY_NODE="/absolute/path/to/node"
 # export CLAUDE_CODEX_PTY_STATE_DIR="/tmp/claude-codex-pty"
 ```
@@ -144,7 +144,7 @@ export CLAUDE_CODEX_PTY_ARGS=""
 
 ```bash
 # Idle shutdown grace period in ms (default 15000; 0 = never exit).
-# The jinn-pty runtime defaults this to 0 so its warm PTYs survive between turns.
+# The anyengine runtime defaults this to 0 so its warm PTYs survive between turns.
 export CLAUDE_CODEX_IDLE_EXIT_MS="15000"
 
 # Pin a node binary for the shim (e.g. when default node is < 24).
@@ -177,24 +177,24 @@ export CLAUDE_CODEX_NODE="/absolute/path/to/node"
 | `CLAUDE_CODEX_DISABLE_GROK` | `1` hides the Grok models. |
 | `CLAUDE_CODEX_MODEL_ALIASES` / `_EFFORT_ALIASES` | Id remapping. |
 | `CLAUDE_CODEX_MCP_SERVERS` | MCP server config (JSON or file path). |
-| `CLAUDE_CODEX_BRIDGE` | `0` disables the cross-engine `jinn_bridge` MCP server (default on). |
+| `CLAUDE_CODEX_BRIDGE` | `0` disables the cross-engine `anyengine` MCP server (default on). |
 | `CLAUDE_CODEX_BRIDGE_SOCKET` / `_TOKEN` | Pin the bridge control socket / token (default: per-process). |
 | `CLAUDE_CODEX_BRIDGE_THREAD` | Calling thread id handed to a bridge process (set by the adapter per engine process). |
 | `CLAUDE_CODEX_ALLOWED_TOOLS` | Pre-approved tools. |
 | `CLAUDE_CODEX_ADD_DIRS` | Extra directories exposed to Claude. |
 | `CLAUDE_CODEX_ENABLE_FILE_CHECKPOINTING` | Enable SDK file checkpointing. |
 | `CLAUDE_CODEX_AUTO_WORKTREE` / `_WORKTREE_ROOT` | Per-thread worktree isolation. |
-| `CLAUDE_CODEX_IDLE_EXIT_MS` | Daemon idle shutdown (jinn-pty defaults to 0). |
-| `CLAUDE_CODEX_CLI` | Interactive `claude` binary for `jinn-pty`. |
-| `CLAUDE_CODEX_PTY_COLS` / `_ROWS` | PTY geometry for `jinn-pty`. |
-| `CLAUDE_CODEX_PTY_TURN_TIMEOUT_MS` | Per-turn wall-clock cap for `jinn-pty`. |
-| `CLAUDE_CODEX_PTY_ASYNC_SUBAGENT_TIMEOUT_MS` | How long a `jinn-pty` turn waits for background Task sub-agents to report back (default 600000; 0 disables). |
-| `CLAUDE_CODEX_PTY_STARTUP_TIMEOUT_MS` | Cold-spawn readiness wait for `jinn-pty`. |
+| `CLAUDE_CODEX_IDLE_EXIT_MS` | Daemon idle shutdown (anyengine defaults to 0). |
+| `CLAUDE_CODEX_CLI` | Interactive `claude` binary for `anyengine`. |
+| `CLAUDE_CODEX_PTY_COLS` / `_ROWS` | PTY geometry for `anyengine`. |
+| `CLAUDE_CODEX_PTY_TURN_TIMEOUT_MS` | Per-turn wall-clock cap for `anyengine`. |
+| `CLAUDE_CODEX_PTY_ASYNC_SUBAGENT_TIMEOUT_MS` | How long a `anyengine` turn waits for background Task sub-agents to report back (default 600000; 0 disables). |
+| `CLAUDE_CODEX_PTY_STARTUP_TIMEOUT_MS` | Cold-spawn readiness wait for `anyengine`. |
 | `CLAUDE_CODEX_PTY_STREAM_PROXY` | SSE tee proxy for per-token streaming (`1`/`0`). |
 | `CLAUDE_CODEX_PTY_HOOK_TIMEOUT_S` | Hook command timeout Claude Code applies. |
 | `CLAUDE_CODEX_PTY_AUTO_APPROVE_SAFETY_PROMPTS` | Answer hardcoded TUI safety prompts from the screen. |
 | `CLAUDE_CODEX_PTY_KEEP_API_KEY` | Keep API-key env vars in the PTY (default stripped). |
-| `CLAUDE_CODEX_PTY_ARGS` | Extra `claude` flags for every `jinn-pty` spawn. |
-| `CLAUDE_CODEX_PTY_HOOK_RELAY` / `_NODE` / `_STATE_DIR` | Advanced `jinn-pty` overrides. |
+| `CLAUDE_CODEX_PTY_ARGS` | Extra `claude` flags for every `anyengine` spawn. |
+| `CLAUDE_CODEX_PTY_HOOK_RELAY` / `_NODE` / `_STATE_DIR` | Advanced `anyengine` overrides. |
 | `CLAUDE_CODEX_MOCK` | Run the protocol without Claude credentials. |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` | Claude auth / custom endpoint configuration. Keep real values out of git. |

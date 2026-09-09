@@ -27,11 +27,11 @@ const DESKTOP_ARGV = [
 
 type Wire = Record<string, any>
 
-// The adapter inserts its own `-c mcp_servers.jinn_bridge=...` override (the
+// The adapter inserts its own `-c mcp_servers.anyengine=...` override (the
 // cross-engine bridge, test/bridge.test.mts) after the desktop's globals;
 // everything else must be replayed verbatim.
 function assertDesktopArgvReplayed(argv: string[]): void {
-  const index = argv.findIndex((arg) => arg.startsWith('mcp_servers.jinn_bridge='))
+  const index = argv.findIndex((arg) => arg.startsWith('mcp_servers.anyengine='))
   assert.ok(index > 0 && argv[index - 1] === '-c', 'bridge override is a -c global')
   assert.ok(index < argv.indexOf('app-server'), 'bridge override precedes app-server')
   assert.match(

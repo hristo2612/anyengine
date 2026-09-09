@@ -17,8 +17,8 @@
 // (`approvalPolicy=never` / `sandbox=danger-full-access`), in which case the
 // process is spawned with `--always-approve` and grok never asks.
 //
-// Technique ported from Jinn's grok engines (headless stream + ACP transcript
-// shapes); self-contained here, no runtime dependency on Jinn.
+// Technique ported from a prior grok engine of ours (headless stream + ACP
+// transcript shapes); self-contained here, no external runtime dependency.
 
 import { type ChildProcess, spawn } from 'node:child_process'
 import { createInterface, type Interface } from 'node:readline'
@@ -285,7 +285,7 @@ export class GrokRuntime implements ClaudeRuntime {
       cwd: context.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       // grok's OpenTelemetry exporter can cancel a turn mid-run when its
-      // traces endpoint misbehaves (observed by Jinn); this env only affects
+      // traces endpoint misbehaves (observed in practice); this env only affects
       // the child we spawn, never the operator's own grok shell.
       env: { ...process.env, OTEL_SDK_DISABLED: process.env.OTEL_SDK_DISABLED ?? 'true' },
     })

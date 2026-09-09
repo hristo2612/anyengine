@@ -2,7 +2,7 @@ import { ClaudePTranscriptRuntime } from './claude-p-runtime.mjs'
 import { CodexProxyRuntime } from './codex-proxy-runtime.mjs'
 import { GrokRuntime } from './grok-runtime.mjs'
 import { HttpAgentRuntime } from './http-agent-runtime.mjs'
-import { defaultRelayScript, defaultStateDir, JinnPtyRuntime } from './jinn-pty-runtime.mjs'
+import { defaultRelayScript, defaultStateDir, AnyengineRuntime } from './anyengine-runtime.mjs'
 import { MockRuntime } from './mock-runtime.mjs'
 import { NativeClaudeRuntime } from './native-runtime.mjs'
 import {
@@ -101,13 +101,13 @@ class SelectableRuntime implements ClaudeRuntime {
 
 function shouldHandleLocally(type: RuntimeBackendType, context: RuntimeTurnContext): boolean {
   // A summary (title) turn through a warm PTY would pollute the real Claude
-  // session's conversation, so jinn-pty answers those locally like the HTTP bridges.
+  // session's conversation, so anyengine answers those locally like the HTTP bridges.
   // Checked against the CONFIGURED type as well: the App creates its hidden
   // title thread with its own default gpt-* model, which would otherwise select
   // codex-proxy and spend `codex exec` usage for a title.
   return (
     context.purpose === 'summary' &&
-    (type === 'agent-http' || type === 'agentapi' || type === 'jinn-pty' || type === 'grok')
+    (type === 'agent-http' || type === 'agentapi' || type === 'anyengine' || type === 'grok')
   )
 }
 
@@ -189,11 +189,11 @@ function instantiateRuntime(config: RuntimeConfig, type: RuntimeBackendType): Cl
       return new ClaudePTranscriptRuntime(config.claudeP)
     case 'codex-proxy':
       return new CodexProxyRuntime()
-    case 'jinn-pty':
-      return new JinnPtyRuntime({
-        ...config.jinnPty,
-        stateDir: config.jinnPty.stateDir ?? defaultStateDir(),
-        relayScript: config.jinnPty.relayScript ?? defaultRelayScript(),
+    case 'anyengine':
+      return new AnyengineRuntime({
+        ...config.anyengine,
+        stateDir: config.anyengine.stateDir ?? defaultStateDir(),
+        relayScript: config.anyengine.relayScript ?? defaultRelayScript(),
       })
     case 'grok':
       return new GrokRuntime(config.grok)

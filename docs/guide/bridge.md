@@ -3,18 +3,18 @@
 Any thread the adapter runs can start sessions and sub-agents on **any other
 engine**: a Claude thread can fan out to Grok, a Grok thread can ask GPT, a GPT
 thread (native Codex child) can spawn Claude. The engines never talk to each
-other directly; each one gets one extra MCP server, `jinn_bridge`, whose tools
+other directly; each one gets one extra MCP server, `anyengine`, whose tools
 go back through the adapter's own protocol layer.
 
 ```
-claude / grok / codex child ──stdio MCP──▶ jinn_bridge ──unix socket──▶ adapter
+claude / grok / codex child ──stdio MCP──▶ anyengine   ──unix socket──▶ adapter
                                           (bridge-mcp)   (bridge-control)   │
                                                                              ▼
                                                     thread/start · turn/start (as the desktop would)
                                                                              │
                                           ┌──────────────────────────────────┼─────────────┐
                                           ▼                                  ▼             ▼
-                                   jinn-pty (Claude)                grok runtime      real codex child (gpt-*)
+                                   anyengine (Claude)                grok runtime      real codex child (gpt-*)
 ```
 
 ## Natural language
@@ -44,7 +44,7 @@ How the instruction reaches each engine (one helper, `bridgeInstructions`
 in `src/bridge-instructions.mts`):
 
 - **Claude** — appended to the per-turn `systemPromptAddendum`, i.e.
-  `--append-system-prompt` for `jinn-pty` and the SDK's `systemPrompt.append`.
+  `--append-system-prompt` for `anyengine` and the SDK's `systemPrompt.append`.
 - **Grok** — the same addendum prefixed on the first prompt of a session
   (ACP has no system-prompt field).
 - **GPT (native child)** — appended to `developerInstructions` on every
@@ -96,22 +96,22 @@ allocated by the real app-server and linked through the parent items only.
 The adapter builds the server spec once per thread:
 
 ```json
-{ "jinn_bridge": { "type": "stdio",
+{ "anyengine": { "type": "stdio",
                    "command": "<node>", "args": ["<dist>/src/adapter.mjs", "bridge-mcp"],
                    "env": { "CLAUDE_CODEX_BRIDGE_SOCKET": "…/bridge-<pid>.sock",
                             "CLAUDE_CODEX_BRIDGE_TOKEN": "<per-process>",
                             "CLAUDE_CODEX_BRIDGE_THREAD": "<calling thread id>" } } }
 ```
 
-- **Claude (`jinn-pty`, native SDK)** — merged into the turn's `mcpServers`
-  next to `CLAUDE_CODEX_MCP_SERVERS`; `jinn-pty` writes it to the
+- **Claude (`anyengine`, native SDK)** — merged into the turn's `mcpServers`
+  next to `CLAUDE_CODEX_MCP_SERVERS`; `anyengine` writes it to the
   `--mcp-config` file it already passes to `claude`. One PTY per thread, so
   the thread id rides the server env.
 - **Grok** — the same record converted to ACP `session/new` / `session/load`
   `mcpServers` (`env` as `[{name, value}]`). Grok reaches the tools through its
   `search_tool` / `use_tool` pair.
 - **GPT (native child)** — the adapter appends
-  `-c mcp_servers.jinn_bridge={command=…,args=[…],env_vars=["CLAUDE_CODEX_BRIDGE_SOCKET","CLAUDE_CODEX_BRIDGE_TOKEN"],tool_timeout_sec=3600,enabled=true}`
+  `-c mcp_servers.anyengine={command=…,args=[…],env_vars=["CLAUDE_CODEX_BRIDGE_SOCKET","CLAUDE_CODEX_BRIDGE_TOKEN"],tool_timeout_sec=3600,enabled=true}`
   to the child's argv (after the desktop's own `-c` globals) and puts the two
   variables in the child's environment; the token never appears in argv.
   Codex spawns one bridge per process, so there is no thread id: the adapter

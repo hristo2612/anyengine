@@ -196,7 +196,7 @@ export class SsePtyProxy {
           } catch {}
         })
         uRes.on('error', (err) => {
-          debugLog('jinnPty.proxy.responseError', { label: this.label, error: err.message })
+          debugLog('anyengine.proxy.responseError', { label: this.label, error: err.message })
           inflight.current = undefined
           finish()
           try {
@@ -214,7 +214,7 @@ export class SsePtyProxy {
         !res.headersSent &&
         isRetriableUpstreamError(err)
       ) {
-        debugLog('jinnPty.proxy.retry', { label: this.label, attempt: attempt + 2, code: err.code })
+        debugLog('anyengine.proxy.retry', { label: this.label, attempt: attempt + 2, code: err.code })
         setTimeout(
           () => {
             if (inflight.clientGone) return
@@ -224,7 +224,7 @@ export class SsePtyProxy {
         )
         return
       }
-      debugLog('jinnPty.proxy.upstreamError', { label: this.label, error: err.message })
+      debugLog('anyengine.proxy.upstreamError', { label: this.label, error: err.message })
       finish()
       try {
         if (!res.headersSent) {

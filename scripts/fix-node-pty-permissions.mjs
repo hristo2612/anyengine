@@ -3,7 +3,7 @@
 // On macOS/Linux node-pty `posix_spawn`s a sibling binary called `spawn-helper`
 // next to `pty.node`. node-pty 1.x publishes that helper WITHOUT the executable
 // bit, so every PTY spawn fails with the unhelpful `posix_spawnp failed.` until
-// it is repaired. Runs as `postinstall`; the jinn-pty runtime repeats the same
+// it is repaired. Runs as `postinstall`; the anyengine runtime repeats the same
 // repair before its first spawn in case this script never ran.
 //
 // Never fatal: a permission fix-up must not be able to fail an install.

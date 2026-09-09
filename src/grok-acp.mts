@@ -32,7 +32,7 @@ export interface GrokPermissionOption {
 }
 
 // Claude tool names the adapter treats as read-only: grok never needs the App's
-// approval for these, mirroring jinn-pty / claude-p.
+// approval for these, mirroring anyengine / claude-p.
 const READ_ONLY_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite'])
 
 // grok tool identifiers (tool_call.title / _meta['x.ai/tool'].name / rawInput.variant)
@@ -310,8 +310,8 @@ export function grokUsageFromPromptResult(result: Record<string, unknown>): {
 }
 
 // grok has no per-session system prompt flag on `grok agent`, so the App's
-// instructions ride the first prompt of a fresh session (same technique Jinn
-// uses for its headless grok engine).
+// instructions ride the first prompt of a fresh session (same technique our headless
+// grok engine uses).
 export function grokPromptText(context: RuntimeTurnContext, freshSession: boolean): string {
   const addendum = context.systemPromptAddendum?.trim()
   if (freshSession && addendum) return `${addendum}\n\n---\n\n${context.prompt}`

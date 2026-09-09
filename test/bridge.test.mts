@@ -21,7 +21,7 @@ import { acpMcpServers } from '../src/grok-acp.mjs'
 
 // The cross-engine bridge (src/bridge-control.mts + src/bridge-mcp.mts)
 // against the mock Claude runtime and the FAKE `codex app-server` child. A
-// real `jinn_bridge` MCP process is spawned exactly as an engine would spawn
+// real `anyengine` MCP process is spawned exactly as an engine would spawn
 // it (stdio JSON-RPC) and its tools are exercised end to end: model routing
 // (opus -> local mock, gpt-* -> fake child), approvals surfacing on the
 // desktop peer, and sub-agent fan-out linked under the calling thread.
@@ -119,7 +119,7 @@ function launchAdapter(home: string): LineClient {
   return new LineClient(child)
 }
 
-// The `jinn_bridge` MCP process, spawned the way an engine spawns it.
+// The `anyengine` MCP process, spawned the way an engine spawns it.
 function launchBridge(home: string, threadId: string | null): LineClient {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -155,7 +155,7 @@ async function initializeBridge(bridge: LineClient): Promise<void> {
     clientInfo: { name: 'test-engine', version: '0' },
   })
   assert.equal(init.result.protocolVersion, '2025-06-18')
-  assert.equal(init.result.serverInfo.name, 'jinn-bridge')
+  assert.equal(init.result.serverInfo.name, 'anyengine')
   bridge.send({ jsonrpc: '2.0', method: 'notifications/initialized' })
 }
 
@@ -207,8 +207,8 @@ test('bridge: pure helpers (routing, MCP records, codex override, rendering)', (
   const merged = control.mergeMcpServers('thread-1', {
     mcpServers: { github: { command: 'github-mcp' } },
   })
-  assert.deepEqual(Object.keys(merged), ['github', 'jinn_bridge'])
-  const spec = merged.jinn_bridge as Record<string, any>
+  assert.deepEqual(Object.keys(merged), ['github', 'anyengine'])
+  const spec = merged.anyengine as Record<string, any>
   assert.equal(spec.command, process.execPath)
   assert.equal(spec.args[1], 'bridge-mcp')
   assert.equal(spec.env.CLAUDE_CODEX_BRIDGE_THREAD, 'thread-1')
@@ -217,7 +217,7 @@ test('bridge: pure helpers (routing, MCP records, codex override, rendering)', (
 
   const acp = acpMcpServers(merged)
   assert.equal(acp.length, 2)
-  const bridgeAcp = acp.find((s) => s.name === 'jinn_bridge') as Record<string, any>
+  const bridgeAcp = acp.find((s) => s.name === 'anyengine') as Record<string, any>
   assert.ok(
     bridgeAcp.env.some(
       (e: any) => e.name === 'CLAUDE_CODEX_BRIDGE_THREAD' && e.value === 'thread-1',
@@ -226,7 +226,7 @@ test('bridge: pure helpers (routing, MCP records, codex override, rendering)', (
 
   const codexArgs = control.codexConfigArgs()
   assert.equal(codexArgs[0], '-c')
-  assert.match(codexArgs[1] ?? '', /^mcp_servers\.jinn_bridge=\{command=/)
+  assert.match(codexArgs[1] ?? '', /^mcp_servers\.anyengine=\{command=/)
   assert.match(codexArgs[1] ?? '', /tool_timeout_sec=3600/)
   assert.ok(!codexArgs[1]?.includes('secret-token'), 'token never appears in argv')
   assert.equal(control.codexChildEnv().CLAUDE_CODEX_BRIDGE_TOKEN, 'secret-token')

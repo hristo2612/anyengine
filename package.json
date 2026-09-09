@@ -49,7 +49,7 @@
     "start": "node dist/src/adapter.mjs",
     "generate:schema": "codex app-server generate-ts --experimental --out generated/codex-app-server",
     "postinstall": "node scripts/fix-node-pty-permissions.mjs",
-    "smoke:jinn-pty": "npm run build && node scripts/smoke-jinn-pty.mjs",
+    "smoke:anyengine": "npm run build && node scripts/smoke-anyengine.mjs",
     "smoke:native-codex": "npm run build && node scripts/smoke-native-codex.mjs",
     "smoke:grok": "npm run build && node scripts/smoke-grok.mjs"
   },

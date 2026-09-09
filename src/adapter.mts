@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   // passes those leading globals through untouched so the real child can be
   // started with the identical argv.
   const { globals: codexGlobals, rest: args } = splitCodexGlobals(process.argv.slice(2))
-  // The `jinn_bridge` MCP server an engine spawns (docs/guide/bridge.md).
+  // The `anyengine` MCP server an engine spawns (docs/guide/bridge.md).
   if (args[0] === 'bridge-mcp') {
     await runBridgeMcp()
     return
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   const runtime = createRuntime()
   const server = new CodexClaudeAppServer(store, runtime)
   // Cross-engine bridge: one loopback control socket per adapter; every
-  // engine gets the `jinn_bridge` MCP server pointing at it.
+  // engine gets the `anyengine` MCP server pointing at it.
   const bridge = bridgeEnabled() ? new BridgeControl(server.bridgeHost()) : null
   server.setBridge(bridge)
   const nativeCodexBinary = codexExecRouteEnabled() ? null : resolveNativeCodexBinary()
@@ -154,10 +154,10 @@ async function main(): Promise<void> {
   // sidecar is reclaimed. Codex App re-probes and restarts the daemon on
   // reconnect. Set CLAUDE_CODEX_IDLE_EXIT_MS=0 to keep the legacy persistent
   // behavior.
-  // The jinn-pty runtime keeps one warm interactive `claude` PTY per thread;
+  // The anyengine runtime keeps one warm interactive `claude` PTY per thread;
   // exiting on idle would kill them and force a `--resume` cold start on the
   // next turn, so that runtime defaults to never idling out.
-  const defaultIdleExitMs = resolveRuntimeConfig().type === 'jinn-pty' ? 0 : 15000
+  const defaultIdleExitMs = resolveRuntimeConfig().type === 'anyengine' ? 0 : 15000
   const idleExitMs = Number(process.env.CLAUDE_CODEX_IDLE_EXIT_MS ?? defaultIdleExitMs)
   const idleExitEnabled = isUnixDaemon && Number.isFinite(idleExitMs) && idleExitMs > 0
   let activePeers = 0

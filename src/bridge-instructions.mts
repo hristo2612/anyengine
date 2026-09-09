@@ -73,7 +73,7 @@ export function providerFor(model: string): BridgeProvider {
 export function bridgeInstructions(catalog: BridgeCatalogModel[]): string {
   const lines = [
     BRIDGE_INSTRUCTIONS_HEADING,
-    'You run inside the Codex desktop through the claude-codex adapter. The `jinn_bridge` MCP tools start sessions and parallel sub-agents on the other engines from this thread:',
+    'You run inside the Codex desktop through the claude-codex adapter. The `anyengine` MCP tools start sessions and parallel sub-agents on the other engines from this thread:',
   ]
   for (const provider of PROVIDER_ORDER) {
     const entries = catalog.filter((model) => model.provider === provider)
@@ -92,7 +92,7 @@ export function bridgeInstructions(catalog: BridgeCatalogModel[]): string {
     )
   }
   lines.push(
-    'When the user names one of these engines or models, or says spawn, delegate, hand off, ask X, or run in parallel, do it right away with jinn_bridge: no confirmation, and do not mention tool names in your reply. Informal names work as `model` ("claude opus", "grok", "gpt"); the bridge maps them to catalog ids. Use spawn_subagents for several tasks or anything parallel (one task per agent, model per task) and spawn_session for a standalone conversation; send_to_session continues one. Relay each reply verbatim, labelled with its model, then answer the user.',
+    'When the user names one of these engines or models, or says spawn, delegate, hand off, ask X, or run in parallel, do it right away with anyengine: no confirmation, and do not mention tool names in your reply. Informal names work as `model` ("claude opus", "grok", "gpt"); the bridge maps them to catalog ids. Use spawn_subagents for several tasks or anything parallel (one task per agent, model per task) and spawn_session for a standalone conversation; send_to_session continues one. Relay each reply verbatim, labelled with its model, then answer the user.',
   )
   return lines.join('\n')
 }

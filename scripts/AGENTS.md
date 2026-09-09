@@ -22,16 +22,16 @@ plain `.mjs` / shell.
   internal error so it never wedges a session.
 - `doctor.mjs` — environment self-check (`npm run doctor`).
 - `smoke-real-claude.mjs` — round-trips a real Claude turn (`npm run smoke:real`).
-- `smoke-jinn-pty.mjs` — real-Claude smoke for the `jinn-pty` runtime over a
-  WebSocket listener (`npm run smoke:jinn-pty`).
+- `smoke-anyengine.mjs` — real-Claude smoke for the `anyengine` runtime over a
+  WebSocket listener (`npm run smoke:anyengine`).
 - `smoke-grok.mjs` — real-grok smoke for the `grok` runtime: a `grok-*` thread
   over a WebSocket listener, text turn + approved Bash turn (`npm run smoke:grok`).
 - `smoke-bridge.mjs` — real smoke for the cross-engine bridge: a claude / grok /
-  gpt thread uses the `jinn_bridge` MCP tools to spawn a session or parallel
+  gpt thread uses the `anyengine` MCP tools to spawn a session or parallel
   sub-agents on other engines (`node scripts/smoke-bridge.mjs claude|grok|gpt`).
-- `bridge-mcp.mjs` — launcher for the `jinn_bridge` MCP server (same as
+- `bridge-mcp.mjs` — launcher for the `anyengine` MCP server (same as
   `node dist/src/adapter.mjs bridge-mcp`), for hand-written MCP configs.
-- `jinn-pty-hook-relay.mjs` — Claude Code hook command for `jinn-pty`; POSTs
+- `anyengine-hook-relay.mjs` — Claude Code hook command for `anyengine`; POSTs
   hook JSON to the adapter's loopback hook server and prints its reply.
 - `fix-node-pty-permissions.mjs` — `postinstall`: restores the exec bit on
   node-pty's `spawn-helper`.

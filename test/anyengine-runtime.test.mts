@@ -12,34 +12,34 @@ import {
   type SseStreamInfo,
   type StreamDelta,
   sseEventToDeltas,
-} from '../src/jinn-pty-proxy.mjs'
+} from '../src/anyengine-proxy.mjs'
 import {
   asyncLaunch,
   buildInteractiveArgs,
   isNativeClaudeCommand,
-  JinnPtyRuntime,
-  type JinnPtyRuntimeOptions,
+  AnyengineRuntime,
+  type AnyengineRuntimeOptions,
   shapeToolResult,
   streamIsCurrent,
-} from '../src/jinn-pty-runtime.mjs'
+} from '../src/anyengine-runtime.mjs'
 import {
   chooseApproval,
   composerReady,
   keystrokesToSelect,
   parsePermissionPrompt,
   parseStartupPrompt,
-} from '../src/jinn-pty-screen.mjs'
+} from '../src/anyengine-screen.mjs'
 import {
   lastAssistantTextFromTranscript,
   parseTaskNotifications,
   sanitizeAssistantText,
   taskNotificationsFromTranscript,
-} from '../src/jinn-pty-transcript.mjs'
+} from '../src/anyengine-transcript.mjs'
 import { resolveRuntimeConfig } from '../src/runtime-config.mjs'
 import type { PermissionDecision, RuntimeEvent, RuntimeTurnContext } from '../src/types.mjs'
 
 const FAKE_CLAUDE = resolve('test/fixtures/fake-claude.mjs')
-const RELAY = resolve('scripts/jinn-pty-hook-relay.mjs')
+const RELAY = resolve('scripts/anyengine-hook-relay.mjs')
 
 function turnContext(overrides: Partial<RuntimeTurnContext> = {}): RuntimeTurnContext {
   return {
@@ -47,7 +47,7 @@ function turnContext(overrides: Partial<RuntimeTurnContext> = {}): RuntimeTurnCo
     turnId: 'turn-1',
     prompt: 'hello',
     cwd: process.cwd(),
-    runtimeType: 'jinn-pty',
+    runtimeType: 'anyengine',
     model: null,
     effort: null,
     claudeSessionId: null,
@@ -67,7 +67,7 @@ function turnContext(overrides: Partial<RuntimeTurnContext> = {}): RuntimeTurnCo
 }
 
 interface Harness {
-  runtime: JinnPtyRuntime
+  runtime: AnyengineRuntime
   dir: string
   argsFile: string
   events: RuntimeEvent[]
@@ -78,10 +78,10 @@ interface Harness {
 }
 
 async function harness(
-  overrides: Partial<JinnPtyRuntimeOptions> = {},
+  overrides: Partial<AnyengineRuntimeOptions> = {},
   env: Record<string, string> = {},
 ): Promise<Harness> {
-  const dir = await mkdtemp(join(tmpdir(), 'claude-codex-jinn-pty-'))
+  const dir = await mkdtemp(join(tmpdir(), 'anyengine-pty-'))
   const argsFile = join(dir, 'args.jsonl')
   const previous = new Map<string, string | undefined>()
   const applied: Record<string, string> = {
@@ -93,7 +93,7 @@ async function harness(
     previous.set(key, process.env[key])
     process.env[key] = value
   }
-  const runtime = new JinnPtyRuntime({
+  const runtime = new AnyengineRuntime({
     cli: FAKE_CLAUDE,
     cols: 100,
     rows: 30,
@@ -160,24 +160,24 @@ function completed(events: RuntimeEvent[]): Extract<RuntimeEvent, { type: 'compl
   return found
 }
 
-test('runtime config resolves jinn-pty and its aliases', () => {
-  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'jinn-pty' }).type, 'jinn-pty')
-  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'pty' }).type, 'jinn-pty')
-  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'claude-pty' }).type, 'jinn-pty')
+test('runtime config resolves anyengine and its aliases', () => {
+  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'anyengine' }).type, 'anyengine')
+  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'pty' }).type, 'anyengine')
+  assert.equal(resolveRuntimeConfig({ CLAUDE_CODEX_RUNTIME_TYPE: 'claude-pty' }).type, 'anyengine')
   const config = resolveRuntimeConfig({
-    CLAUDE_CODEX_RUNTIME_TYPE: 'jinn-pty',
+    CLAUDE_CODEX_RUNTIME_TYPE: 'anyengine',
     CLAUDE_CODEX_CLI: '/opt/bin/claude',
     CLAUDE_CODEX_PTY_COLS: '150',
     CLAUDE_CODEX_PTY_ROWS: '50',
     CLAUDE_CODEX_PTY_TURN_TIMEOUT_MS: '1234',
     CLAUDE_CODEX_PTY_STREAM_PROXY: '0',
   })
-  assert.equal(config.jinnPty.cli, '/opt/bin/claude')
-  assert.equal(config.jinnPty.cols, 150)
-  assert.equal(config.jinnPty.rows, 50)
-  assert.equal(config.jinnPty.turnTimeoutMs, 1234)
-  assert.equal(config.jinnPty.streamProxy, false)
-  assert.equal(resolveRuntimeConfig({}).jinnPty.streamProxy, true)
+  assert.equal(config.anyengine.cli, '/opt/bin/claude')
+  assert.equal(config.anyengine.cols, 150)
+  assert.equal(config.anyengine.rows, 50)
+  assert.equal(config.anyengine.turnTimeoutMs, 1234)
+  assert.equal(config.anyengine.streamProxy, false)
+  assert.equal(resolveRuntimeConfig({}).anyengine.streamProxy, true)
 })
 
 test('buildInteractiveArgs mirrors the turn context onto the claude CLI', () => {
@@ -439,7 +439,7 @@ test('sse proxy forwards requests untouched and tees only sentinel streams', asy
   upstream.close()
 })
 
-test('jinn-pty runtime: turn, warm-PTY permission round-trip, deny and full access', async () => {
+test('anyengine runtime: turn, warm-PTY permission round-trip, deny and full access', async () => {
   const h = await harness()
   try {
     await h.run(turnContext({ prompt: 'Reply with exactly the word PONG' }))
@@ -498,7 +498,7 @@ test('jinn-pty runtime: turn, warm-PTY permission round-trip, deny and full acce
   }
 })
 
-test('jinn-pty runtime: resume args, transcript fallback and model change respawn', async () => {
+test('anyengine runtime: resume args, transcript fallback and model change respawn', async () => {
   const h = await harness({}, { FAKE_CLAUDE_OMIT_LAST_MESSAGE: '1' })
   try {
     await h.run(turnContext({ claudeSessionId: 'sess-resume-1', model: 'haiku', prompt: 'hi' }))
@@ -534,7 +534,7 @@ test('jinn-pty runtime: resume args, transcript fallback and model change respaw
   }
 })
 
-test('jinn-pty runtime: trust dialog is answered before the first prompt', async () => {
+test('anyengine runtime: trust dialog is answered before the first prompt', async () => {
   const h = await harness({}, { FAKE_CLAUDE_TRUST_PROMPT: '1' })
   try {
     await h.run(turnContext({ prompt: 'trusted?' }))
@@ -544,7 +544,7 @@ test('jinn-pty runtime: trust dialog is answered before the first prompt', async
   }
 })
 
-test('jinn-pty runtime: safety prompt falls back to keystrokes consistent with the approval', async () => {
+test('anyengine runtime: safety prompt falls back to keystrokes consistent with the approval', async () => {
   const h = await harness()
   try {
     await h.run(turnContext({ prompt: 'do the SAFETY thing' }))
@@ -559,7 +559,7 @@ test('jinn-pty runtime: safety prompt falls back to keystrokes consistent with t
   }
 })
 
-test('jinn-pty runtime: StopFailure fails the turn, interrupt settles it, stop kills the PTY', async () => {
+test('anyengine runtime: StopFailure fails the turn, interrupt settles it, stop kills the PTY', async () => {
   const h = await harness()
   try {
     await assert.rejects(h.run(turnContext({ prompt: 'please FAIL' })), /rate_limit/)
@@ -585,7 +585,7 @@ test('jinn-pty runtime: StopFailure fails the turn, interrupt settles it, stop k
   }
 })
 
-test('jinn-pty runtime: a stale --resume id falls back to a fresh session', async () => {
+test('anyengine runtime: a stale --resume id falls back to a fresh session', async () => {
   const h = await harness({}, { FAKE_CLAUDE_STALE_RESUME: '1' })
   try {
     await h.run(turnContext({ claudeSessionId: 'sess-gone', model: 'sonnet', prompt: 'hi' }))
@@ -697,7 +697,7 @@ function toolResults(
   )
 }
 
-test('jinn-pty runtime: async sub-agents keep the turn open until their results are answered', async () => {
+test('anyengine runtime: async sub-agents keep the turn open until their results are answered', async () => {
   const h = await harness()
   try {
     const startedAt = Date.now()
@@ -737,7 +737,7 @@ test('jinn-pty runtime: async sub-agents keep the turn open until their results 
   }
 })
 
-test('jinn-pty runtime: async results consumed mid-turn complete on the first Stop', async () => {
+test('anyengine runtime: async results consumed mid-turn complete on the first Stop', async () => {
   const h = await harness()
   try {
     const startedAt = Date.now()
@@ -751,7 +751,7 @@ test('jinn-pty runtime: async results consumed mid-turn complete on the first St
   }
 })
 
-test('jinn-pty runtime: a sub-agent that never stops times out with a placeholder result', async () => {
+test('anyengine runtime: a sub-agent that never stops times out with a placeholder result', async () => {
   const h = await harness({ asyncSubagentTimeoutMs: 1500 })
   try {
     await h.run(turnContext({ prompt: 'ASYNC_LOST fan out', sandboxMode: 'danger-full-access' }))

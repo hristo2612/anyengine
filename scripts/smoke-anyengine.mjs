@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Real-Claude smoke for the jinn-pty runtime: boots the adapter on a WebSocket
-// listener with CLAUDE_CODEX_RUNTIME_TYPE=jinn-pty, runs a text-only turn, then
+// Real-Claude smoke for the anyengine runtime: boots the adapter on a WebSocket
+// listener with CLAUDE_CODEX_RUNTIME_TYPE=anyengine, runs a text-only turn, then
 // a Bash turn and asserts the App-side approval round-trips. Needs a logged-in
-// `claude` CLI (subscription). Usage: npm run smoke:jinn-pty
+// `claude` CLI (subscription). Usage: npm run smoke:anyengine
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -11,7 +11,7 @@ import { join, resolve } from 'node:path'
 import WebSocket from 'ws'
 
 const root = resolve(process.env.CLAUDE_CODEX_SMOKE_ROOT ?? tmpdir())
-const home = await mkdtemp(join(root, 'claude-codex-jinn-pty-smoke-'))
+const home = await mkdtemp(join(root, 'anyengine-smoke-'))
 const workspace = join(home, 'workspace')
 await import('node:fs/promises').then((fs) => fs.mkdir(workspace, { recursive: true }))
 const port = Number(process.env.CLAUDE_CODEX_SMOKE_PORT ?? 8791)
@@ -24,7 +24,7 @@ const adapter = spawn(
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
-      CLAUDE_CODEX_RUNTIME_TYPE: 'jinn-pty',
+      CLAUDE_CODEX_RUNTIME_TYPE: 'anyengine',
       CLAUDE_CODEX_HOME: join(home, 'adapter-home'),
       CODEX_HOME: join(home, 'codex-home'),
       CLAUDE_CODEX_DEBUG_LOG: join(home, 'debug.jsonl'),
@@ -37,9 +37,9 @@ adapter.stderr.on('data', (chunk) => process.stderr.write(chunk))
 adapter.stdout.setEncoding('utf8')
 adapter.stdout.on('data', (chunk) => process.stderr.write(chunk))
 
-const log = (line) => console.log(`[smoke-jinn-pty] ${line}`)
+const log = (line) => console.log(`[smoke-anyengine] ${line}`)
 const timeout = setTimeout(() => {
-  console.error('jinn-pty smoke timed out')
+  console.error('anyengine smoke timed out')
   cleanup(1)
 }, 240_000)
 
@@ -48,7 +48,7 @@ function cleanup(code) {
   adapter.kill('SIGTERM')
   setTimeout(() => {
     if (code !== 0) {
-      console.error(`[smoke-jinn-pty] keeping ${home} for inspection (debug.jsonl inside)`)
+      console.error(`[smoke-anyengine] keeping ${home} for inspection (debug.jsonl inside)`)
       process.exit(code)
     }
     void rm(home, { recursive: true, force: true }).finally(() => process.exit(code))
@@ -143,7 +143,7 @@ try {
   const ws = await connect()
   const rpc = new Rpc(ws)
   await rpc.request('initialize', {
-    clientInfo: { name: 'smoke-jinn-pty', title: 'Smoke', version: '0' },
+    clientInfo: { name: 'smoke-anyengine', title: 'Smoke', version: '0' },
     capabilities: null,
   })
   // Omitting the policy defaults the thread to full access (no approvals);
@@ -182,7 +182,7 @@ try {
 
   const read = await rpc.request('thread/read', { threadId, includeTurns: true })
   log(`thread/read turns=${read.thread?.turns?.length ?? 'n/a'}`)
-  log('jinn-pty smoke passed')
+  log('anyengine smoke passed')
   ws.close()
   cleanup(0)
 } catch (error) {

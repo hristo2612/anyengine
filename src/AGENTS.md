@@ -24,7 +24,7 @@ Adapter internals. All files are `.mts` ESM, compiled to `dist/*.mjs`. See the
   `server.mts#handle` (so the mux routes by model) and tees the spawned
   thread's notifications/approvals to the desktop peer; sub-agent projection.
   `server.mts#bridgeHost` is what it borrows from the protocol layer.
-- `bridge-mcp.mts` — the `jinn_bridge` stdio MCP server every engine spawns
+- `bridge-mcp.mts` — the `anyengine` stdio MCP server every engine spawns
   (`adapter.mjs bridge-mcp`); thin client of the control channel.
 
 ## Runtime backends
@@ -35,11 +35,11 @@ Claude backends sit behind the `ClaudeRuntime` interface and are constructed in
 - `native-runtime.mts` — default, in-process Claude Agent SDK.
 - `http-agent-runtime.mts` — `agent-http` / `agentapi` HTTP/SSE bridges.
 - `claude-p-runtime.mts` — one-shot `claude-p` transcript wrapper.
-- `jinn-pty-runtime.mts` — interactive `claude` TUI in a warm node-pty per
-  thread (subscription-billed); helpers in `jinn-pty-hooks.mts` (loopback hook
-  server + `--settings` writer), `jinn-pty-proxy.mts` (SSE tee proxy +
-  compaction gate), `jinn-pty-screen.mts` (headless xterm + dialog parsers),
-  `jinn-pty-transcript.mts`. Hook relay: `scripts/jinn-pty-hook-relay.mjs`.
+- `anyengine-runtime.mts` — interactive `claude` TUI in a warm node-pty per
+  thread (subscription-billed); helpers in `anyengine-hooks.mts` (loopback hook
+  server + `--settings` writer), `anyengine-proxy.mts` (SSE tee proxy +
+  compaction gate), `anyengine-screen.mts` (headless xterm + dialog parsers),
+  `anyengine-transcript.mts`. Hook relay: `scripts/anyengine-hook-relay.mjs`.
 - `codex-proxy-runtime.mts` — legacy `codex exec` proxy, opt-in via
   `CLAUDE_CODEX_GPT_ROUTE=exec` (gpt-* threads default to the multiplexer).
 - `codex-proxy-runtime.mts` — native Codex passthrough (`codex exec`).

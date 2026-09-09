@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Claude Code hook relay for the `jinn-pty` runtime.
+// Claude Code hook relay for the `anyengine` runtime.
 //
 // Wired into the per-thread `--settings` file as
-//   node jinn-pty-hook-relay.mjs <threadId>
+//   node anyengine-hook-relay.mjs <threadId>
 // for every hook event. Reads the hook JSON from stdin, POSTs it to the
 // runtime's loopback hook server (URL + token come from the PTY environment,
 // never from a file) and prints the server's reply — if any — to stdout so
