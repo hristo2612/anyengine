@@ -1,5 +1,7 @@
 # anyengine
 
+[![CI](https://github.com/hristo2612/anyengine/actions/workflows/ci.yml/badge.svg)](https://github.com/hristo2612/anyengine/actions/workflows/ci.yml)
+
 **Run Claude, Grok and GPT inside the ChatGPT desktop app.**
 
 Pick the engine per thread. Spawn mixed sub-agents ("two on Grok, two on

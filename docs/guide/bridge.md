@@ -124,8 +124,9 @@ three variables set.
 ## Control channel
 
 `bridge-control.mts` listens on a unix socket under the adapter home
-(`bridge-<pid>.sock`, dir mode 0700) and requires `Authorization: Bearer
-<token>` on the WebSocket upgrade; the token is random per adapter process.
+(`bridge-<pid>.sock`, dir mode 0700) and requires an
+`Authorization: Bearer <token>` header on the WebSocket upgrade; the token is
+random per adapter process.
 Both can be pinned (`ANYENGINE_BRIDGE_SOCKET`, `ANYENGINE_BRIDGE_TOKEN`;
 the tests do). `ANYENGINE_BRIDGE=0` disables the bridge entirely. Stale
 sockets from dead adapters are reaped on start.

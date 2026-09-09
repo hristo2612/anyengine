@@ -1,5 +1,7 @@
 import { defineConfig } from 'vitepress'
 
+const repo = 'https://github.com/hristo2612/anyengine'
+
 export default defineConfig({
   title: 'anyengine',
   description:
@@ -56,6 +58,7 @@ export default defineConfig({
       ],
     },
     search: { provider: 'local' },
+    socialLinks: [{ icon: 'github', link: repo }],
     editLink: {
       pattern: `${repo}/edit/main/docs/:path`,
       text: 'Edit this page on GitHub',

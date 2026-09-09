@@ -4,6 +4,14 @@
   "private": true,
   "description": "Run Claude, Grok and GPT inside the ChatGPT desktop app.",
   "license": "MIT",
+  "homepage": "https://github.com/hristo2612/anyengine",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hristo2612/anyengine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hristo2612/anyengine/issues"
+  },
   "type": "module",
   "bin": {
     "anyengine": "dist/src/adapter.mjs"
@@ -28,7 +36,7 @@
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "test": "npm run build && ANYENGINE_NATIVE_CODEX=0 node --test dist/test/*.mjs",
+    "test": "npm run build && ANYENGINE_NATIVE_CODEX=0 node --test --test-timeout=180000 dist/test/*.mjs",
     "doctor": "node scripts/doctor.mjs",
     "workflow": "npm run build && node dist/src/workflow-cli.mjs",
     "workflow:schedule": "npm run workflow -- schedule",

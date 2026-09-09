@@ -110,6 +110,10 @@ case "$SUBCMD" in
           "$NODE_BIN" "$ADAPTER" ${GLOBAL_OPTS[@]+"${GLOBAL_OPTS[@]}"} "${REST[@]}" </dev/null &
           disown 2>/dev/null || true
           for _ in $(seq 1 100); do [ -S "$SOCK" ] && exit 0; sleep 0.1; done
+          # Still exit 0 so the App's bootstrap does not treat this as a failed
+          # SSH command, but say so: a silent 0 here is indistinguishable from a
+          # healthy start when the adapter died on launch.
+          echo "codex shim: adapter did not create $SOCK within 10s" >&2
           exit 0 ;;
       esac
     done

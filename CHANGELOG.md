@@ -117,3 +117,21 @@ versioning or publishing metadata.
 - No support is included for personal subscription sharing, credential pooling,
   browser cookie/session-token reuse, private provider endpoints, or provider
   bypass behavior.
+
+### Publication and CI (A2)
+
+- Fixed the `npm test` hang inherited from upstream: one adapter test waited
+  forever for an approval that a `never` policy never sends. The test now asks
+  for the approving policy, the test JSON reader is bounded and rejects instead
+  of hanging, and `npm test` carries a `--test-timeout` backstop. Three
+  failures the hang had been hiding are fixed with it, including an unhandled
+  rejection that crashed the process when a turn settled after `stop()` had
+  closed the store.
+- Removed the unreachable duplicate `permissionProfile/list` switch arm in
+  favour of the paginating helper, with a test covering `cursor` / `limit`.
+  The duplicate `thread/settings/update` arm is deliberately left in place and
+  documented; see `docs/review-a2.md`.
+- Restored the repository URL across `package.json`, the documentation site and
+  the README badge, and fixed two breaks in `npm run docs:build`.
+- CI runs Biome, typecheck, build, the Node suite and `cargo test --workspace`
+  on macOS and Linux at Node 24.

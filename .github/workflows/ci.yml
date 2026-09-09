@@ -9,25 +9,41 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    name: node (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
-      # `npm install` (not `npm ci`): the runtime SDK ships per-platform native
-      # binaries as optionalDependencies, and a lockfile generated on one OS
-      # omits the others, so `npm ci` fails on the Linux runner.
-      - run: npm install --no-audit --no-fund
+      # The lockfile is generated on macOS. `npm ci` installs from it exactly,
+      # which is what we want on the macOS runner (the platform this ships on).
+      - if: runner.os == 'macOS'
+        run: npm ci --no-audit --no-fund
+      # On Linux `npm ci` fails: the runtime SDK ships per-platform native
+      # binaries as optionalDependencies and the macOS lockfile omits the Linux
+      # ones, so the Linux job resolves them with `npm install` instead.
+      - if: runner.os != 'macOS'
+        run: npm install --no-audit --no-fund
       - run: npm install --global @openai/codex@0.142.3 --no-audit --no-fund
       - run: CODEX_REAL="$(command -v codex)" npm run check:rust-protocol-fixtures
       - run: npm run check       # biome format + lint
       - run: npm run typecheck   # tsc --noEmit
+      - run: npm run build       # tsc -> dist/
       - run: npm test            # build + node --test (Node 24 has stable node:sqlite)
 
   cargo-test:
-    runs-on: ubuntu-latest
+    name: cargo (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v7
       - run: cargo test --workspace

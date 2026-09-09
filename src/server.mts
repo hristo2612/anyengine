@@ -657,6 +657,16 @@ export class CodexClaudeAppServer {
       case 'thread/metadata/update':
       case 'thread/settings/update':
         return this.threadMetadataUpdate(asRecord(params))
+      // TODO(anyengine): pick one handler for `thread/settings/update`.
+      // The method is listed twice — grouped with `thread/metadata/update`
+      // above and again here — so this arm has never run. Neither handler
+      // subsumes the other: the metadata path applies model / effort /
+      // instructions, the settings path applies permission profiles and emits
+      // `thread/settings/updated`. Choosing between them changes what the
+      // App's settings pane does, which is a product decision rather than a
+      // lint fix, so the shipped behaviour is left untouched here.
+      // See docs/review-a2.md.
+      // biome-ignore lint/suspicious/noDuplicateCase: documented dead arm, see the TODO above
       case 'thread/settings/update':
         return this.threadSettingsUpdate(peer, asRecord(params))
       // Intentional no-ops: Claude Code has no equivalent concept, so the
@@ -728,19 +738,14 @@ export class CodexClaudeAppServer {
           // turns it off for environments where the tool is rate-limited.
           webSearch: process.env.ANYENGINE_WEBSEARCH !== '0',
         }
-      case 'permissionProfile/list':
-        return {
-          data: [
-            { id: ':read-only', description: null, allowed: true },
-            { id: ':workspace', description: null, allowed: true },
-            { id: ':danger-full-access', description: null, allowed: true },
-          ],
-          nextCursor: null,
-        }
-      case 'experimentalFeature/list':
-        return { data: [], nextCursor: null }
+      // `permissionProfile/list` was listed twice; the second arm was
+      // unreachable. The helper returns the same three profiles for a call
+      // with no cursor/limit and additionally honours pagination, so it is
+      // kept and the inline copy dropped (docs/review-a2.md).
       case 'permissionProfile/list':
         return permissionProfileList(asRecord(params))
+      case 'experimentalFeature/list':
+        return { data: [], nextCursor: null }
       case 'experimentalFeature/enablement/set':
         return { enablement: asRecord(asRecord(params).enablement) }
       case 'collaborationMode/list':
@@ -1613,6 +1618,10 @@ export class CodexClaudeAppServer {
         model: thread.model,
         effort: thread.reasoningEffort,
       }).catch((error) => {
+        // A turn that rejects after `stop()` has closed SQLite has nothing left
+        // to record or notify; touching the store here throws ERR_INVALID_STATE
+        // as an unhandled rejection and takes the process down.
+        if (this.stopped) return
         const completed =
           this.store.completeTurn(turnId, 'failed', { message: error.message }) ?? turn
         recordRunEvent('turn.failed', {
@@ -1915,6 +1924,9 @@ export class CodexClaudeAppServer {
         ...params,
         _imageInputs: images,
       }).catch((error) => {
+        // See the review-turn twin above: after `stop()` the store is closed and
+        // this handler would crash the process with an unhandled rejection.
+        if (this.stopped) return
         const current = this.store.getTurn(turnId)
         if (current && current.status !== 'inProgress') return
         const completed =

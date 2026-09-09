@@ -59,6 +59,7 @@ usage:
   anyengine-mode tail [adapter|agent-http|agentapi]
 
 aliases:
+  pty, claude-pty, interactive -> anyengine
   sdk -> agent-sdk-sidecar
   channels -> agent-http
   claudep -> claude-p
@@ -82,6 +83,8 @@ EOF
 mode_description() {
   case "$1" in
     codex) printf '%s\n' "native Codex passthrough" ;;
+    anyengine) printf '%s\n' "interactive claude CLI in a PTY (shipped Claude route)" ;;
+    grok) printf '%s\n' "xAI Grok CLI over ACP" ;;
     agent-sdk-sidecar) printf '%s\n' "Claude Agent SDK sidecar (default adapter path)" ;;
     agent-http) printf '%s\n' "Claude Code Channels via agent-http HTTP bridge" ;;
     agentapi) printf '%s\n' "Claude Code TUI via agentapi HTTP bridge" ;;
@@ -94,7 +97,7 @@ list_modes() {
   local current
   current="$(current_mode)"
   local mode
-  for mode in codex agent-sdk-sidecar agent-http agentapi claude-p; do
+  for mode in codex anyengine grok agent-sdk-sidecar agent-http agentapi claude-p; do
     if [ "$mode" = "$current" ]; then
       printf '* %-18s %s\n' "$mode" "$(mode_description "$mode")"
     else
@@ -105,7 +108,10 @@ list_modes() {
 
 normalize_mode() {
   case "${1:-}" in
-    codex|agent-sdk-sidecar|agent-http|agentapi|claude-p) printf '%s\n' "$1" ;;
+    codex|anyengine|grok|agent-sdk-sidecar|agent-http|agentapi|claude-p) printf '%s\n' "$1" ;;
+    # The adapter's own aliases for the interactive PTY route
+    # (src/runtime-config.mts).
+    pty|claude-pty|interactive) printf '%s\n' "anyengine" ;;
     sdk) printf '%s\n' "agent-sdk-sidecar" ;;
     channels) printf '%s\n' "agent-http" ;;
     claudep|claude_p) printf '%s\n' "claude-p" ;;
@@ -746,7 +752,7 @@ prepare_mode() {
     agentapi)
       start_agentapi "$force"
       ;;
-    codex|agent-sdk-sidecar|claude-p)
+    codex|anyengine|grok|agent-sdk-sidecar|claude-p)
       :
       ;;
   esac

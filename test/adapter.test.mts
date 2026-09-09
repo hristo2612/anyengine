@@ -3946,11 +3946,20 @@ test('approval requests round-trip through Codex server requests', async () => {
   })
   const reader = new JsonLineReader(proc)
   try {
+    // A bare thread/start defaults to approvalPolicy=never + danger-full-access
+    // (see the default-permissions test below), which auto-approves commands and
+    // emits no requestApproval at all. Ask for the approving policy explicitly.
     proc.stdin.write(
       json({
         id: 1,
         method: 'thread/start',
-        params: { cwd: process.cwd(), experimentalRawEvents: false, persistExtendedHistory: false },
+        params: {
+          cwd: process.cwd(),
+          experimentalRawEvents: false,
+          persistExtendedHistory: false,
+          approvalPolicy: 'on-request',
+          sandbox: 'workspace-write',
+        },
       }),
     )
     const start = await reader.nextResponse(1)
@@ -4007,6 +4016,34 @@ test('approval requests round-trip through Codex server requests', async () => {
   }
 })
 
+// Regression guard for the hang described in docs/review-a2.md: the approval
+// round-trip test above only makes sense while a bare thread/start (no
+// permission params) still defaults to the non-approving policy. If this
+// default ever changes, this test fails instead of the other one hanging.
+test('thread/start without permission params defaults to never + danger-full-access', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
+  })
+  const reader = new JsonLineReader(proc)
+  try {
+    proc.stdin.write(
+      json({
+        id: 1,
+        method: 'thread/start',
+        params: { cwd: process.cwd(), experimentalRawEvents: false, persistExtendedHistory: false },
+      }),
+    )
+    const start = await reader.nextResponse(1)
+    assert.equal(start.result.approvalPolicy, 'never')
+    assert.equal(start.result.sandbox.type, 'dangerFullAccess')
+  } finally {
+    proc.kill()
+    await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
+  }
+})
+
 test('generic Claude tools complete as Codex mcpToolCall items', async () => {
   const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
@@ -4047,7 +4084,9 @@ test('generic Claude tools complete as Codex mcpToolCall items', async () => {
         completedTool = message.params.item
       if (message.method === 'turn/completed') break
     }
-    assert.equal(completedTool?.tool, 'Read')
+    // `tool` carries the App-facing display label: Read is rendered with the
+    // path relative to the thread cwd (server.mts, mcpToolCall item builder).
+    assert.equal(completedTool?.tool, 'Read README.md')
     assert.equal(completedTool?.status, 'completed')
     // Result must be wrapped in Codex v2 McpToolCallResult shape — {content[], structuredContent, _meta}.
     // The mock runtime returns {text:'mock read result'} as the raw content, which we wrap as:
@@ -4289,6 +4328,27 @@ test('compatibility-only UI methods return schema-shaped responses', async () =>
       nextCursor: null,
     })
 
+    // The duplicate (unreachable) permissionProfile/list arm was dropped in
+    // favour of the paginating helper; pin the pagination it adds so the two
+    // arms cannot silently diverge again (docs/review-a2.md).
+    proc.stdin.write(
+      json({ id: 66, method: 'permissionProfile/list', params: { limit: 2, cursor: null } }),
+    )
+    assert.deepEqual((await reader.nextResponse(66)).result, {
+      data: [
+        { id: ':read-only', description: null, allowed: true },
+        { id: ':workspace', description: null, allowed: true },
+      ],
+      nextCursor: '2',
+    })
+    proc.stdin.write(
+      json({ id: 67, method: 'permissionProfile/list', params: { limit: 2, cursor: '2' } }),
+    )
+    assert.deepEqual((await reader.nextResponse(67)).result, {
+      data: [{ id: ':danger-full-access', description: null, allowed: true }],
+      nextCursor: null,
+    })
+
     proc.stdin.write(json({ id: 7, method: 'windowsSandbox/readiness', params: {} }))
     assert.deepEqual((await reader.nextResponse(7)).result, { status: 'notConfigured' })
 
@@ -4322,11 +4382,19 @@ test('file change approval emits patch and git diff updates', async () => {
   })
   const reader = new JsonLineReader(proc)
   try {
+    // Approvals only reach the client under an approving policy; the bare
+    // default is never + danger-full-access (docs/review-a2.md).
     proc.stdin.write(
       json({
         id: 1,
         method: 'thread/start',
-        params: { cwd: repo, experimentalRawEvents: false, persistExtendedHistory: false },
+        params: {
+          cwd: repo,
+          experimentalRawEvents: false,
+          persistExtendedHistory: false,
+          approvalPolicy: 'on-request',
+          sandbox: 'workspace-write',
+        },
       }),
     )
     const start = await reader.nextResponse(1)
@@ -5581,27 +5649,72 @@ test('optional auto worktree binds new threads to isolated git worktrees', async
   }
 })
 
+// A message the adapter never sends must fail the test, not wedge the run.
+// Before this bound, one wrong expectation left `next()` pending forever and
+// `npm test` never terminated (docs/review-a2.md).
+const READER_TIMEOUT_MS = Number(process.env.ANYENGINE_TEST_READER_TIMEOUT_MS ?? 30_000)
+
+type Waiter = {
+  resolve: (value: any) => void
+  reject: (error: Error) => void
+  timer: NodeJS.Timeout
+}
+
 class JsonLineReader {
   private buffer = ''
   private queue: any[] = []
-  private waiters: Array<(value: any) => void> = []
+  private waiters: Waiter[] = []
+  private seen = 0
+  private closed: Error | null = null
 
   constructor(proc: ChildProcess) {
     if (!proc.stdout) throw new Error('test process has no stdout')
     proc.stdout.setEncoding('utf8')
     proc.stdout.on('data', (chunk: string) => this.push(chunk))
+    proc.on('exit', (code, signal) => {
+      this.fail(
+        new Error(
+          `adapter exited (code=${code}, signal=${signal}) after ${this.seen} messages while a reader was waiting`,
+        ),
+      )
+    })
   }
 
-  next(): Promise<any> {
+  next(timeoutMs: number = READER_TIMEOUT_MS): Promise<any> {
     const existing = this.queue.shift()
     if (existing) return Promise.resolve(existing)
-    return new Promise((resolve) => this.waiters.push(resolve))
+    if (this.closed) return Promise.reject(this.closed)
+    return new Promise((resolve, reject) => {
+      const waiter: Waiter = {
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          this.waiters = this.waiters.filter((w) => w !== waiter)
+          reject(
+            new Error(
+              `timed out after ${timeoutMs}ms waiting for the next adapter message (${this.seen} received so far)`,
+            ),
+          )
+        }, timeoutMs),
+      }
+      this.waiters.push(waiter)
+    })
   }
 
   async nextResponse(id: number): Promise<any> {
     for (;;) {
       const msg = await this.next()
       if (msg.id === id && msg.method == null) return msg
+    }
+  }
+
+  private fail(error: Error): void {
+    this.closed = error
+    const pending = this.waiters
+    this.waiters = []
+    for (const waiter of pending) {
+      clearTimeout(waiter.timer)
+      waiter.reject(error)
     }
   }
 
@@ -5613,9 +5726,12 @@ class JsonLineReader {
       this.buffer = this.buffer.slice(idx + 1)
       if (!line) continue
       const message = JSON.parse(line)
+      this.seen += 1
       const waiter = this.waiters.shift()
-      if (waiter) waiter(message)
-      else this.queue.push(message)
+      if (waiter) {
+        clearTimeout(waiter.timer)
+        waiter.resolve(message)
+      } else this.queue.push(message)
     }
   }
 }
