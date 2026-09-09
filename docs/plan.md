@@ -15,8 +15,10 @@ with `npm ci && npm run build && npm test`.
 Independent review of the rebrand diff and the scrub, then create the public
 repository and push `main`. Restore `homepage` / `repository` / `bugs` in
 `package.json` and the docs-site `socialLinks` / `editLink` once the URL exists.
-Get the CI workflow green; it also runs `npm run check`, which currently reports
-two pre-existing duplicate-`case` lint errors inherited from upstream.
+Get the CI workflow green. Two pre-existing problems inherited from upstream
+block it: `npm run check` reports two duplicate-`case` lint errors, and
+`npm test` hangs on `approval requests round-trip through Codex server
+requests` (test/adapter.test.mts), which leaves the 22 tests after it unrun.
 
 ## A3 — live flip, with rollback
 
