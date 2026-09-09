@@ -1,0 +1,14 @@
+node_modules/
+dist/
+target/
+__pycache__/
+*.pyc
+generated/
+.venv/
+.claude-codex/
+*.sqlite
+*.sqlite-*
+*.sock
+*.pid
+**/.vitepress/dist/
+**/.vitepress/cache/
