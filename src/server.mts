@@ -35,6 +35,11 @@ import { callMcpTool, listMcpServerStatuses, readMcpConfig, readMcpResource } fr
 import { resolveProviderLoopSelection } from './provider-loop-selection.mjs'
 import { engineForModel, formatTranscript, transcriptEntriesFromTurns } from './rehome.mjs'
 import { recordRunEvent } from './run-registry.mjs'
+import {
+  accountRateLimitsPayload,
+  conversationSummary,
+  TokenUsageTracker,
+} from './server-account.mjs'
 import { ServerConfig } from './server-config.mjs'
 import {
   approvalKindForTool,
@@ -206,7 +211,7 @@ export class CodexClaudeAppServer {
   private commandSessionAllow = new Map<string, Set<string>>()
   private goals = new Map<string, Record<string, unknown>>()
   private elicitationCounts = new Map<string, number>()
-  private tokenUsageByThread = new Map<string, TokenUsageBreakdown>()
+  private readonly tokenUsage = new TokenUsageTracker()
   // The adapter's own settings and the payloads that project them; see
   // src/server-config.mts.
   private readonly config = new ServerConfig()
@@ -948,7 +953,7 @@ export class CodexClaudeAppServer {
         // local auth shape to keep Claude aliases visible in the model picker.
         return { account: { type: 'amazonBedrock' }, requiresOpenaiAuth: false }
       case 'account/rateLimits/read':
-        return this.accountRateLimits()
+        return accountRateLimitsPayload()
       case 'fs/readFile':
         return this.workspace.fsReadFile(asRecord(params))
       case 'fs/readDirectory':
@@ -991,7 +996,7 @@ export class CodexClaudeAppServer {
       case 'config/batchWrite':
         return this.config.writeResponse(asRecord(params))
       case 'getConversationSummary':
-        return this.getConversationSummary(asRecord(params))
+        return conversationSummary(this.store, asRecord(params))
       case 'gitDiffToRemote':
         return this.workspace.gitDiffToRemote(asRecord(params))
       case 'getAuthStatus':
@@ -1360,7 +1365,7 @@ export class CodexClaudeAppServer {
   // leak entries for the lifetime of the process.
   private clearThreadState(threadId: string): void {
     this.commandSessionAllow.delete(threadId)
-    this.tokenUsageByThread.delete(threadId)
+    this.tokenUsage.forget(threadId)
     this.goals.delete(threadId)
     this.elicitationCounts.delete(threadId)
   }
@@ -1536,6 +1541,20 @@ export class CodexClaudeAppServer {
     this.store.upsertThread(thread)
 
     return this.threadEnvelope(thread, this.store.listTurns(threadId))
+  }
+
+  private notifyTokenUsage(
+    peer: RpcPeer,
+    threadId: string,
+    turnId: string,
+    usage: Record<string, unknown>,
+  ): void {
+    const tokenUsage = this.tokenUsage.record(threadId, usage)
+    if (!tokenUsage) return
+    this.notify(peer, {
+      method: 'thread/tokenUsage/updated',
+      params: { threadId, turnId, tokenUsage },
+    })
   }
 
   private threadRollback(params: Record<string, unknown>): unknown {
@@ -2810,7 +2829,7 @@ export class CodexClaudeAppServer {
             tokenUsage: childUsage,
           },
         })
-        this.recordTokenUsage(peer, thread.id, turn.id, {
+        this.notifyTokenUsage(peer, thread.id, turn.id, {
           input_tokens: 0,
           output_tokens: parsed.usage.totalTokens,
           cache_read_input_tokens: 0,
@@ -3012,7 +3031,7 @@ export class CodexClaudeAppServer {
             return
           }
           if (event.type === 'usage') {
-            this.recordTokenUsage(peer, thread.id, turn.id, event.usage)
+            this.notifyTokenUsage(peer, thread.id, turn.id, event.usage)
             return
           }
           if (event.type === 'hook') {
@@ -3668,74 +3687,6 @@ export class CodexClaudeAppServer {
     this.store.appendItem(activeTurnId, item)
     await this.runtime.steer(threadId, prompt)
     return { turnId: activeTurnId }
-  }
-
-  private accountRateLimits(): unknown {
-    const rateLimits = {
-      limitId: 'claude-code',
-      limitName: 'Claude Code',
-      primary: null,
-      secondary: null,
-      credits: null,
-      planType: null,
-      rateLimitReachedType: null,
-    }
-    return { rateLimits, rateLimitsByLimitId: { 'claude-code': rateLimits } }
-  }
-
-  // Accumulates Claude Agent SDK token usage per thread and pushes a
-  // `thread/tokenUsage/updated` notification so the Codex App can render real
-  // consumption instead of leaving the meter blank.
-  private recordTokenUsage(
-    peer: RpcPeer,
-    threadId: string,
-    turnId: string,
-    usage: Record<string, unknown>,
-  ): void {
-    const last = tokenBreakdownFromClaudeUsage(usage)
-    if (last.totalTokens === 0) return
-    const prior = this.tokenUsageByThread.get(threadId) ?? emptyTokenBreakdown()
-    const total: TokenUsageBreakdown = {
-      totalTokens: prior.totalTokens + last.totalTokens,
-      inputTokens: prior.inputTokens + last.inputTokens,
-      cachedInputTokens: prior.cachedInputTokens + last.cachedInputTokens,
-      outputTokens: prior.outputTokens + last.outputTokens,
-      reasoningOutputTokens: prior.reasoningOutputTokens + last.reasoningOutputTokens,
-    }
-    this.tokenUsageByThread.set(threadId, total)
-    const tokenUsage: ThreadTokenUsage = { total, last, modelContextWindow: null }
-    this.notify(peer, {
-      method: 'thread/tokenUsage/updated',
-      params: { threadId, turnId, tokenUsage },
-    })
-    // NOTE: previously we also pushed `account/rateLimits/updated` here on
-    // every token-usage event "to keep the UI in sync". That backfired —
-    // Codex App treats every such notification as a fresh rate-limit signal
-    // and surfaces it as a transient warning banner, so the user saw a
-    // rate-limit pop on every assistant turn. Since we don't actually have
-    // real rate-limit data from the Anthropic SDK (no headers exposed), the
-    // notification was empty noise. The initial snapshot still fires once
-    // post-handshake in `initialize` so the UI populates on first connect.
-  }
-
-  private getConversationSummary(params: Record<string, unknown>): unknown {
-    const threadId = stringOr(params.conversationId, '')
-    const thread = this.store.getThread(threadId) ?? this.store.listThreads({ limit: 1 }).at(0)
-    const now = new Date().toISOString()
-    return {
-      summary: {
-        conversationId: thread?.id ?? threadId,
-        path: '',
-        preview: thread?.preview ?? '',
-        timestamp: now,
-        updatedAt: now,
-        modelProvider: thread?.modelProvider ?? 'claude-code',
-        cwd: thread?.cwd ?? process.cwd(),
-        cliVersion: codexCliVersion(),
-        source: normalizeSessionSource(thread?.source),
-        gitInfo: null,
-      },
-    }
   }
 
   private toolUseToItem(
