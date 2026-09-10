@@ -11,7 +11,7 @@
 // the reason back to Claude (PostToolUse); `additionalContext` is non-blocking
 // guidance. Any error exits 0 so a buggy hook never wedges the session.
 
-import { readFileSync, statSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { extname, isAbsolute, relative } from 'node:path'
 
 // Soft cap, matching the hard one in scripts/check-size.mjs. Files past this

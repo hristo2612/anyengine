@@ -96,8 +96,6 @@ export interface UpstreamThreadInfo {
 
 const MERGED_METHODS = new Set(['thread/list', 'thread/loaded/list', 'model/list', 'config/read'])
 const LOCAL_GLOBAL_METHODS = new Set(['mock/experimentalMethod'])
-// Model ids the desktop treats as the "reserve" fallback (renderer: ELr()).
-const RESERVE_MODEL_IDS = new Set(['gpt-reserve', 'gpt-5.6-luna'])
 const RATE_LIMIT_CACHE_MS = 30_000
 const THREAD_ID_KEYS = ['threadId', 'thread_id'] as const
 // Lifecycle requests whose params carry developerInstructions (v2 schema:
