@@ -288,6 +288,105 @@ test('permission profile selection applies full access without legacy sandbox fi
   }
 })
 
+test('thread/settings/update is the metadata handler for every shape the app sends', async () => {
+  // Pins the choice made when the duplicate `thread/settings/update` arm was
+  // deleted. ChatGPT.app 26.901 sends this method with three param shapes (a
+  // day of the live debug log: 17x model+effort, 1x approvalPolicy+sandboxPolicy,
+  // 1x approvalPolicy+permissions). All three reach threadMetadataUpdate; the
+  // permission-profile handler that used to sit on a second, unreachable arm of
+  // the same switch never saw any of them, so removing it changed nothing.
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
+  })
+  const reader = new JsonLineReader(proc)
+  try {
+    proc.stdin.write(
+      json({
+        id: 1,
+        method: 'initialize',
+        params: { clientInfo: { name: 'codex-test', version: '26.901' }, capabilities: null },
+      }),
+    )
+    await reader.nextResponse(1)
+    proc.stdin.write(
+      json({ id: 2, method: 'thread/start', params: { cwd: process.cwd(), model: 'sonnet' } }),
+    )
+    const start = await reader.nextResponse(2)
+    const threadId = start.result.thread.id
+
+    // Shape 1, the common one: the model picker moved.
+    proc.stdin.write(
+      json({
+        id: 3,
+        method: 'thread/settings/update',
+        params: {
+          threadId,
+          model: 'haiku',
+          effort: 'medium',
+          multiAgentMode: 'explicitRequestOnly',
+        },
+      }),
+    )
+    const moved = await reader.nextResponse(3)
+    assert.equal(moved.result.model, 'haiku')
+    assert.equal(moved.result.reasoningEffort, 'medium')
+
+    // Shape 2: the approvals control. The metadata handler applies the string
+    // `approvalPolicy` and ignores the `sandboxPolicy` object (it reads
+    // `params.sandbox`), which is the shipped behaviour, not an aspiration.
+    proc.stdin.write(
+      json({
+        id: 4,
+        method: 'thread/settings/update',
+        params: {
+          threadId,
+          approvalPolicy: 'on-request',
+          approvalsReviewer: 'user',
+          sandboxPolicy: { type: 'workspaceWrite' },
+        },
+      }),
+    )
+    const approvals = await reader.nextResponse(4)
+    assert.equal(approvals.result.approvalPolicy, 'on-request')
+    assert.equal(approvals.result.sandbox.type, 'dangerFullAccess')
+
+    // Shape 3: the permission-profile variant. `permissions` is NOT read on
+    // this method — only the deleted handler ever did — so the thread keeps
+    // whatever profile its policy and sandbox already imply.
+    proc.stdin.write(
+      json({
+        id: 5,
+        method: 'thread/settings/update',
+        params: {
+          threadId,
+          approvalPolicy: 'never',
+          approvalsReviewer: 'user',
+          permissions: ':danger-full-access',
+        },
+      }),
+    )
+    const profiled = await reader.nextResponse(5)
+    assert.equal(profiled.result.approvalPolicy, 'never')
+    assert.equal(profiled.result.permissionProfile, null)
+
+    // The deleted handler was the only source of this notification, so it must
+    // never appear. Round-trip a cheap request and drain everything before it.
+    proc.stdin.write(json({ id: 6, method: 'model/list', params: {} }))
+    let settled = false
+    for (let i = 0; i < 200 && !settled; i += 1) {
+      const message = await reader.next()
+      assert.notEqual(message.method, 'thread/settings/updated')
+      if (message.id === 6) settled = true
+    }
+    assert.equal(settled, true)
+  } finally {
+    proc.kill()
+    await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
+  }
+})
+
 test('run registry records thread and turn lifecycle without raw prompt or response text', async () => {
   const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const runLog = join(home, 'runs.jsonl')

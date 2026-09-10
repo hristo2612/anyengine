@@ -4,9 +4,6 @@ import { dirname } from 'node:path'
 import { BridgeControl, bridgeEnabled } from './bridge-control.mjs'
 import { runBridgeMcp } from './bridge-mcp.mjs'
 import { resolveNativeCodexBinary } from './codex-upstream.mjs'
-// Must be first: maps legacy CLAUDE_CODEX_* names onto ANYENGINE_* before
-// any other module reads process.env (see src/env-compat.mts).
-import { migratedLegacyEnvNames } from './env-compat.mjs'
 import { resolveRuntimeConfig } from './runtime-config.mjs'
 import { createRuntime } from './runtime-factory.mjs'
 import { CodexClaudeAppServer } from './server.mjs'

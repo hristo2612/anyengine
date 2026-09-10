@@ -7,6 +7,21 @@ versioning or publishing metadata.
 
 ## Unreleased
 
+### Hardening
+
+- **Dead code removed, nothing observable changed.** The `server.mts` dispatch
+  switch listed `thread/settings/update` twice; the second arm and its
+  `threadSettingsUpdate` method had never executed and are gone. Which arm is
+  live was decided from a day of the real adapter log — 19 client calls in three
+  param shapes, all answered by the metadata handler — and a test now replays
+  all three shapes and pins what the live handler does with each. Also removed:
+  the orphaned `scripts/smoke-subagents.mjs` (no npm script, no doc entry, no
+  caller), the unimported `grokBinaryAvailable` and `enqueueWorkflowTask`
+  exports, the leftover `RESERVE_MODEL_IDS` constant, and 16 unused imports.
+  424 lines out of `src/` and `scripts/`; `server.mts` 5133 → 5056,
+  `server-helpers.mts` 1106 → 1076, `codex-mux.mts` 1207 → 1205. Running log:
+  [docs/hardening-log.md](docs/hardening-log.md).
+
 ### Quality gates
 
 - **Coverage is measured and floored.** `npm test` now runs the Node 24

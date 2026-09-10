@@ -48,25 +48,17 @@ import {
   providerLoopSelectionInputFromEnv,
   resolveProviderLoopSelection,
 } from './provider-loop-selection.mjs'
-import {
-  type Engine,
-  engineForModel,
-  formatTranscript,
-  transcriptEntriesFromTurns,
-} from './rehome.mjs'
+import { engineForModel, formatTranscript, transcriptEntriesFromTurns } from './rehome.mjs'
 import { recordRunEvent } from './run-registry.mjs'
 import { normalizeRuntimeType } from './runtime-config.mjs'
 import {
-  addedFileDiff,
   approvalKindForTool,
   asRecord,
   buildSystemPromptAddendum,
   COMMAND_TOOLS,
-  coerceStructuredValue,
   commandArray,
   commandEnv,
   compactSummary,
-  conciseStructuredString,
   configEdits,
   configLayerMetadata,
   defaultSelectableModelId,
@@ -75,10 +67,7 @@ import {
   fallbackStructuredText,
   fileChangeFromTool,
   gitDiff,
-  gitUntrackedDiff,
   hasLegacyPermissionParams,
-  isGitWorkTree,
-  isNotAGitRepo,
   isSubagentToolName,
   listFiles,
   modelFromParams,
@@ -99,14 +88,11 @@ import {
   permissionProfileIdFromParams,
   permissionProfileList,
   permissionProfilePolicy,
-  personalityPromptCue,
-  readConfigReasoningEffort,
   reasoningEffortFromParams,
   reviewLabel,
   reviewPrompt,
   sandboxEnvelope,
   sandboxFromTurnParams,
-  simpleDiff,
   stringListFromEnv,
   stringOr,
   summarizeInjectedItem,
@@ -122,7 +108,6 @@ import {
 import type { SessionStore } from './store.mjs'
 import type {
   ClaudeRuntime,
-  FileUpdateChange,
   ImageInput,
   JsonRpcId,
   JsonRpcRequest,
@@ -764,21 +749,14 @@ export class CodexClaudeAppServer {
         return this.threadGoalGet(asRecord(params))
       case 'thread/goal/clear':
         return this.threadGoalClear(asRecord(params))
+      // ChatGPT.app 26.901 sends `thread/settings/update` for two different
+      // things: the picker's model + effort (17 of 19 calls in a day's live
+      // log) and, rarely, an approval-policy change. Both land here. A second,
+      // permission-profile handler used to sit further down the same switch
+      // and therefore never ran; it is gone. See docs/review-a2.md.
       case 'thread/metadata/update':
       case 'thread/settings/update':
         return this.threadMetadataUpdate(asRecord(params))
-      // TODO(anyengine): pick one handler for `thread/settings/update`.
-      // The method is listed twice — grouped with `thread/metadata/update`
-      // above and again here — so this arm has never run. Neither handler
-      // subsumes the other: the metadata path applies model / effort /
-      // instructions, the settings path applies permission profiles and emits
-      // `thread/settings/updated`. Choosing between them changes what the
-      // App's settings pane does, which is a product decision rather than a
-      // lint fix, so the shipped behaviour is left untouched here.
-      // See docs/review-a2.md.
-      // biome-ignore lint/suspicious/noDuplicateCase: documented dead arm, see the TODO above
-      case 'thread/settings/update':
-        return this.threadSettingsUpdate(peer, asRecord(params))
       // Intentional no-ops: Claude Code has no equivalent concept, so the
       // adapter acknowledges the call without side effects rather than failing
       // the RPC (which would break the Codex App connection).
@@ -1576,61 +1554,6 @@ export class CodexClaudeAppServer {
     this.store.upsertThread(thread)
 
     return this.threadEnvelope(thread, this.store.listTurns(threadId))
-  }
-
-  private threadSettingsUpdate(peer: RpcPeer, params: Record<string, unknown>): unknown {
-    const threadId = stringOr(params.threadId, '')
-    const thread = this.store.getThread(threadId)
-    if (!thread) throw new Error(`unknown thread: ${threadId}`)
-
-    const permissionProfileId = permissionProfileIdFromParams(params)
-    const permissionProfile = permissionProfilePolicy(permissionProfileId)
-    if (permissionProfileId) thread.permissionProfileId = permissionProfileId
-    else if (hasLegacyPermissionParams(params)) thread.permissionProfileId = null
-    if (permissionProfile?.approvalPolicy) thread.approvalPolicy = permissionProfile.approvalPolicy
-    if (permissionProfile?.sandboxMode) thread.sandboxMode = permissionProfile.sandboxMode
-    if (typeof params.approvalPolicy === 'string' && !permissionProfile)
-      thread.approvalPolicy = normalizeApprovalPolicy(params.approvalPolicy)
-    const sandboxMode = sandboxFromTurnParams(params)
-    if (sandboxMode && !permissionProfile) thread.sandboxMode = sandboxMode
-    if (typeof params.cwd === 'string' && params.cwd.length > 0) thread.cwd = params.cwd
-    this.store.upsertThread(thread)
-
-    const activePermissionProfileId = threadPermissionProfileId(
-      thread.permissionProfileId,
-      thread.approvalPolicy,
-      thread.sandboxMode,
-    )
-    this.notify(peer, {
-      method: 'thread/settings/updated',
-      params: {
-        threadId,
-        threadSettings: {
-          cwd: thread.cwd,
-          approvalPolicy: thread.approvalPolicy ?? 'on-request',
-          approvalsReviewer: 'user',
-          sandboxPolicy: sandboxEnvelope(thread.sandboxMode, thread.cwd),
-          activePermissionProfile: activePermissionProfileId
-            ? { id: activePermissionProfileId, extends: null }
-            : null,
-          model: thread.model,
-          modelProvider: thread.modelProvider,
-          serviceTier: null,
-          effort: thread.reasoningEffort,
-          summary: null,
-          collaborationMode: {
-            mode: 'default',
-            settings: {
-              model: thread.model,
-              reasoning_effort: thread.reasoningEffort,
-              developer_instructions: thread.developerInstructions,
-            },
-          },
-          personality: thread.personality,
-        },
-      },
-    })
-    return {}
   }
 
   private threadRollback(params: Record<string, unknown>): unknown {

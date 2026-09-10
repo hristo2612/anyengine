@@ -3,7 +3,7 @@
 // (see grok-runtime.mts); the ids are the ones `grok models` prints.
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, statSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { isGrokModel } from './grok-acp.mjs'
@@ -136,9 +136,4 @@ function grokModelOption(id: string): GrokModelOption {
     description: GROK_DESCRIPTION,
     isDefault: false,
   }
-}
-
-export function grokBinaryAvailable(env: NodeJS.ProcessEnv = process.env): boolean {
-  const binary = resolveGrokBinary(env)
-  return binary != null && existsSync(binary)
 }

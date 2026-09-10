@@ -105,15 +105,8 @@ Both are in the upstream base commit.
   behaviour change for any call the App makes, and a test now pins the
   pagination so the two cannot silently diverge again.
 - `thread/settings/update` was listed twice: once grouped with
-  `thread/metadata/update`, once on its own. **Left as is, deliberately.**
-  Neither handler subsumes the other — the metadata path applies model,
-  reasoning effort and instructions; the dead `threadSettingsUpdate` path
-  applies permission profiles and emits `thread/settings/updated`, which is
-  what the App's settings pane expects. Picking one changes what that pane
-  does, which is a product decision and not something to slip into a
-  publication packet unreviewed. The dead arm now carries a `TODO` and a
-  scoped `biome-ignore` naming this document, so `npm run check` is green
-  without hiding the defect.
+  `thread/metadata/update`, once on its own. **Resolved 2026-09-10** — see
+  "Resolution" below.
 
 `npm run check` now exits 0 (44 warnings and 28 infos remain, all pre-existing
 and non-blocking).
@@ -128,8 +121,35 @@ in `docs/guide/bridge.md` an inline code span wrapped so that a line began with
 `<token>`, which VitePress compiles as an unclosed HTML tag. Reflowed;
 `npm run docs:build` is green.
 
+## Resolution — `thread/settings/update` (2026-09-10)
+
+Decided from traffic rather than from taste. A day of the live adapter log
+(`$CODEX_HOME/anyengine/debug.jsonl`, ChatGPT.app 26.901) contains 19 client
+calls to this method in three param shapes:
+
+| Shape | Count |
+| --- | --- |
+| `{threadId, model, effort, multiAgentMode}` | 17 |
+| `{threadId, approvalPolicy, approvalsReviewer, sandboxPolicy}` | 1 |
+| `{threadId, approvalPolicy, approvalsReviewer, permissions}` | 1 |
+
+All 19 were answered by `threadMetadataUpdate`, the first arm. The second arm
+and its `threadSettingsUpdate` method are deleted: they had never executed, so
+nothing observable changed, and the `TODO` plus the scoped `biome-ignore` go
+with them. The dominant shape is the model picker, which is how mid-thread
+engine switching is announced (A5) — the arm that carries it is the one that
+had to stay.
+
+Two consequences are now pinned by a test rather than left implicit
+(`test/adapter.test.mts`, "thread/settings/update is the metadata handler for
+every shape the app sends"): on this method the adapter reads the string
+`approvalPolicy` but **not** the `sandboxPolicy` object or the `permissions`
+profile, and it emits no `thread/settings/updated` notification. That is the
+shipped behaviour, unchanged; whether the settings pane should get more than
+that is a product question, and the test will fail loudly if someone answers it
+by accident.
+
 ## Open items for whoever picks this up
 
-1. Decide which handler owns `thread/settings/update` (above).
-2. `docs:build` is not in CI. It is green now, and it broke without anyone
+1. `docs:build` is not in CI. It is green now, and it broke without anyone
    noticing, so it is worth a job.

@@ -1,54 +1,24 @@
-import { type ChildProcess, execFile, spawn } from 'node:child_process'
-import { type FSWatcher, readFileSync, watch, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { grokModelOptions } from './grok-models.mjs'
-import { callMcpTool, readMcpConfig, readMcpResource } from './mcp.mjs'
-import type { SessionStore } from './store.mjs'
 import type {
-  ClaudeRuntime,
   FileUpdateChange,
-  ImageInput,
-  JsonRpcId,
-  JsonRpcRequest,
-  JsonRpcResponse,
   PermissionDecision,
-  RpcPeer,
-  RuntimeEvent,
-  ThreadItem,
   ThreadRecord,
-  ThreadTokenUsage,
   TokenUsageBreakdown,
   TurnRecord,
-  UserInput,
   UserInputAnswers,
   UserInputQuestion,
-  WireMessage,
 } from './types.mjs'
 import {
-  adapterHome,
   claudeModelOptions,
-  claudeOutputFormat,
-  codexCliVersion,
   codexHome,
   codexProxyModelOptions,
-  codexUserAgent,
   debugLog,
-  defaultAllowedTools,
-  ensureParent,
-  extractImageInputs,
-  isCodexOpenAiModel,
-  newId,
   normalizeCodexReasoningEffort,
-  nowMillis,
   nowSeconds,
-  platformFamily,
-  platformOs,
-  resolveClaudeEffort,
-  resolveClaudeModel,
   textFromInput,
 } from './util.mjs'
-import { maybeCreateThreadWorktree } from './worktree.mjs'
 
 const execFileAsync = promisify(execFile)
 

@@ -97,11 +97,6 @@ export function blockWorkflowTask(
   })
 }
 
-export function enqueueWorkflowTask(state: WorkflowState, task: WorkflowTask): WorkflowState {
-  if (state.tasks.some((candidate) => candidate.id === task.id)) return replaceTask(state, task)
-  return { ...state, tasks: [...state.tasks, task] }
-}
-
 function startWorkflowTask(task: WorkflowTask, options: WorkflowSchedulerOptions): WorkflowTask {
   if (task.status === 'running') {
     return {
