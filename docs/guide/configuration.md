@@ -234,6 +234,49 @@ export ANYENGINE_NODE="/absolute/path/to/node"
 | `ANYENGINE_PTY_AUTO_APPROVE_SAFETY_PROMPTS` | Answer hardcoded TUI safety prompts from the screen. |
 | `ANYENGINE_PTY_KEEP_API_KEY` | Keep API-key env vars in the PTY (default stripped). |
 | `ANYENGINE_PTY_ARGS` | Extra `claude` flags for every `anyengine` spawn. |
-| `ANYENGINE_PTY_HOOK_RELAY` / `_NODE` / `_STATE_DIR` | Advanced `anyengine` overrides. |
+| `ANYENGINE_PTY_HOOK_RELAY` / `ANYENGINE_PTY_NODE` / `ANYENGINE_PTY_STATE_DIR` | Advanced `anyengine` overrides: hook relay script, node binary, state directory. |
 | `ANYENGINE_MOCK` | Run the protocol without Claude credentials. |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL` | Claude auth / custom endpoint configuration. Keep real values out of git. |
+| `ANYENGINE_HOME` | Adapter state directory (config, debug log, run log, sockets). Default `$CODEX_HOME/anyengine`. |
+| `ANYENGINE_DEBUG_LOG` | Path of the JSONL debug log, or `0` / `false` to disable it. Default `$ANYENGINE_HOME/debug.jsonl`. |
+| `ANYENGINE_DEBUG_LOG_MAX_BYTES` / `ANYENGINE_DEBUG_LOG_KEEP` | Rotation size and how many rotated files to keep (default 50 MB, 3). |
+| `ANYENGINE_RUN_LOG` | Path of the run registry JSONL (thread / turn lifecycle, no prompt text). |
+| `ANYENGINE_EFFORT` | Fallback reasoning effort when neither the turn nor saved config names one. |
+| `ANYENGINE_WEBSEARCH` | `0` advertises `webSearch: false` in `modelProvider/capabilities/read`. |
+| `ANYENGINE_PERMISSION_MODE` | Overrides the Claude Code permission mode for the `agent-sdk-sidecar` runtime. |
+| `ANYENGINE_SUBAGENT_TIMEOUT_MS` | How long a turn waits for a launched sub-agent before failing it. |
+| `ANYENGINE_TITLE_MODEL` / `ANYENGINE_SUMMARY_MODEL` | Model used for the desktop's hidden title and summary turns. |
+| `ANYENGINE_CODEX_MODELS` | Overrides the gpt-* entries added to `model/list`. |
+| `ANYENGINE_DISABLE_CODEX_PROXY` | `1` hides the gpt-* models and the `codex-proxy` route. |
+| `ANYENGINE_CODEX_PLUGIN_MCP` | `0` stops a Codex plugin's own stdio MCP servers being merged into an engine. |
+| `ANYENGINE_BRIDGE_INSTRUCTIONS` | `0` omits the cross-engine bridge instructions from the system prompt. |
+
+### `agent-http` / `agentapi` / `claude-p` routes
+
+Only read when `ANYENGINE_RUNTIME_TYPE` selects one of these experimental
+backends; see [Backends](/guide/backends).
+
+| Variable | Purpose |
+| --- | --- |
+| `ANYENGINE_HTTP_BASE_URL` | Bridge base URL. `ANYENGINE_AGENT_HTTP_URL` and `ANYENGINE_AGENTAPI_URL` override it per route. |
+| `ANYENGINE_BRIDGE_URL` | Base URL the managed bridge is started on. |
+| `ANYENGINE_HTTP_USE_SSE` | Stream over `GET /events` instead of polling. |
+| `ANYENGINE_HTTP_POLL_MS` / `ANYENGINE_HTTP_TIMEOUT_MS` | Poll interval and per-request timeout. |
+| `ANYENGINE_HTTP_INTERRUPT_RAW` | Send interrupts as a raw control byte rather than a JSON body. |
+| `ANYENGINE_HTTP_MANAGE_BRIDGE` | Let the adapter start and stop the bridge process itself. |
+| `ANYENGINE_MODE_COMMAND` | Command used to switch the bridge's mode. |
+| `ANYENGINE_CLAUDE_P_COMMAND` / `_ARGS` | `claude-p` binary and extra flags. |
+| `ANYENGINE_CLAUDE_P_TIMEOUT_MS` / `ANYENGINE_CLAUDE_P_STOP_TIMEOUT_RETRIES` | Per-turn timeout and stop retries. |
+| `ANYENGINE_CLAUDE_P_RESUME` | Combine `--resume` with `--input-file` (verify your build first — some replay results). |
+| `ANYENGINE_CLAUDE_P_SKIP_PERMISSIONS` | Pass `--dangerously-skip-permissions`. |
+| `ANYENGINE_GROK_TURN_TIMEOUT_MS` / `_STARTUP_TIMEOUT_MS` / `_IDLE_MS` | Grok per-turn, startup and idle-reap timings. |
+
+### Set by the adapter, not by you
+
+These are passed into a child process by the adapter itself. They are listed so
+a stray value in a shell is recognisable, not because they are settings.
+
+| Variable | Purpose |
+| --- | --- |
+| `ANYENGINE_PTY_HOOK_URL` / `_TOKEN` | Loopback hook-server address and token handed to `anyengine-hook-relay.mjs` through the PTY environment. |
+| `ANYENGINE_SUBAGENT_COMPLETED` | Marker the adapter sets on a sub-agent process once its result has been consumed. |
