@@ -9,6 +9,28 @@ versioning or publishing metadata.
 
 ### Hardening
 
+- **The hardening pass shipped and was deployed.** The three stacked PRs were
+  reviewed by someone who did not write them, merged in order, and the build on
+  `main` now drives ChatGPT.app on the maintainer's Mac. Baseline after the
+  pass: 232 tests passing, 81.71 % line coverage against an 80.7 floor, a
+  500-line file cap with 13 files grandfathered, worst cognitive complexity 112
+  over 15 hot spots, and 86 documented `ANYENGINE_*` settings. In the app:
+  Claude Sonnet and Grok 4.6 both answer `PONG`, a single thread still moves
+  from Sonnet to Grok mid-conversation and carries its codeword across, and
+  Plugins → Personal renders. Findings and method:
+  `docs/review-hardening.md`; deploy record: `docs/STATUS.md`.
+- **`ANYENGINE_SUBAGENT_COMPLETED` is documented correctly.** It was listed as
+  something the adapter sets on a sub-agent process. It is not: it is read as a
+  tri-state override of the client's `initialize` capability and switches the
+  whole sub-agent presentation — `subAgentActivity` markers on, or none of them
+  bar `interrupted` and a synthetic `closeAgent` for a failed child. The `0`
+  direction now has a test.
+- **`git push` no longer fails on correct code.** The pre-push hook ran the
+  gates with git's own hook environment still set, so five tests that build
+  throwaway git repositories inherited `GIT_DIR` and operated on the repository
+  being pushed from instead of their own fixtures. The hook now unsets those
+  names before running anything.
+
 - **Dead code removed, nothing observable changed.** The `server.mts` dispatch
   switch listed `thread/settings/update` twice; the second arm and its
   `threadSettingsUpdate` method had never executed and are gone. Which arm is
