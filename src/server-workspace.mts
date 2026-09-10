@@ -7,14 +7,24 @@
 // the server: a way to notify a peer, and somewhere to keep the child
 // processes and watchers it owns. Both live in this class, so the protocol
 // layer holds one field instead of three maps and a dozen methods.
-import { type ChildProcess, spawn } from 'node:child_process'
+import { type ChildProcess, execFile, spawn } from 'node:child_process'
 import { existsSync, type FSWatcher, watch } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { commandArray, commandEnv, numberOr, stringOr } from './server-helpers.mjs'
+import { promisify } from 'node:util'
+import {
+  commandArray,
+  commandEnv,
+  gitDiff,
+  listFiles,
+  numberOr,
+  stringOr,
+} from './server-helpers.mjs'
 import type { RpcPeer } from './types.mjs'
 import { debugLog, newId } from './util.mjs'
+
+const execFileAsync = promisify(execFile)
 
 /** How this module reaches the client. Same shape as the server's own notify. */
 export type NotifyFn = (peer: RpcPeer, notification: { method: string; params: unknown }) => void
@@ -23,6 +33,7 @@ export class WorkspaceOps {
   private readonly commandProcesses = new Map<string, ChildProcess>()
   private readonly processHandles = new Map<string, ChildProcess>()
   private readonly fsWatchers = new Map<string, FSWatcher>()
+  private readonly fuzzySessions = new Map<string, { roots: string[] }>()
 
   private readonly notify: NotifyFn
 
@@ -512,6 +523,84 @@ export class WorkspaceOps {
       activeCommandProcesses: this.commandProcesses.size,
       activeProcessHandles: this.processHandles.size,
     })
+    return {}
+  }
+
+  async gitDiffToRemote(params: Record<string, unknown>): Promise<unknown> {
+    const cwd = stringOr(params.cwd, process.cwd())
+    const diff = await gitDiff(cwd)
+    let sha = ''
+    try {
+      const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd, timeout: 10_000 })
+      sha = stdout.trim()
+    } catch {}
+    return { sha, diff }
+  }
+
+  async fuzzyFileSearch(params: Record<string, unknown>): Promise<unknown> {
+    const query = stringOr(params.query, '')
+    const roots = Array.isArray(params.roots) ? params.roots.map(String) : [process.cwd()]
+    return { files: await this.fuzzySearchCore(query, roots) }
+  }
+
+  async fuzzySearchCore(
+    rawQuery: string,
+    roots: string[],
+  ): Promise<Array<Record<string, unknown>>> {
+    const query = rawQuery.toLowerCase()
+    const files: Array<Record<string, unknown>> = []
+    for (const root of roots) {
+      const paths = await listFiles(root)
+      for (const path of paths) {
+        const fileName = path.split('/').at(-1) ?? path
+        const haystack = path.toLowerCase()
+        if (query && !haystack.includes(query)) continue
+        files.push({
+          root,
+          path,
+          match_type: 'file',
+          file_name: fileName,
+          score: query ? Math.max(1, 100 - haystack.indexOf(query)) : 1,
+          indices: null,
+        })
+        if (files.length >= 100) break
+      }
+      if (files.length >= 100) break
+    }
+    return files
+  }
+
+  fuzzySessionStart(params: Record<string, unknown>): unknown {
+    const sessionId = stringOr(params.sessionId, '')
+    const roots = Array.isArray(params.roots) ? params.roots.map(String) : [process.cwd()]
+    if (sessionId) this.fuzzySessions.set(sessionId, { roots })
+    return {}
+  }
+
+  async fuzzySessionUpdate(peer: RpcPeer, params: Record<string, unknown>): Promise<unknown> {
+    const sessionId = stringOr(params.sessionId, '')
+    const query = stringOr(params.query, '')
+    const session = this.fuzzySessions.get(sessionId)
+    const roots = session?.roots ?? [process.cwd()]
+    const files = await this.fuzzySearchCore(query, roots)
+    if (session && this.fuzzySessions.get(sessionId) === session) {
+      this.notify(peer, {
+        method: 'fuzzyFileSearch/sessionUpdated',
+        params: { sessionId, query, files },
+      })
+    }
+    return {}
+  }
+
+  fuzzySessionStop(peer: RpcPeer, params: Record<string, unknown>): unknown {
+    const sessionId = stringOr(params.sessionId, '')
+    this.fuzzySessions.delete(sessionId)
+    if (sessionId) {
+      this.notify(peer, {
+        method: 'fuzzyFileSearch/sessionCompleted',
+        params: { sessionId },
+      })
+    }
     return {}
   }
 }

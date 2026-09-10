@@ -1,8 +1,4 @@
-import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { promisify } from 'node:util'
 import {
   type BridgeControl,
   type BridgeHost,
@@ -29,7 +25,6 @@ import {
   codexPluginMarketplaces,
   findCodexPlugin,
   listCodexPlugins,
-  pluginDetail,
   readPluginSkill,
   withCodexPluginMcpServers,
 } from './codex-plugins.mjs'
@@ -37,33 +32,20 @@ import { CodexUpstream } from './codex-upstream.mjs'
 import { isGrokModel } from './grok-acp.mjs'
 import { grokModelOptions } from './grok-models.mjs'
 import { callMcpTool, listMcpServerStatuses, readMcpConfig, readMcpResource } from './mcp.mjs'
-import { projectProviderLoopConfig } from './provider-loop-config.mjs'
-import {
-  hasProviderLoopSelectionInput,
-  isProviderLoopSelectionConfigKey,
-  type ProviderLoopSelectionInput,
-  providerLoopSelectionInputFromConfig,
-  providerLoopSelectionInputFromEnv,
-  resolveProviderLoopSelection,
-} from './provider-loop-selection.mjs'
+import { resolveProviderLoopSelection } from './provider-loop-selection.mjs'
 import { engineForModel, formatTranscript, transcriptEntriesFromTurns } from './rehome.mjs'
 import { recordRunEvent } from './run-registry.mjs'
-import { normalizeRuntimeType } from './runtime-config.mjs'
 import { ServerConfig } from './server-config.mjs'
 import {
   approvalKindForTool,
   asRecord,
   buildSystemPromptAddendum,
   compactSummary,
-  configEdits,
-  configLayerMetadata,
-  defaultSelectableModelId,
   emptyTokenBreakdown,
   fallbackStructuredText,
   gitDiff,
   hasLegacyPermissionParams,
   isSubagentToolName,
-  listFiles,
   modelFromParams,
   normalizeApprovalPolicy,
   normalizeDecision,
@@ -98,6 +80,14 @@ import {
   wrapMcpToolResult,
 } from './server-helpers.mjs'
 import {
+  marketplaceAdd,
+  marketplaceRemove,
+  marketplaceUpgrade,
+  pluginRead,
+  pluginShareSave,
+  pluginShareUpdateTargets,
+} from './server-plugins.mjs'
+import {
   type TurnItemsView,
   threadEnvelope,
   toCompletedTurn,
@@ -128,7 +118,6 @@ import type {
   WireMessage,
 } from './types.mjs'
 import {
-  adapterHome,
   claudeModelOptions,
   claudeOutputFormat,
   codexCliVersion,
@@ -138,11 +127,9 @@ import {
   codexUserAgent,
   debugLog,
   defaultAllowedTools,
-  ensureParent,
   extractImageInputs,
   isCodexOpenAiModel,
   newId,
-  normalizeCodexReasoningEffort,
   nowMillis,
   nowSeconds,
   platformFamily,
@@ -153,8 +140,6 @@ import {
 } from './util.mjs'
 import { parseWorkflowCommand } from './workflow-command.mjs'
 import { maybeCreateThreadWorktree } from './worktree.mjs'
-
-const execFileAsync = promisify(execFile)
 
 // A missing Claude Task result must not keep Codex cc in its working state
 // forever. This is deliberately a long, configurable watchdog for the whole
@@ -218,7 +203,6 @@ export class CodexClaudeAppServer {
   private peerFeatures = new WeakMap<RpcPeer, PeerFeatures>()
   private activeTurnByThread = new Map<string, string>()
   private subagentStateByTurn = new Map<string, ActiveSubagentState>()
-  private fuzzySessions = new Map<string, { roots: string[] }>()
   private commandSessionAllow = new Map<string, Set<string>>()
   private goals = new Map<string, Record<string, unknown>>()
   private elicitationCounts = new Map<string, number>()
@@ -843,11 +827,11 @@ export class CodexClaudeAppServer {
       case 'hooks/list':
         return { data: listClaudeHooks(asRecord(params)) }
       case 'marketplace/add':
-        return this.marketplaceAdd(asRecord(params))
+        return marketplaceAdd(asRecord(params))
       case 'marketplace/remove':
-        return this.marketplaceRemove(asRecord(params))
+        return marketplaceRemove(asRecord(params))
       case 'marketplace/upgrade':
-        return this.marketplaceUpgrade(asRecord(params))
+        return marketplaceUpgrade(asRecord(params))
       // The Plugins pane pairs `plugin/list` with `plugin/installed`, and while
       // either one fails it treats the pane as still loading and re-polls every
       // two seconds — the "Loading plugins…" spinner never settles. Both read
@@ -864,7 +848,7 @@ export class CodexClaudeAppServer {
           marketplaceLoadErrors: [],
         }
       case 'plugin/read':
-        return this.pluginRead(asRecord(params))
+        return pluginRead(asRecord(params))
       case 'plugin/skill/read': {
         const p = asRecord(params)
         const plugin = findCodexPlugin(
@@ -879,9 +863,9 @@ export class CodexClaudeAppServer {
       case 'externalAgentConfig/import/readHistories':
         return { data: [], connectors: [] }
       case 'plugin/share/save':
-        return this.pluginShareSave(asRecord(params))
+        return pluginShareSave(asRecord(params))
       case 'plugin/share/updateTargets':
-        return this.pluginShareUpdateTargets(asRecord(params))
+        return pluginShareUpdateTargets(asRecord(params))
       case 'plugin/share/delete':
       case 'plugin/uninstall':
         return {}
@@ -1009,17 +993,17 @@ export class CodexClaudeAppServer {
       case 'getConversationSummary':
         return this.getConversationSummary(asRecord(params))
       case 'gitDiffToRemote':
-        return this.gitDiffToRemote(asRecord(params))
+        return this.workspace.gitDiffToRemote(asRecord(params))
       case 'getAuthStatus':
         return { authMethod: null, authToken: null, requiresOpenaiAuth: false }
       case 'fuzzyFileSearch':
-        return this.fuzzyFileSearch(asRecord(params))
+        return this.workspace.fuzzyFileSearch(asRecord(params))
       case 'fuzzyFileSearch/sessionStart':
-        return this.fuzzySessionStart(asRecord(params))
+        return this.workspace.fuzzySessionStart(asRecord(params))
       case 'fuzzyFileSearch/sessionUpdate':
-        return this.fuzzySessionUpdate(peer, asRecord(params))
+        return this.workspace.fuzzySessionUpdate(peer, asRecord(params))
       case 'fuzzyFileSearch/sessionStop':
-        return this.fuzzySessionStop(peer, asRecord(params))
+        return this.workspace.fuzzySessionStop(peer, asRecord(params))
       default:
         throw new Error(`method not implemented: ${method}`)
     }
@@ -3694,92 +3678,6 @@ export class CodexClaudeAppServer {
     // post-handshake in `initialize` so the UI populates on first connect.
   }
 
-  private marketplaceAdd(params: Record<string, unknown>): unknown {
-    const source = stringOr(params.source, 'local')
-    const marketplaceName = stringOr(
-      params.refName,
-      source.split('/').filter(Boolean).at(-1) ?? 'marketplace',
-    )
-    return {
-      marketplaceName,
-      installedRoot: `${codexHome()}/marketplaces/${marketplaceName}`,
-      alreadyAdded: true,
-    }
-  }
-
-  private marketplaceRemove(params: Record<string, unknown>): unknown {
-    const marketplaceName = stringOr(params.marketplaceName, 'marketplace')
-    return { marketplaceName, installedRoot: null }
-  }
-
-  private marketplaceUpgrade(params: Record<string, unknown>): unknown {
-    const marketplaceName =
-      typeof params.marketplaceName === 'string' ? params.marketplaceName : null
-    return {
-      selectedMarketplaces: marketplaceName ? [marketplaceName] : [],
-      upgradedRoots: [],
-      errors: [],
-    }
-  }
-
-  private pluginShareSave(params: Record<string, unknown>): unknown {
-    const remotePluginId = stringOr(params.remotePluginId, `local-${newId()}`)
-    return {
-      remotePluginId,
-      shareUrl: `https://localhost.invalid/anyengine/plugin-share/${encodeURIComponent(remotePluginId)}`,
-    }
-  }
-
-  private pluginShareUpdateTargets(params: Record<string, unknown>): unknown {
-    const shareTargets = Array.isArray(params.shareTargets) ? params.shareTargets : []
-    return {
-      principals: shareTargets.map((target) => {
-        const rec = asRecord(target)
-        return {
-          principalType: stringOr(rec.principalType, 'user'),
-          principalId: stringOr(rec.principalId, ''),
-          name: stringOr(rec.principalId, 'unknown'),
-        }
-      }),
-      discoverability: params.discoverability === 'UNLISTED' ? 'UNLISTED' : 'PRIVATE',
-    }
-  }
-
-  private pluginRead(params: Record<string, unknown>): unknown {
-    const name = stringOr(params.pluginName, 'unknown')
-    const known = findCodexPlugin(
-      listCodexPlugins(),
-      name,
-      stringOr(params.remoteMarketplaceName, '') || null,
-    )
-    if (known) return { plugin: pluginDetail(known) }
-    return {
-      plugin: {
-        marketplaceName: stringOr(params.remoteMarketplaceName, 'local'),
-        marketplacePath: params.marketplacePath ?? null,
-        summary: {
-          id: name,
-          name,
-          shareContext: null,
-          source: { type: 'remote' },
-          installed: false,
-          enabled: false,
-          installPolicy: 'NOT_AVAILABLE',
-          authPolicy: 'ON_USE',
-          availability: 'AVAILABLE',
-          interface: null,
-          keywords: [],
-        },
-        description: null,
-        skills: [],
-        hooks: [],
-        apps: [],
-        appTemplates: [],
-        mcpServers: [],
-      },
-    }
-  }
-
   private getConversationSummary(params: Record<string, unknown>): unknown {
     const threadId = stringOr(params.conversationId, '')
     const thread = this.store.getThread(threadId) ?? this.store.listThreads({ limit: 1 }).at(0)
@@ -3798,87 +3696,6 @@ export class CodexClaudeAppServer {
         gitInfo: null,
       },
     }
-  }
-
-  private async gitDiffToRemote(params: Record<string, unknown>): Promise<unknown> {
-    const cwd = stringOr(params.cwd, process.cwd())
-    const diff = await gitDiff(cwd)
-    let sha = ''
-    try {
-      const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd, timeout: 10_000 })
-      sha = stdout.trim()
-    } catch {}
-    return { sha, diff }
-  }
-
-  private async fuzzyFileSearch(params: Record<string, unknown>): Promise<unknown> {
-    const query = stringOr(params.query, '')
-    const roots = Array.isArray(params.roots) ? params.roots.map(String) : [process.cwd()]
-    return { files: await this.fuzzySearchCore(query, roots) }
-  }
-
-  private async fuzzySearchCore(
-    rawQuery: string,
-    roots: string[],
-  ): Promise<Array<Record<string, unknown>>> {
-    const query = rawQuery.toLowerCase()
-    const files: Array<Record<string, unknown>> = []
-    for (const root of roots) {
-      const paths = await listFiles(root)
-      for (const path of paths) {
-        const fileName = path.split('/').at(-1) ?? path
-        const haystack = path.toLowerCase()
-        if (query && !haystack.includes(query)) continue
-        files.push({
-          root,
-          path,
-          match_type: 'file',
-          file_name: fileName,
-          score: query ? Math.max(1, 100 - haystack.indexOf(query)) : 1,
-          indices: null,
-        })
-        if (files.length >= 100) break
-      }
-      if (files.length >= 100) break
-    }
-    return files
-  }
-
-  private fuzzySessionStart(params: Record<string, unknown>): unknown {
-    const sessionId = stringOr(params.sessionId, '')
-    const roots = Array.isArray(params.roots) ? params.roots.map(String) : [process.cwd()]
-    if (sessionId) this.fuzzySessions.set(sessionId, { roots })
-    return {}
-  }
-
-  private async fuzzySessionUpdate(
-    peer: RpcPeer,
-    params: Record<string, unknown>,
-  ): Promise<unknown> {
-    const sessionId = stringOr(params.sessionId, '')
-    const query = stringOr(params.query, '')
-    const session = this.fuzzySessions.get(sessionId)
-    const roots = session?.roots ?? [process.cwd()]
-    const files = await this.fuzzySearchCore(query, roots)
-    if (session && this.fuzzySessions.get(sessionId) === session) {
-      this.notify(peer, {
-        method: 'fuzzyFileSearch/sessionUpdated',
-        params: { sessionId, query, files },
-      })
-    }
-    return {}
-  }
-
-  private fuzzySessionStop(peer: RpcPeer, params: Record<string, unknown>): unknown {
-    const sessionId = stringOr(params.sessionId, '')
-    this.fuzzySessions.delete(sessionId)
-    if (sessionId) {
-      this.notify(peer, {
-        method: 'fuzzyFileSearch/sessionCompleted',
-        params: { sessionId },
-      })
-    }
-    return {}
   }
 
   private toolUseToItem(
