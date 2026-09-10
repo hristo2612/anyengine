@@ -175,3 +175,39 @@ plus an undocumented `ANYENGINE_TOTALLY_NEW_KNOB` were added to
 knob; both went green again on revert. The complexity ratchet was checked the
 same way by lowering its baseline to 100 and watching it name
 `native-runtime.mts:497`.
+
+
+## Flakes seen during this pass (pre-existing, not caused by it)
+
+Both reproduce on unmodified code and are recorded so the next person does not
+re-diagnose them as a regression.
+
+- **`unix websocket app-server accepts initialize`** hit the 180 s
+  `--test-timeout` backstop on *both* runners in one CI run of
+  `harden/server-extract`, and passed on both in the rerun of the same commit.
+  The identical tree passed on the branch stacked above it. It binds a unix
+  socket, so it is a bind/accept race under load rather than a protocol
+  failure — but "failed on both OSes at once" looks convincing enough to send
+  someone hunting, hence this note.
+- **`config/read resolves saved provider loop selection without projecting raw
+  keys`** fails when `dist/test/adapter.test.mjs` is run *alone* and passes in
+  the full suite: a test-isolation dependency, not a timing one.
+
+Neither was touched here. Both are worth a real fix — the first is the kind of
+race the 180 s backstop was added to bound, and an unbounded socket wait is
+exactly what [review-a2.md](review-a2.md) already fixed once for
+`JsonLineReader`.
+
+## CI note for the stacked PRs
+
+`.github/workflows/ci.yml` triggers on `pull_request` into `main` only, so
+stacked PRs (#7 → #6, #8 → #7) show no checks until their base merges and
+GitHub retargets them. Both were run manually with `workflow_dispatch` instead
+and their `node` and `cargo` jobs are green.
+
+`workflow_dispatch` also makes the `gitleaks` job scan **full history** rather
+than the PR diff, which surfaces the four known upstream false positives
+already documented in [review-a2.md](review-a2.md) — `secret123456789` used as
+a literal fake token in the base commit's own tests, and the RFC 6455 sample
+handshake key. On a real PR into `main` gitleaks scans the diff and passes,
+which is what #6 did. No new secret was introduced by any of this work.
