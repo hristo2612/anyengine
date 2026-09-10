@@ -1,0 +1,38 @@
+#!/bin/sh
+# Pre-push gate. Installed by `scripts/setup-hooks.sh` (sets core.hooksPath).
+#
+# Runs the same checks CI runs, so a red build is caught before it is pushed:
+#   typecheck -> check (biome + size ratchet + dependency guard) -> tests with
+#   coverage -> gitleaks on what is about to go out.
+#
+# Set ANYENGINE_SKIP_PREPUSH=1 for a deliberate escape hatch (`git push
+# --no-verify` works too).
+
+set -e
+
+if [ -n "$ANYENGINE_SKIP_PREPUSH" ]; then
+  echo "pre-push: skipped (ANYENGINE_SKIP_PREPUSH set)"
+  exit 0
+fi
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-push: gitleaks is required but was not found."
+  echo "          brew install gitleaks"
+  exit 1
+fi
+
+start=$(date +%s)
+
+echo "pre-push: typecheck"
+npm run --silent typecheck
+
+echo "pre-push: check (biome, size ratchet, dependency guard)"
+npm run --silent check
+
+echo "pre-push: tests + coverage"
+npm test --silent
+
+echo "pre-push: gitleaks"
+gitleaks protect --staged --redact --no-banner
+
+echo "pre-push: OK in $(($(date +%s) - start))s"
