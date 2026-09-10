@@ -1,9 +1,7 @@
-import { type ChildProcess, execFile, spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, type FSWatcher, readFileSync, watch, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import {
   type BridgeControl,
@@ -55,17 +53,12 @@ import {
   approvalKindForTool,
   asRecord,
   buildSystemPromptAddendum,
-  COMMAND_TOOLS,
-  commandArray,
-  commandEnv,
   compactSummary,
   configEdits,
   configLayerMetadata,
   defaultSelectableModelId,
   emptyTokenBreakdown,
-  FILE_CHANGE_TOOLS,
   fallbackStructuredText,
-  fileChangeFromTool,
   gitDiff,
   hasLegacyPermissionParams,
   isSubagentToolName,
@@ -91,13 +84,11 @@ import {
   reasoningEffortFromParams,
   reviewLabel,
   reviewPrompt,
-  sandboxEnvelope,
   sandboxFromTurnParams,
   stringListFromEnv,
   stringOr,
   summarizeInjectedItem,
   summarizeRpcParams,
-  threadPermissionProfileId,
   todoWriteToPlanSteps,
   tokenBreakdownFromClaudeUsage,
   toolResultText,
@@ -112,7 +103,6 @@ import {
   toLifecycleTurn,
   toolUseToItem,
   toThread,
-  toTurn,
   toTurnView,
 } from './server-views.mjs'
 import { WorkspaceOps } from './server-workspace.mjs'
@@ -4133,10 +4123,6 @@ export class CodexClaudeAppServer {
 
   private toThread(thread: ThreadRecord, turns: TurnRecord[] = []): unknown {
     return toThread(this.store, thread, turns)
-  }
-
-  private toTurn(turn: TurnRecord): unknown {
-    return toTurn(turn)
   }
 
   private toTurnView(turn: TurnRecord, itemsView: TurnItemsView): unknown {
