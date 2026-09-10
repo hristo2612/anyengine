@@ -216,6 +216,18 @@ re-diagnose them as a regression.
   keys`** fails when `dist/test/adapter.test.mjs` is run *alone* and passes in
   the full suite: a test-isolation dependency, not a timing one.
 
+**The pattern matters more than any one of them.** Over the merges and the two
+docs commits that closed this pass, `node (ubuntu-latest)` went red three times
+and passed on the rerun every time, with three different symptoms — a 180 s
+backstop, a truncated coverage file, and three `codex-mux` mid-thread-switch
+tests reporting `timed out waiting for message` from their own internal waits.
+Twice the tree was byte-identical to one that had just passed. So the suite is
+not flaky in one place; it is **timing-sensitive under runner load** in several,
+and the mid-thread-switch tests in particular drive a fake child through a
+multi-step handover on waits that are tight for a loaded shared runner. Worth a
+real fix — longer internal waits, and the `NODE_V8_COVERAGE` scrub above —
+rather than a standing habit of pressing rerun.
+
 Neither was touched here. Both are worth a real fix — the first is the kind of
 race the 180 s backstop was added to bound, and an unbounded socket wait is
 exactly what [review-a2.md](review-a2.md) already fixed once for
