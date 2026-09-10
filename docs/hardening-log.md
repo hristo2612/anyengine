@@ -228,6 +228,15 @@ multi-step handover on waits that are tight for a loaded shared runner. Worth a
 real fix — longer internal waits, and the `NODE_V8_COVERAGE` scrub above —
 rather than a standing habit of pressing rerun.
 
+**Fixed for the mid-thread-switch tests.** `test/codex-mux.test.mts`'s
+`waitFor` (and `accountRead`) defaulted to a 10 s internal wait. That is not a
+correctness bound — `--test-timeout=180000` already stops a hung test from
+hanging the file — it was just short enough to lose a race with a busy runner
+mid-handover. Raised to 60 s: still fails well before the backstop, no longer
+fails because the runner was busy. The suite runs in 18 s locally, so the
+higher ceiling costs nothing when things are healthy. The `NODE_V8_COVERAGE`
+scrub above is still open.
+
 Neither was touched here. Both are worth a real fix — the first is the kind of
 race the 180 s backstop was added to bound, and an unbounded socket wait is
 exactly what [review-a2.md](review-a2.md) already fixed once for

@@ -75,7 +75,16 @@ class StdioClient {
     return response
   }
 
-  waitFor(predicate: (m: Wire) => boolean, timeoutMs = 10_000): Promise<Wire> {
+  // 10 s was enough on an idle laptop and not on a loaded CI runner: a
+  // mid-thread handover spawns a fake child, resumes or starts its thread and
+  // injects a transcript before the message being waited for appears, and
+  // `node (ubuntu-latest)` failed here four times in one afternoon, green on
+  // every rerun, twice on a tree byte-identical to one that had just passed
+  // (docs/hardening-log.md). This wait exists to stop a hung test hanging the
+  // file, and `--test-timeout=180000` already bounds that, so it only has to
+  // be short enough to fail before the backstop — not short enough to race a
+  // busy runner.
+  waitFor(predicate: (m: Wire) => boolean, timeoutMs = 60_000): Promise<Wire> {
     const existing = this.messages.find(predicate)
     if (existing) return Promise.resolve(existing)
     return new Promise((resolvePromise, reject) => {
@@ -318,7 +327,7 @@ test('codex-shim passes the desktop -c globals through to the adapter and child'
 // child reports a ChatGPT account and, with FAKE_CODEX_RATE_LIMIT=reached, an
 // account that is out of Codex usage — the state the desktop turns into
 // "reserve mode".
-async function accountRead(client: StdioClient, timeoutMs = 10_000): Promise<Wire> {
+async function accountRead(client: StdioClient, timeoutMs = 60_000): Promise<Wire> {
   const deadline = Date.now() + timeoutMs
   let last = await client.request('account/read', {})
   while (last.result?.account?.type === 'chatgpt' && Date.now() < deadline) {
