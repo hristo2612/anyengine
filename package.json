@@ -38,6 +38,7 @@
     "docs:preview": "vitepress preview docs",
     "test": "npm run test:coverage",
     "test:coverage": "npm run build && ANYENGINE_NATIVE_CODEX=0 node --test --test-timeout=180000 --experimental-test-coverage --test-coverage-include='dist/src/**' --test-coverage-lines=80 --test-reporter=spec --test-reporter-destination=stdout dist/test/*.mjs",
+    "setup:hooks": "sh scripts/setup-hooks.sh",
     "doctor": "node scripts/doctor.mjs",
     "workflow": "npm run build && node dist/src/workflow-cli.mjs",
     "workflow:schedule": "npm run workflow -- schedule",

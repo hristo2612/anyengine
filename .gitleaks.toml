@@ -1,0 +1,24 @@
+# gitleaks configuration for anyengine.
+#
+# The default ruleset, plus one narrow allowlist. The suite deliberately feeds
+# fake credentials through the redaction paths so a test can assert they never
+# reach a log or a run record; those literals are the only exceptions, and they
+# are allowed only inside `test/`.
+#
+# Do not widen this file to silence a finding. If a real secret is flagged,
+# rotate it and remove it from history.
+
+title = "anyengine"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake secrets in the redaction tests, and the RFC 6455 example WebSocket key"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^test/''']
+regexes = [
+  '''secret123456789''',
+  '''dGhlIHNhbXBsZSBub25jZQ==''',
+]
