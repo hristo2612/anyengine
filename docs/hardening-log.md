@@ -190,6 +190,22 @@ re-diagnose them as a regression.
   socket, so it is a bind/accept race under load rather than a protocol
   failure — but "failed on both OSes at once" looks convincing enough to send
   someone hunting, hence this note.
+- **The whole `node` job fails with every test passing.** Seen on
+  `ubuntu-latest` for the docs-only commit that follows this pass: `232 tests,
+  232 pass, 0 fail`, then `Warning: Could not report code coverage. Error
+  [ERR_OPERATION_FAILED]: failed to parse coverage file
+  /tmp/node-coverage-*/coverage-*.json: Expected ',' or '}' after property
+  value in JSON at position 524288` and exit 1. Position 524288 is exactly
+  512 KiB — a buffer boundary — so this is a **truncated** V8 coverage file,
+  not a corrupt one. Cause: `--experimental-test-coverage` puts
+  `NODE_V8_COVERAGE` in the environment, every adapter the suite spawns
+  inherits it and writes its own coverage file, and the `after()` sweep that
+  keeps a lingering child from wedging the run SIGKILLs them — a killed process
+  never flushes its last write. The identical tree passed on the commit before
+  and on the rerun, which is what makes it look like a mystery. The real fix is
+  a SIGTERM-then-wait-then-SIGKILL teardown, or `NODE_V8_COVERAGE` scrubbed
+  from the environment handed to spawned adapters; the second is smaller and
+  loses nothing, since it is the parent's coverage the floor is measured on.
 - **`remote shim launches daemon and proxy with Codex-compatible commands`**
   hit the same 180 s backstop on `node (macos-latest)` during the merge of
   #7 into `main`, with `ubuntu-latest` green in the same run and the identical
