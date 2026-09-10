@@ -30,7 +30,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome lint src test scripts",
     "format": "biome format --write src test scripts",
-    "check": "biome check src test scripts",
+    "check": "biome check src test scripts && node scripts/check-size.mjs && node scripts/check-deps.mjs",
     "check:fix": "biome check --write src test scripts",
     "check:rust-protocol-fixtures": "node scripts/check-rust-protocol-fixtures.mjs",
     "docs:dev": "vitepress dev docs",
