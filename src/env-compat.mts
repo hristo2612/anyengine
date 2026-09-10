@@ -6,9 +6,10 @@
 // name is already set (the new name always wins). Nothing is deleted, so a
 // process that reads the old name directly keeps working.
 //
-// This module is imported FIRST by `adapter.mts` so the copy happens before
-// any other module can read `process.env`. Delete it, its import and the
-// matching shell block in `scripts/codex-shim` in the release after next.
+// `adapter.mts` imports this module for its side effect alone, above every
+// module that reads `process.env`, so the copy is already done by the time
+// they are evaluated. Delete it, that import and the matching shell block in
+// `scripts/codex-shim` in the release after next.
 
 const LEGACY_PREFIX = 'CLAUDE_CODEX_'
 const PREFIX = 'ANYENGINE_'
@@ -28,5 +29,6 @@ export function applyLegacyEnvNames(env: NodeJS.ProcessEnv = process.env): strin
   return migrated
 }
 
-/** Names migrated at startup, for the adapter's debug log. */
-export const migratedLegacyEnvNames: string[] = applyLegacyEnvNames()
+// The side effect the import exists for. Nothing reads the return value; the
+// point is that `process.env` carries both spellings from here on.
+applyLegacyEnvNames()

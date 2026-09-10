@@ -4,6 +4,12 @@ import { dirname } from 'node:path'
 import { BridgeControl, bridgeEnabled } from './bridge-control.mjs'
 import { runBridgeMcp } from './bridge-mcp.mjs'
 import { resolveNativeCodexBinary } from './codex-upstream.mjs'
+// Side-effect import, and it has to stay one: the module body copies every
+// legacy CLAUDE_CODEX_* name onto its ANYENGINE_* equivalent, and that has to
+// happen before any module below reads process.env. Nothing here uses a
+// binding from it, so an import organiser will offer to delete it — do not.
+// See src/env-compat.mts and test/adapter.test.mts ("legacy CLAUDE_CODEX_*").
+import './env-compat.mjs'
 import { resolveRuntimeConfig } from './runtime-config.mjs'
 import { createRuntime } from './runtime-factory.mjs'
 import { CodexClaudeAppServer } from './server.mjs'
