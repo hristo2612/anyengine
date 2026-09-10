@@ -114,6 +114,33 @@ export class MockRuntime implements ClaudeRuntime {
       })
     }
 
+    // An MCP tool the engine asks to run. The App has no approval card for an
+    // mcpToolCall item, so the server has to decide this one itself instead of
+    // sending a request nothing renders (docs/evidence/b5b-mcp-approvals.md).
+    if (/mcp server check/i.test(context.prompt)) {
+      const toolUseId = `tool-${Date.now()}`
+      const input = { query: 'PONG' }
+      await handlers.onEvent({
+        type: 'tool_use',
+        toolUseId,
+        toolName: 'mcp__jinn__search',
+        input,
+      })
+      const decision = await handlers.onPermissionRequest({
+        type: 'permission_request',
+        requestId: `perm-${toolUseId}`,
+        toolUseId,
+        toolName: 'mcp__jinn__search',
+        input,
+      })
+      await handlers.onEvent({
+        type: 'tool_result',
+        toolUseId,
+        content: `mcp decision ${decision.decision}`,
+        isError: decision.decision !== 'accept' && decision.decision !== 'acceptForSession',
+      })
+    }
+
     if (/model effort check/i.test(context.prompt)) {
       await handlers.onEvent({
         type: 'text_delta',

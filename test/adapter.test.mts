@@ -53,6 +53,7 @@ test('server dispatch covers current Codex app-server client method surface', as
     'marketplace/remove',
     'marketplace/upgrade',
     'plugin/list',
+    'plugin/installed',
     'plugin/read',
     'plugin/skill/read',
     'plugin/share/save',
@@ -112,6 +113,7 @@ test('server dispatch covers current Codex app-server client method surface', as
     'config/read',
     'externalAgentConfig/detect',
     'externalAgentConfig/import',
+    'externalAgentConfig/import/readHistories',
     'config/value/write',
     'config/batchWrite',
     'configRequirements/read',
@@ -4097,6 +4099,75 @@ test('generic Claude tools complete as Codex mcpToolCall items', async () => {
       _meta: null,
     })
     assert.equal(sawIdle, true)
+  } finally {
+    proc.kill()
+    await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
+  }
+})
+
+test('an MCP tool call runs without asking the app for a file-change approval', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
+  })
+  const reader = new JsonLineReader(proc)
+  try {
+    // The approving policy: under never / danger-full-access no approval is
+    // ever requested, so it would prove nothing about the item type.
+    proc.stdin.write(
+      json({
+        id: 1,
+        method: 'thread/start',
+        params: {
+          cwd: process.cwd(),
+          experimentalRawEvents: false,
+          persistExtendedHistory: false,
+          approvalPolicy: 'on-request',
+          sandbox: 'workspace-write',
+        },
+      }),
+    )
+    const start = await reader.nextResponse(1)
+    const threadId = start.result.thread.id
+
+    proc.stdin.write(
+      json({
+        id: 2,
+        method: 'turn/start',
+        params: {
+          threadId,
+          input: [{ type: 'text', text: 'please do an mcp server check', text_elements: [] }],
+        },
+      }),
+    )
+    await reader.nextResponse(2)
+
+    let startedTool: any = null
+    let completedTool: any = null
+    let sawApprovalRequest = false
+    for (let i = 0; i < 500; i += 1) {
+      const message = await reader.next()
+      if (
+        message.method === 'item/fileChange/requestApproval' ||
+        message.method === 'item/commandExecution/requestApproval'
+      ) {
+        sawApprovalRequest = true
+      }
+      if (message.method === 'item/started' && message.params.item.type === 'mcpToolCall')
+        startedTool = message.params.item
+      if (message.method === 'item/completed' && message.params.item.type === 'mcpToolCall')
+        completedTool = message.params.item
+      if (message.method === 'turn/completed') break
+    }
+    // The call is visible in the thread ...
+    assert.equal(startedTool?.tool, 'mcp__jinn__search')
+    assert.equal(completedTool?.tool, 'mcp__jinn__search')
+    assert.equal(completedTool?.status, 'completed')
+    // ... it ran (the mock echoes the decision it was handed) ...
+    assert.match(JSON.stringify(completedTool?.result), /mcp decision accept/)
+    // ... and no approval card the App cannot draw was ever requested.
+    assert.equal(sawApprovalRequest, false)
   } finally {
     proc.kill()
     await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })

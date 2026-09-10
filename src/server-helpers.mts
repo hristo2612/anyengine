@@ -849,6 +849,22 @@ export function normalizeDecision(response: unknown): PermissionDecision['decisi
   return 'decline'
 }
 
+// A tool becomes a Codex `commandExecution` item, a `fileChange` item, or the
+// generic `mcpToolCall` item (see CodexClaudeAppServer.toolUseToItem). The App
+// only draws an approval card that matches the item it is attached to, and the
+// app-server protocol has no approval request for an mcpToolCall at all, so
+// these two sets also decide which tools can be approved by a person.
+export const COMMAND_TOOLS = new Set(['Bash'])
+export const FILE_CHANGE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit'])
+
+export type ApprovalKind = 'command' | 'fileChange' | 'none'
+
+export function approvalKindForTool(toolName: string): ApprovalKind {
+  if (COMMAND_TOOLS.has(toolName)) return 'command'
+  if (FILE_CHANGE_TOOLS.has(toolName)) return 'fileChange'
+  return 'none'
+}
+
 export function fileChangeFromTool(
   toolName: string,
   input: Record<string, unknown>,

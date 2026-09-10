@@ -22,6 +22,14 @@ import {
 } from './bridge-instructions.mjs'
 import { listClaudeHooks, listClaudeSkills } from './claude-capabilities.mjs'
 import { type MuxLocalServer, NativeCodexMux, routeForModel } from './codex-mux.mjs'
+import {
+  codexPluginMarketplaces,
+  findCodexPlugin,
+  listCodexPlugins,
+  pluginDetail,
+  readPluginSkill,
+  withCodexPluginMcpServers,
+} from './codex-plugins.mjs'
 import { CodexUpstream } from './codex-upstream.mjs'
 import { isGrokModel } from './grok-acp.mjs'
 import { grokModelOptions } from './grok-models.mjs'
@@ -39,8 +47,10 @@ import { recordRunEvent } from './run-registry.mjs'
 import { normalizeRuntimeType } from './runtime-config.mjs'
 import {
   addedFileDiff,
+  approvalKindForTool,
   asRecord,
   buildSystemPromptAddendum,
+  COMMAND_TOOLS,
   coerceStructuredValue,
   commandArray,
   commandEnv,
@@ -50,6 +60,7 @@ import {
   configLayerMetadata,
   defaultSelectableModelId,
   emptyTokenBreakdown,
+  FILE_CHANGE_TOOLS,
   fallbackStructuredText,
   fileChangeFromTool,
   gitDiff,
@@ -764,12 +775,36 @@ export class CodexClaudeAppServer {
         return this.marketplaceRemove(asRecord(params))
       case 'marketplace/upgrade':
         return this.marketplaceUpgrade(asRecord(params))
+      // The Plugins pane pairs `plugin/list` with `plugin/installed`, and while
+      // either one fails it treats the pane as still loading and re-polls every
+      // two seconds — the "Loading plugins…" spinner never settles. Both read
+      // CODEX_HOME off disk (src/codex-plugins.mts) and answer in a millisecond.
       case 'plugin/list':
-        return { marketplaces: [], marketplaceLoadErrors: [], featuredPluginIds: [] }
+        return {
+          marketplaces: codexPluginMarketplaces(listCodexPlugins()),
+          marketplaceLoadErrors: [],
+          featuredPluginIds: [],
+        }
+      case 'plugin/installed':
+        return {
+          marketplaces: codexPluginMarketplaces(listCodexPlugins()),
+          marketplaceLoadErrors: [],
+        }
       case 'plugin/read':
         return this.pluginRead(asRecord(params))
-      case 'plugin/skill/read':
-        return { contents: null }
+      case 'plugin/skill/read': {
+        const p = asRecord(params)
+        const plugin = findCodexPlugin(
+          listCodexPlugins(),
+          stringOr(p.remotePluginId, ''),
+          stringOr(p.remoteMarketplaceName, '') || null,
+        )
+        return { contents: plugin ? readPluginSkill(plugin, stringOr(p.skillName, '')) : null }
+      }
+      // ExternalAgentConfigImportHistoriesReadResponse. The app polls this
+      // beside the plugin catalog; an error here kept the same pane spinning.
+      case 'externalAgentConfig/import/readHistories':
+        return { data: [], connectors: [] }
       case 'plugin/share/save':
         return this.pluginShareSave(asRecord(params))
       case 'plugin/share/updateTargets':
@@ -2303,10 +2338,14 @@ export class CodexClaudeAppServer {
         forkSession,
         // Every engine also gets the cross-engine bridge server for this
         // thread (docs/guide/bridge.md); summary turns never spawn engines.
-        mcpServers:
+        // Plus the stdio servers contributed by the user's enabled Codex
+        // plugins, so a plugin installed once reaches every engine
+        // (ANYENGINE_CODEX_PLUGIN_MCP=0 turns that off).
+        mcpServers: withCodexPluginMcpServers(
           this.bridge && turnPurpose !== 'summary'
             ? this.bridge.mergeMcpServers(thread.id, readMcpConfig().sdkValue)
             : readMcpConfig().sdkValue,
+        ),
         allowedTools: defaultAllowedTools(),
         addDirs: stringListFromEnv('ANYENGINE_ADD_DIRS', []),
         enableFileCheckpointing: process.env.ANYENGINE_ENABLE_FILE_CHECKPOINTING === '1',
@@ -3468,9 +3507,23 @@ export class CodexClaudeAppServer {
       return { decision: 'accept' }
     }
 
+    // The App renders exactly two approval cards, and each one attaches to the
+    // item type it names: `item/commandExecution/requestApproval` to a
+    // commandExecution item, `item/fileChange/requestApproval` to a fileChange
+    // item. The protocol has no approval request for an mcpToolCall — Codex
+    // runs MCP tools without asking (config `default_tools_approval_mode`,
+    // `auto` for local servers). Asking for a fileChange approval on an
+    // mcpToolCall item left the App with nothing to draw and the turn spun
+    // forever, which is what every `mcp__*`, ToolSearch and Skill call did.
+    const approvalKind = approvalKindForTool(event.toolName)
+    if (approvalKind === 'none') {
+      debugLog('approval.autoAccepted', { threadId, itemId, toolName: event.toolName })
+      return { decision: 'accept' }
+    }
+
     this.setThreadStatus(peer, threadId, { type: 'active', activeFlags: ['waitingOnApproval'] })
     const requestId = newId()
-    const isCommand = event.toolName === 'Bash'
+    const isCommand = approvalKind === 'command'
     const method = isCommand
       ? 'item/commandExecution/requestApproval'
       : 'item/fileChange/requestApproval'
@@ -4362,6 +4415,12 @@ export class CodexClaudeAppServer {
 
   private pluginRead(params: Record<string, unknown>): unknown {
     const name = stringOr(params.pluginName, 'unknown')
+    const known = findCodexPlugin(
+      listCodexPlugins(),
+      name,
+      stringOr(params.remoteMarketplaceName, '') || null,
+    )
+    if (known) return { plugin: pluginDetail(known) }
     return {
       plugin: {
         marketplaceName: stringOr(params.remoteMarketplaceName, 'local'),
@@ -4383,6 +4442,7 @@ export class CodexClaudeAppServer {
         skills: [],
         hooks: [],
         apps: [],
+        appTemplates: [],
         mcpServers: [],
       },
     }
@@ -4494,7 +4554,7 @@ export class CodexClaudeAppServer {
     cwd: string,
   ): ThreadItem {
     const id = newId()
-    if (event.toolName === 'Bash') {
+    if (COMMAND_TOOLS.has(event.toolName)) {
       return {
         type: 'commandExecution',
         id,
@@ -4514,7 +4574,7 @@ export class CodexClaudeAppServer {
         durationMs: null,
       }
     }
-    if (['Edit', 'Write', 'MultiEdit'].includes(event.toolName)) {
+    if (FILE_CHANGE_TOOLS.has(event.toolName)) {
       return {
         type: 'fileChange',
         id,
