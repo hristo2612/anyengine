@@ -14,9 +14,11 @@
 import { readFileSync, statSync } from 'node:fs'
 import { extname, isAbsolute, relative } from 'node:path'
 
-// Soft cap: server.mts is the known outlier (~3.4k lines). Files past this get
-// a nudge to split, not a block.
-const MAX_SOURCE_LINES = 1000
+// Soft cap, matching the hard one in scripts/check-size.mjs. Files past this
+// get a nudge to split, not a block — the ratchet in `npm run check` is what
+// actually fails, and the modules already over the cap are grandfathered in
+// scripts/size-baseline.json.
+const MAX_SOURCE_LINES = 800
 
 function readStdin() {
   try {
@@ -84,7 +86,7 @@ if (event === 'PostToolUse') {
       const lines = source.split('\n').length
       if (lines > MAX_SOURCE_LINES) {
         notes.push(
-          `"${rel}" is ${lines} lines (> ${MAX_SOURCE_LINES}). Consider splitting it into focused modules.`,
+          `"${rel}" is ${lines} lines (> ${MAX_SOURCE_LINES}). Extract a focused module instead of growing it — see scripts/size-baseline.json.`,
         )
       }
 
