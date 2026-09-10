@@ -7,6 +7,37 @@ versioning or publishing metadata.
 
 ## Unreleased
 
+### Quality gates
+
+- **Coverage is measured and floored.** `npm test` now runs the Node 24
+  built-in coverage collector over `dist/src/**` and fails under 80 % lines.
+  Today's number is 81.40 % across 47 modules. No new dependency: the runner
+  that already ran the suite does the counting.
+- **Files never grow.** `scripts/check-size.mjs` caps `src/**/*.mts` at 800
+  lines. The six modules already over the cap — `server.mts` (5133),
+  `native-runtime.mts` (1462), `anyengine-runtime.mts` (1414), `codex-mux.mts`
+  (1207), `server-helpers.mts` (1106), `bridge-control.mts` (927) — are frozen
+  at those lengths in `scripts/size-baseline.json` and may only shrink; a
+  shrink rewrites the baseline for the same commit, and in CI a stale baseline
+  is an error. Nothing was split in this change: the point is that the big
+  modules stop absorbing new code.
+- **Complexity is visible.** Biome's `complexity` group is on at recommended
+  with `noExcessiveCognitiveComplexity` as a warning at 30 (default 15). Twenty
+  warnings today, the worst a cognitive complexity of 186 in `server.mts`.
+  Warnings do not fail the build.
+- **Runtime dependencies take a deliberate step.** `scripts/check-deps.mjs`
+  fails when `dependencies` differs from `scripts/deps-baseline.json`; adding
+  one means `node scripts/check-deps.mjs --update` plus a one-line
+  justification in the commit.
+- **One pre-push hook, no husky.** `scripts/setup-hooks.sh` sets
+  `core.hooksPath` to `scripts/hooks`; `pre-push` runs typecheck, check, tests
+  with coverage and `gitleaks protect --staged` in roughly 50 s.
+- **CI** runs the coverage, size and dependency checks and adds
+  `gitleaks/gitleaks-action@v2`, keeping the existing 15-minute job timeouts.
+- **Docs.** New [`docs/quality.md`](docs/quality.md) one-pager, a rewritten
+  `CONTRIBUTING.md` aimed at humans and agents, both linked from the README.
+
+
 ### Switch engines mid-thread
 
 - **The model picker now works in the middle of a conversation, in every

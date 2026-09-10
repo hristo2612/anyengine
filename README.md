@@ -64,6 +64,8 @@ whichever CLIs you want to route to: `claude`, `grok`. Codex ships with the app.
 | Cross-engine bridge | [docs/guide/bridge.md](docs/guide/bridge.md) |
 | Capability matrix | [docs/reference/capability-matrix.md](docs/reference/capability-matrix.md) |
 | Status and next steps | [docs/STATUS.md](docs/STATUS.md) |
+| Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Quality gates | [docs/quality.md](docs/quality.md) |
 | Security policy | [SECURITY.md](SECURITY.md) |
 | Safe examples | [examples/](examples/) |
 
@@ -72,10 +74,15 @@ whichever CLIs you want to route to: `claude`, `grok`. Codex ships with the app.
 ```bash
 npm run dev          # run from TypeScript via tsx
 npm run typecheck    # tsc --noEmit
-npm run check        # biome format + lint
-npm test             # build + node --test
+npm run check        # biome + file-size ratchet + dependency guard
+npm test             # build + node --test, with the coverage floor
 npm run docs:dev     # preview the documentation site
 ```
+
+Run `scripts/setup-hooks.sh` once per clone: it points `core.hooksPath` at
+`scripts/hooks`, so `git push` runs the same checks CI runs plus `gitleaks`.
+The gates and why each one exists: [docs/quality.md](docs/quality.md).
+Conventions for humans and agents: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Environment variables are all spelled `ANYENGINE_*`. The pre-rebrand
 `CLAUDE_CODEX_*` names are still accepted for one release; the new spelling
