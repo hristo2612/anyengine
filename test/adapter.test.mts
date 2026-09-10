@@ -1,20 +1,45 @@
 import assert from 'node:assert/strict'
-import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
+import { type ChildProcess, execFileSync, spawn as spawnChild } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm as rmPath, writeFile } from 'node:fs/promises'
 import http from 'node:http'
 import net from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { Duplex } from 'node:stream'
-import test from 'node:test'
+import test, { after } from 'node:test'
 import WebSocket from 'ws'
 import type { ProviderLoopConfigProjectionResult } from '../src/provider-loop-config.mjs'
 import { SessionStore } from '../src/store.mjs'
 
 const adapter = resolve('dist/src/adapter.mjs')
 const shim = resolve('scripts/codex-shim')
+
+// The tests here SIGTERM the adapters they start and move on, which leaves two
+// races on a loaded runner: a child still running its shutdown holds this
+// process's stdio pipes open, so node:test never exits, and it can still be
+// writing into the temp home the test is removing.
+const spawned = new Set<ChildProcess>()
+const spawn: typeof spawnChild = ((...args: Parameters<typeof spawnChild>) => {
+  const child = spawnChild(...args)
+  spawned.add(child)
+  child.once('exit', () => spawned.delete(child))
+  return child
+}) as typeof spawnChild
+const rm: typeof rmPath = (path, options) =>
+  rmPath(path, { maxRetries: 5, retryDelay: 100, ...options })
+
+after(() => {
+  for (const child of spawned) {
+    try {
+      child.kill('SIGKILL')
+    } catch {}
+    child.stdin?.destroy()
+    child.stdout?.destroy()
+    child.stderr?.destroy()
+  }
+})
 
 test('server dispatch covers current Codex app-server client method surface', async () => {
   const source = await readFile(resolve('src/server.mts'), 'utf8')

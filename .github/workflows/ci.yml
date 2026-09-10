@@ -11,6 +11,7 @@ jobs:
   check:
     name: node (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -40,6 +41,7 @@ jobs:
   cargo-test:
     name: cargo (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
