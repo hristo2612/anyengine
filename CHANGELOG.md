@@ -13,10 +13,13 @@ versioning or publishing metadata.
   direction.** A thread used to be bound to one engine at `thread/start`:
   moving a GPT thread to Sonnet came back as the real Codex child's *"the
   'sonnet' model is not supported when using Codex with a ChatGPT account"*,
-  and the reverse could not work at all. Routing is decided per **turn** from
-  `turn/start.model`; when the resolved engine differs from the one that owns
-  the thread, the thread is handed over first and the turn runs on the new
-  engine. The desktop keeps the one thread it has always had.
+  and the reverse could not work at all. Routing now follows the **model**
+  wherever the app announces it — `thread/settings/update` /
+  `thread/metadata/update`, which is what this desktop sends when the picker
+  moves, or an explicit `turn/start.model`. When the resolved engine differs
+  from the one that owns the thread, the thread is handed over first and the
+  turn runs on the new engine. The desktop keeps the one thread it has always
+  had, and draws its own "Model changed from X to Y" divider between the turns.
 - **The conversation comes with it.** The handover carries a compact
   transcript of the thread so far — the user and assistant messages, in order,
   without tool calls or reasoning. To Claude or Grok it seeds a fresh runtime
