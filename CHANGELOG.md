@@ -17,8 +17,8 @@ versioning or publishing metadata.
   all three shapes and pins what the live handler does with each. Also removed:
   the orphaned `scripts/smoke-subagents.mjs` (no npm script, no doc entry, no
   caller), the unimported `grokBinaryAvailable` and `enqueueWorkflowTask`
-  exports, the leftover `RESERVE_MODEL_IDS` constant, and 16 unused imports.
-  the already-dead `readConfigReasoningEffort` helper, and 16 unused imports.
+  exports, the leftover `RESERVE_MODEL_IDS` constant, the already-dead
+  `readConfigReasoningEffort` helper, and 16 unused imports.
   437 lines out of `src/` and `scripts/`; `server.mts` 5133 → 5056,
   `server-helpers.mts` 1106 → 1062, `codex-mux.mts` 1207 → 1205. Running log:
   [docs/hardening-log.md](docs/hardening-log.md).

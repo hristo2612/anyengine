@@ -10,6 +10,15 @@
 
 set -e
 
+# Git exports its own repository pointers into every hook process. They are
+# correct for this repo and wrong for everything else: a test that builds a
+# throwaway repository in a temp directory inherits GIT_DIR and quietly
+# operates on *this* repo's index instead of its own fixture. Five suites fail
+# that way under `git push` and pass in a normal shell, which reads as a
+# regression in whatever is being pushed. Run the gates in a clean environment.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_PREFIX
+unset GIT_QUARANTINE_PATH GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+
 if [ -n "$ANYENGINE_SKIP_PREPUSH" ]; then
   echo "pre-push: skipped (ANYENGINE_SKIP_PREPUSH set)"
   exit 0

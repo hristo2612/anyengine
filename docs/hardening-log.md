@@ -12,8 +12,9 @@ test lines added. Coverage is the `npm run test:coverage` total.
 | 2026-09-10 | [#6](https://github.com/hristo2612/anyengine/pull/6) | Dead code and dead config | 437 | 81.46 % → 81.86 % | One near-miss, caught and fixed in the same PR |
 | 2026-09-10 | [#7](https://github.com/hristo2612/anyengine/pull/7) | Split `server.mts` | 1252 off the baseline | 81.86 % → 81.76 % | Medium — pure moves, verified per commit |
 | 2026-09-10 | [#8](https://github.com/hristo2612/anyengine/pull/8) | Tighter rules | — | floor 80 → 80.7 | Low — every gate verified to fail on a planted violation |
+| 2026-09-10 | — | Independent review of #6–#8 before merge | — | 81.70 % | Two defects found in #8, fixed before the merge — [review](review-hardening.md) |
 
-## 2026-09-10 — PR #1, dead code and dead config
+## 2026-09-10 — PR #6, dead code and dead config
 
 **Cut.** `readConfigReasoningEffort` in `server-helpers.mts` (already dead on
 `main`: imported by `server.mts`, called by nothing; the App's effort dropdown
@@ -189,6 +190,12 @@ re-diagnose them as a regression.
   socket, so it is a bind/accept race under load rather than a protocol
   failure — but "failed on both OSes at once" looks convincing enough to send
   someone hunting, hence this note.
+- **`remote shim launches daemon and proxy with Codex-compatible commands`**
+  hit the same 180 s backstop on `node (macos-latest)` during the merge of
+  #7 into `main`, with `ubuntu-latest` green in the same run and the identical
+  tree green locally twice. It passed on a rerun of the same commit. Third
+  sighting of the same family: a macOS-only wait that the backstop bounds
+  rather than a protocol failure.
 - **`config/read resolves saved provider loop selection without projecting raw
   keys`** fails when `dist/test/adapter.test.mjs` is run *alone* and passes in
   the full suite: a test-isolation dependency, not a timing one.
@@ -211,3 +218,35 @@ already documented in [review-a2.md](review-a2.md) — `secret123456789` used as
 a literal fake token in the base commit's own tests, and the RFC 6455 sample
 handshake key. On a real PR into `main` gitleaks scans the diff and passes,
 which is what #6 did. No new secret was introduced by any of this work.
+
+## 2026-09-10 — independent review before the merge
+
+All three PRs were reviewed by someone who did not write them, then merged.
+The full write-up is [review-hardening.md](review-hardening.md); the summary is
+that #6 and #7 are behaviour-neutral as claimed — the move commits were checked
+mechanically, statement by statement, and the `onEvent` split preserves control
+flow because every extracted step is called as `await step(event)` followed by
+`return` — and that #8 carried two defects, both fixed on its own branch:
+
+1. **The unused-import error ate a module's documentation.** Biome's autofix
+   removed the leftover `nicknameFor` import from `src/server-views.mts`, and
+   with it the eight-line header comment sitting above it. This is the second
+   instance of PR #6's own lesson: an automated import fix cannot see what is
+   attached to an import. There the casualty was a side effect; here it was the
+   only explanation of what the module is.
+2. **The env-docs gate was satisfied by a false entry.**
+   `ANYENGINE_SUBAGENT_COMPLETED` was documented as a marker the adapter sets
+   on a sub-agent process. It is nothing of the kind: it is read as a tri-state
+   override of the client's `initialize` capability and switches the whole
+   sub-agent presentation. A wrong row is worse than a missing one, because the
+   gate then stops asking. Corrected, moved into the settings table, and the
+   previously untested `0` direction is now pinned by a test that was confirmed
+   to fail without the branch it covers.
+
+**A third defect, found by the review rather than in it.** The pre-push hook
+from #5 ran the gates with git's own hook environment still set, so five tests
+that build throwaway git repositories operated on this repository instead of
+their fixtures and failed on every `git push` while passing in a shell
+(`dist/test/worktree.test.mjs`: 3/3 green, 2/3 with `GIT_DIR` exported). A gate
+that fails on correct code teaches people to bypass it. The hook now unsets
+`GIT_DIR` and its siblings first.
