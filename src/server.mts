@@ -2300,6 +2300,602 @@ export class CodexClaudeAppServer {
       acceptRuntimeEvents &&
       this.store.getTurn(turn.id)?.status === 'inProgress' &&
       this.activeTurnByThread.get(thread.id) === turn.id
+    const appendAgentText = async (event: Extract<RuntimeEvent, { type: 'text_delta' }>) => {
+      // In plan mode, text is the plan body — route to a Plan item +
+      // item/plan/delta + (later) turn/plan/updated so the App's
+      // Plan-mode UI lights up natively. Outside plan mode it's a
+      // normal agentMessage delta.
+      if (planMode) {
+        const itemId = ensurePlanItem()
+        this.store.updateItem(turn.id, itemId, (item) => {
+          if (item.type === 'plan') return { ...item, text: item.text + event.delta }
+          return item
+        })
+        this.notify(peer, {
+          method: 'item/plan/delta',
+          params: { threadId: thread.id, turnId: turn.id, itemId, delta: event.delta },
+        })
+        return
+      }
+      const itemId = ensureAgentItem()
+      this.store.updateItem(turn.id, itemId, (item) => {
+        if (item.type === 'agentMessage') return { ...item, text: item.text + event.delta }
+        return item
+      })
+      this.notify(peer, {
+        method: 'item/agentMessage/delta',
+        params: { threadId: thread.id, turnId: turn.id, itemId, delta: event.delta },
+      })
+      return
+    }
+
+    const appendReasoning = async (event: Extract<RuntimeEvent, { type: 'reasoning_delta' }>) => {
+      if (event.delta.length === 0) return
+      const itemId = ensureReasoningItem()
+      this.store.updateItem(turn.id, itemId, (item) => {
+        if (item.type === 'reasoning') {
+          return {
+            ...item,
+            summary: [(item.summary[0] ?? '') + event.delta],
+            content: [(item.content[0] ?? '') + event.delta],
+          }
+        }
+        return item
+      })
+      this.notify(peer, {
+        method: 'item/reasoning/summaryTextDelta',
+        params: {
+          threadId: thread.id,
+          turnId: turn.id,
+          itemId,
+          delta: event.delta,
+          summaryIndex: 0,
+        },
+      })
+      this.notify(peer, {
+        method: 'item/reasoning/textDelta',
+        params: {
+          threadId: thread.id,
+          turnId: turn.id,
+          itemId,
+          delta: event.delta,
+          contentIndex: 0,
+        },
+      })
+      return
+    }
+
+    const openToolItem = async (event: Extract<RuntimeEvent, { type: 'tool_use' }>) => {
+      if (isWorkflowToolName(event.toolName)) {
+        workflowLaunchToolUseIds.add(event.toolUseId)
+        workflowInFlight = true
+        armWatchdog()
+      }
+      // Defense in depth against duplicate tool_use events for the same
+      // tool_use_id. Claude SDK has been known to emit a block_start
+      // event with an empty input AND a complete copy in the final
+      // AssistantMessage — sidecar suppresses the empty start, but if
+      // anything slips through we'd otherwise create a husk
+      // commandExecution item that never closes (the second emit
+      // overwrites itemIds[] so the husk never sees its tool_result).
+      if (itemIds.has(event.toolUseId)) return
+      // Claude's TodoWrite is the equivalent of Codex's `update_plan`
+      // todo/checklist tool, which the real app-server maps to a
+      // turn/plan/updated notification (structured steps) rather than a
+      // timeline item. Mirror that: emit the structured plan and suppress
+      // the generic tool item so the App's plan/checklist UI drives off
+      // the spec'd notification.
+      if (event.toolName === 'TodoWrite') {
+        const plan = todoWriteToPlanSteps(event.input)
+        if (plan) {
+          this.notify(peer, {
+            method: 'turn/plan/updated',
+            params: { threadId: thread.id, turnId: turn.id, explanation: null, plan },
+          })
+        }
+        itemIds.set(event.toolUseId, '')
+        return
+      }
+      const item = this.toolUseToItem(event, thread.cwd)
+      itemIds.set(event.toolUseId, item.id)
+      itemStartedAtMs.set(item.id, nowMillis())
+      this.store.appendItem(turn.id, item)
+      this.notify(peer, {
+        method: 'item/started',
+        params: { threadId: thread.id, turnId: turn.id, item, startedAtMs: nowMillis() },
+      })
+      if (item.type === 'fileChange') {
+        this.notify(peer, {
+          method: 'item/fileChange/patchUpdated',
+          params: {
+            threadId: thread.id,
+            turnId: turn.id,
+            itemId: item.id,
+            changes: item.changes,
+          },
+        })
+      }
+      return
+    }
+
+    const closeToolItem = async (event: Extract<RuntimeEvent, { type: 'tool_result' }>) => {
+      if (workflowLaunchToolUseIds.delete(event.toolUseId)) {
+        workflowInFlight = workflowLaunchToolUseIds.size > 0
+        if (activeSubagents.size === 0 && !workflowInFlight) disarmWatchdog()
+      }
+      const itemId = itemIds.get(event.toolUseId)
+      if (!itemId) return
+      const resultText = toolResultText(event.content)
+      const durationMs = (() => {
+        const started = itemStartedAtMs.get(itemId)
+        return started == null ? null : Math.max(0, nowMillis() - started)
+      })()
+      const parsedExitCode = parseExitCodeFromResult(event.content) ?? (event.isError ? 1 : 0)
+      const updated = this.store.updateItem(turn.id, itemId, (item) => {
+        if (item.type === 'commandExecution') {
+          return {
+            ...item,
+            status: event.isError ? 'failed' : 'completed',
+            aggregatedOutput: item.aggregatedOutput ?? resultText,
+            exitCode: parsedExitCode,
+            durationMs,
+          }
+        }
+        if (item.type === 'fileChange')
+          return { ...item, status: event.isError ? 'failed' : 'completed' }
+        if (item.type === 'mcpToolCall') {
+          // Protocol-correct shape: McpToolCallResult = {content[], structuredContent, _meta};
+          // McpToolCallError = {message}. We previously shipped raw event.content for both
+          // which crashed App's ts-rs deserializer for any tool that returned anything richer
+          // than a primitive. Always wrap into the strict shape.
+          return {
+            ...item,
+            status: event.isError ? 'failed' : 'completed',
+            result: event.isError ? null : wrapMcpToolResult(event.content),
+            error: event.isError ? wrapMcpToolError(event.content) : null,
+            durationMs,
+          }
+        }
+        if (item.type === 'webSearch') {
+          return { ...item, action: parseWebSearchAction(item.query, resultText) }
+        }
+        return item
+      })
+      const item = updated?.items.find((candidate) => candidate.id === itemId)
+      if (item?.type === 'commandExecution' && resultText && !commandOutputSeen.has(itemId)) {
+        this.notify(peer, {
+          method: 'item/commandExecution/outputDelta',
+          params: { threadId: thread.id, turnId: turn.id, itemId, delta: resultText },
+        })
+      }
+      if (item)
+        this.notify(peer, {
+          method: 'item/completed',
+          params: { threadId: thread.id, turnId: turn.id, item, completedAtMs: nowMillis() },
+        })
+      const diff = await gitDiff(thread.cwd)
+      if (this.store.getTurn(turn.id)?.status !== 'inProgress') return
+      if (diff) {
+        this.store.updateTurnDiff(turn.id, diff)
+        this.notify(peer, {
+          method: 'turn/diff/updated',
+          params: { threadId: thread.id, turnId: turn.id, diff },
+        })
+      }
+      return
+    }
+
+    const renderHookItem = async (event: Extract<RuntimeEvent, { type: 'hook' }>) => {
+      // Render the hook event as a Codex hookPrompt item alongside the
+      // (still-emitted) notice line, so the user sees structured hook
+      // activity in the timeline instead of just a one-liner warning.
+      // All fragments of the same hook run share one hookRunId so App
+      // groups them under a single execution; the format matches
+      // Codex's own hookprompt items (one synthetic run id per emit).
+      const hookRunId = newId()
+      const fragments: Array<{ text: string; hookRunId: string }> = [
+        { text: `Hook · ${event.hookName}`, hookRunId },
+      ]
+      if (event.status) fragments.push({ text: `status: ${event.status}`, hookRunId })
+      if (event.decision) fragments.push({ text: `decision: ${event.decision}`, hookRunId })
+      if (event.message) fragments.push({ text: event.message, hookRunId })
+      const hookItem: ThreadItem = { type: 'hookPrompt', id: newId(), fragments }
+      this.store.appendItem(turn.id, hookItem)
+      this.notify(peer, {
+        method: 'item/started',
+        params: {
+          threadId: thread.id,
+          turnId: turn.id,
+          item: hookItem,
+          startedAtMs: nowMillis(),
+        },
+      })
+      this.notify(peer, {
+        method: 'item/completed',
+        params: {
+          threadId: thread.id,
+          turnId: turn.id,
+          item: hookItem,
+          completedAtMs: nowMillis(),
+        },
+      })
+      return
+    }
+
+    // The two longest arms of the event handler below, lifted out as named
+    // steps. Both are moved verbatim and still close over the turn state
+    // declared above, which is why they live here rather than in a module:
+    // `onEvent` was one 670-line closure and read as one.
+    const startSubagent = async (event: Extract<RuntimeEvent, { type: 'tool_use' }>) => {
+      // Spawn the ephemeral child, then mirror MultiAgent V2: a
+      // subAgentActivity started item plus spawnAgent/wait tool state.
+      //
+      // Concept alignment: Claude's `subagent_type` (e.g. "general-
+      // purpose") is the same idea as Codex's `agentRole`; we also
+      // generate an `agentNickname` matching the `agent-{12hex}` shape
+      // Claude itself uses internally so the App's subagent UI shows a
+      // distinct, repeatable handle. The collabAgentToolCall.model
+      // field carries the actual SDK model the subagent runs on, NOT
+      // the subagent_type — that distinction was wrong before.
+      const promptText = String(event.input.prompt ?? event.input.description ?? '')
+      const subType =
+        typeof event.input.subagent_type === 'string' ? event.input.subagent_type : null
+      const subagentModel = typeof event.input.model === 'string' ? event.input.model : thread.model
+      const childThreadId = newId()
+      const agentNickname = `agent-${childThreadId.replace(/-/g, '').slice(0, 12)}`
+      const agentPath = `/root/${agentNickname}`
+      const agentRole = subType ?? 'general-purpose'
+      const childStartedAt = nowSeconds()
+      const childThread: ThreadRecord = {
+        id: childThreadId,
+        sessionId: thread.sessionId,
+        forkedFromId: thread.id,
+        preview: promptText.slice(0, 200),
+        name: null,
+        archived: false,
+        cwd: thread.cwd,
+        model: subagentModel,
+        reasoningEffort: thread.reasoningEffort,
+        modelProvider: thread.modelProvider,
+        claudeSessionId: null,
+        source: normalizeSessionSource(thread.source),
+        createdAt: childStartedAt,
+        updatedAt: childStartedAt,
+        status: { type: 'active', activeFlags: [] },
+        approvalPolicy: thread.approvalPolicy,
+        sandboxMode: thread.sandboxMode,
+        ephemeral: true,
+        threadSource: 'subagent',
+        agentRole,
+        agentNickname,
+        // Subagent inherits parent's instruction surface so the same
+        // project/developer guidance applies to the child run.
+        baseInstructions: thread.baseInstructions,
+        developerInstructions: thread.developerInstructions,
+        personality: thread.personality,
+        // Subagents always run via Claude — the Task tool is a Claude SDK
+        // construct. A codex-backed thread that spawns a subagent would
+        // never reach this code path (subagent detection is Claude-side).
+        runtimeBackend: 'claude',
+        codexSessionId: null,
+      }
+      this.store.upsertThread(childThread)
+      // Child notifications must follow the current parent peer. This
+      // matters after unix-daemon reconnects, when the old peer is gone
+      // before the child publishes its response.
+      this.activePeerByThread.set(childThreadId, peer)
+      const childTurn: TurnRecord = {
+        id: newId(),
+        threadId: childThreadId,
+        status: 'inProgress',
+        startedAt: childStartedAt,
+        completedAt: null,
+        durationMs: null,
+        items: [
+          {
+            type: 'userMessage',
+            id: newId(),
+            content: [{ type: 'text', text: promptText, text_elements: [] }],
+          },
+        ],
+        diff: '',
+        error: null,
+      }
+      this.store.upsertTurn(childTurn)
+      this.notify(peer, {
+        method: 'thread/started',
+        params: { thread: this.toThread(childThread, []) },
+      })
+      this.notify(peer, {
+        method: 'turn/started',
+        params: {
+          threadId: childThreadId,
+          turn: this.toLifecycleTurn(childTurn),
+        },
+      })
+      // The bundled Codex cc client creates a child conversation from
+      // thread/started with an empty turn and treats the history as
+      // loaded while the child is live. Replay the persisted prompt as
+      // a normal item lifecycle so the child page has its Prompt even
+      // when it is opened before the first response token arrives.
+      const childPrompt = childTurn.items.find((item) => item.type === 'userMessage')
+      if (childPrompt) this.emitItemLifecycle(peer, childThreadId, childTurn.id, childPrompt)
+      recordRunEvent('subagent.spawned', {
+        parentThreadId: thread.id,
+        parentTurnId: turn.id,
+        childThreadId,
+        model: subagentModel,
+        agentRole,
+        agentNickname,
+      })
+
+      // Stage 1 — spawnAgent (begin + end emitted together; the agent is
+      // already created so there's no real latency here).
+      const spawnId = newId()
+      // Codex v2 collabAgentToolCall.reasoningEffort is `ReasoningEffort | null`
+      // (strict enum: none|minimal|low|medium|high|xhigh). Same Oops trap as
+      // threadSource — an empty string from a sloppy resume crashes the App.
+      // Normalize here once and reuse for every stage of the lifecycle.
+      const collabEffort = normalizeReasoningEffortEnum(thread.reasoningEffort)
+      const spawnBegin: ThreadItem = {
+        type: 'collabAgentToolCall',
+        id: spawnId,
+        tool: 'spawnAgent',
+        status: 'inProgress',
+        senderThreadId: thread.id,
+        receiverThreadIds: [],
+        prompt: promptText || null,
+        model: subagentModel,
+        reasoningEffort: collabEffort,
+        agentsStates: {},
+      }
+      this.store.appendItem(turn.id, spawnBegin)
+      this.notify(peer, {
+        method: 'item/started',
+        params: {
+          threadId: thread.id,
+          turnId: turn.id,
+          item: spawnBegin,
+          startedAtMs: nowMillis(),
+        },
+      })
+      const spawnEnd: ThreadItem = {
+        type: 'collabAgentToolCall',
+        id: spawnId,
+        tool: 'spawnAgent',
+        status: 'completed',
+        senderThreadId: thread.id,
+        receiverThreadIds: [childThreadId],
+        prompt: promptText || null,
+        model: subagentModel,
+        reasoningEffort: collabEffort,
+        agentsStates: { [childThreadId]: { status: 'running', message: null } },
+      }
+      this.store.updateItem(turn.id, spawnId, () => spawnEnd)
+      this.notify(peer, {
+        method: 'item/completed',
+        params: {
+          threadId: thread.id,
+          turnId: turn.id,
+          item: spawnEnd,
+          completedAtMs: nowMillis(),
+        },
+      })
+      const waitId = newId()
+      const subagentContext: SubagentContext = {
+        childThreadId,
+        childTurnId: childTurn.id,
+        waitItemId: waitId,
+        agentPath,
+        prompt: promptText,
+        subType,
+      }
+      this.emitSubagentActivity(peer, thread.id, turn.id, subagentContext, 'started')
+
+      // Wait begins after the activity item; this is the long phase that
+      // gives Codex App its "agent is working" indicator while the
+      // subagent runs. It closes when the Task tool_result arrives.
+      const waitBegin: ThreadItem = {
+        type: 'collabAgentToolCall',
+        id: waitId,
+        tool: 'wait',
+        status: 'inProgress',
+        senderThreadId: thread.id,
+        receiverThreadIds: [childThreadId],
+        prompt: null,
+        model: null,
+        reasoningEffort: null,
+        agentsStates: {},
+      }
+      this.store.appendItem(turn.id, waitBegin)
+      this.notify(peer, {
+        method: 'item/started',
+        params: {
+          threadId: thread.id,
+          turnId: turn.id,
+          item: waitBegin,
+          startedAtMs: nowMillis(),
+        },
+      })
+
+      itemIds.set(event.toolUseId, waitId)
+      subagentContexts.set(event.toolUseId, subagentContext)
+      activeSubagents.add(event.toolUseId)
+      armWatchdog()
+      return
+    }
+
+    // The matching result: close the child's turn, then settle the
+    // spawnAgent/wait pair the App is showing on the parent.
+    const finishSubagent = async (event: Extract<RuntimeEvent, { type: 'tool_result' }>) => {
+      const ctx = subagentContexts.get(event.toolUseId)
+      if (!ctx) return
+      const rawResultText = toolResultText(event.content)
+      const collabStatus: 'completed' | 'failed' = event.isError ? 'failed' : 'completed'
+      const agentStatus: 'completed' | 'errored' = event.isError ? 'errored' : 'completed'
+
+      // claude-agent-sdk's Task tool appends a metadata trailer to the
+      // result content: an `agentId: <hex>` line + a `<usage>...</usage>`
+      // block. Codex App doesn't render those — they just leak as raw
+      // text. Strip them from the visible body and route the metadata
+      // into the proper protocol fields (agentNickname / tokenUsage /
+      // metrics) so the subagent timeline carries the same identity +
+      // usage the SDK reports.
+      const parsed = parseSubagentTrailer(rawResultText)
+      const resultText = parsed.cleanText
+
+      const childTurn = this.completeSubagentChildTurn(
+        peer,
+        ctx,
+        resultText,
+        event.isError ? 'failed' : 'completed',
+        event.isError ? { message: 'subagent failed' } : null,
+        parsed.usage?.durationMs ?? null,
+      )
+      recordRunEvent('subagent.completed', {
+        parentThreadId: thread.id,
+        parentTurnId: turn.id,
+        childThreadId: ctx.childThreadId,
+        childTurnId: childTurn.id,
+        status: childTurn.status,
+        agentRole: ctx.subType ?? 'general-purpose',
+      })
+      const childThread = this.store.getThread(ctx.childThreadId)
+      if (childThread) {
+        childThread.updatedAt = nowSeconds()
+        // Replace our synthetic `agent-{hex}` nickname with the SDK-
+        // assigned id so SendMessage / SubAgent navigation in the App
+        // uses the same handle the SDK reports.
+        if (parsed.agentId) childThread.agentNickname = parsed.agentId
+        this.store.upsertThread(childThread)
+      }
+
+      // The child completion activity arrives before wait/completed in
+      // native V2. The installed Codex cc schema predates the
+      // `completed` activity kind, so only send it when the client
+      // explicitly advertises support; the wait terminal snapshot is
+      // sufficient for legacy reducers.
+      if (event.isError || this.supportsCompletedSubagentActivity(peer)) {
+        this.emitSubagentActivity(
+          peer,
+          thread.id,
+          turn.id,
+          ctx,
+          event.isError ? 'interrupted' : 'completed',
+        )
+      }
+
+      // Push the subagent's token usage as a Codex-native
+      // thread/tokenUsage/updated notification on the CHILD thread
+      // (App's status bar reads from this) and roll the totals into
+      // the parent thread so subagent costs aren't invisible.
+      if (parsed.usage && parsed.usage.totalTokens) {
+        const breakdown: TokenUsageBreakdown = {
+          totalTokens: parsed.usage.totalTokens,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: parsed.usage.totalTokens,
+          reasoningOutputTokens: 0,
+        }
+        const childUsage: ThreadTokenUsage = {
+          total: breakdown,
+          last: breakdown,
+          modelContextWindow: null,
+        }
+        this.notify(peer, {
+          method: 'thread/tokenUsage/updated',
+          params: {
+            threadId: ctx.childThreadId,
+            turnId: childTurn.id,
+            tokenUsage: childUsage,
+          },
+        })
+        this.recordTokenUsage(peer, thread.id, turn.id, {
+          input_tokens: 0,
+          output_tokens: parsed.usage.totalTokens,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+        })
+      }
+
+      // Stage 2 close — wait (end). Re-emits the same waitItemId.
+      const waitEnd: ThreadItem = {
+        type: 'collabAgentToolCall',
+        id: ctx.waitItemId,
+        tool: 'wait',
+        status: collabStatus,
+        senderThreadId: thread.id,
+        receiverThreadIds: [ctx.childThreadId],
+        prompt: null,
+        model: null,
+        reasoningEffort: null,
+        agentsStates: { [ctx.childThreadId]: { status: agentStatus, message: null } },
+      }
+      this.store.updateItemAndMoveToEnd(turn.id, ctx.waitItemId, () => waitEnd)
+      this.notify(peer, {
+        method: 'item/completed',
+        params: {
+          threadId: thread.id,
+          turnId: turn.id,
+          item: waitEnd,
+          completedAtMs: nowMillis(),
+        },
+      })
+
+      // Codex cc 26.x does not advertise the terminal
+      // subAgentActivity kind. For a successful child, wait/completed
+      // is already the terminal display state; appending closeAgent
+      // makes the bundled client hide the finished child. Keep the
+      // legacy closeAgent cleanup only for failed results.
+      if (!this.supportsCompletedSubagentActivity(peer) && event.isError) {
+        const closeId = newId()
+        const closeBegin: ThreadItem = {
+          type: 'collabAgentToolCall',
+          id: closeId,
+          tool: 'closeAgent',
+          status: 'inProgress',
+          senderThreadId: thread.id,
+          receiverThreadIds: [ctx.childThreadId],
+          prompt: null,
+          model: null,
+          reasoningEffort: null,
+          agentsStates: {},
+        }
+        this.store.appendItem(turn.id, closeBegin)
+        this.notify(peer, {
+          method: 'item/started',
+          params: {
+            threadId: thread.id,
+            turnId: turn.id,
+            item: closeBegin,
+            startedAtMs: nowMillis(),
+          },
+        })
+        const closeEnd: ThreadItem = {
+          ...closeBegin,
+          status: collabStatus,
+          agentsStates: { [ctx.childThreadId]: { status: agentStatus, message: null } },
+        }
+        this.store.updateItem(turn.id, closeId, () => closeEnd)
+        this.notify(peer, {
+          method: 'item/completed',
+          params: {
+            threadId: thread.id,
+            turnId: turn.id,
+            item: closeEnd,
+            completedAtMs: nowMillis(),
+          },
+        })
+      }
+      // Keep the context discoverable until the child turn and wait
+      // item have both been persisted. If one of those operations throws,
+      // the outer settlement path can still finalize the child as failed.
+      activeSubagents.delete(event.toolUseId)
+      subagentContexts.delete(event.toolUseId)
+      if (activeSubagents.size === 0 && !workflowInFlight) disarmWatchdog()
+      return
+    }
+
     const runtimeTurn = this.runtime.runTurn(
       {
         threadId: thread.id,
@@ -2357,485 +2953,23 @@ export class CodexClaudeAppServer {
               return
           }
           if (event.type === 'tool_use' && isSubagentToolName(event.toolName)) {
-            // Spawn the ephemeral child, then mirror MultiAgent V2: a
-            // subAgentActivity started item plus spawnAgent/wait tool state.
-            //
-            // Concept alignment: Claude's `subagent_type` (e.g. "general-
-            // purpose") is the same idea as Codex's `agentRole`; we also
-            // generate an `agentNickname` matching the `agent-{12hex}` shape
-            // Claude itself uses internally so the App's subagent UI shows a
-            // distinct, repeatable handle. The collabAgentToolCall.model
-            // field carries the actual SDK model the subagent runs on, NOT
-            // the subagent_type — that distinction was wrong before.
-            const promptText = String(event.input.prompt ?? event.input.description ?? '')
-            const subType =
-              typeof event.input.subagent_type === 'string' ? event.input.subagent_type : null
-            const subagentModel =
-              typeof event.input.model === 'string' ? event.input.model : thread.model
-            const childThreadId = newId()
-            const agentNickname = `agent-${childThreadId.replace(/-/g, '').slice(0, 12)}`
-            const agentPath = `/root/${agentNickname}`
-            const agentRole = subType ?? 'general-purpose'
-            const childStartedAt = nowSeconds()
-            const childThread: ThreadRecord = {
-              id: childThreadId,
-              sessionId: thread.sessionId,
-              forkedFromId: thread.id,
-              preview: promptText.slice(0, 200),
-              name: null,
-              archived: false,
-              cwd: thread.cwd,
-              model: subagentModel,
-              reasoningEffort: thread.reasoningEffort,
-              modelProvider: thread.modelProvider,
-              claudeSessionId: null,
-              source: normalizeSessionSource(thread.source),
-              createdAt: childStartedAt,
-              updatedAt: childStartedAt,
-              status: { type: 'active', activeFlags: [] },
-              approvalPolicy: thread.approvalPolicy,
-              sandboxMode: thread.sandboxMode,
-              ephemeral: true,
-              threadSource: 'subagent',
-              agentRole,
-              agentNickname,
-              // Subagent inherits parent's instruction surface so the same
-              // project/developer guidance applies to the child run.
-              baseInstructions: thread.baseInstructions,
-              developerInstructions: thread.developerInstructions,
-              personality: thread.personality,
-              // Subagents always run via Claude — the Task tool is a Claude SDK
-              // construct. A codex-backed thread that spawns a subagent would
-              // never reach this code path (subagent detection is Claude-side).
-              runtimeBackend: 'claude',
-              codexSessionId: null,
-            }
-            this.store.upsertThread(childThread)
-            // Child notifications must follow the current parent peer. This
-            // matters after unix-daemon reconnects, when the old peer is gone
-            // before the child publishes its response.
-            this.activePeerByThread.set(childThreadId, peer)
-            const childTurn: TurnRecord = {
-              id: newId(),
-              threadId: childThreadId,
-              status: 'inProgress',
-              startedAt: childStartedAt,
-              completedAt: null,
-              durationMs: null,
-              items: [
-                {
-                  type: 'userMessage',
-                  id: newId(),
-                  content: [{ type: 'text', text: promptText, text_elements: [] }],
-                },
-              ],
-              diff: '',
-              error: null,
-            }
-            this.store.upsertTurn(childTurn)
-            this.notify(peer, {
-              method: 'thread/started',
-              params: { thread: this.toThread(childThread, []) },
-            })
-            this.notify(peer, {
-              method: 'turn/started',
-              params: {
-                threadId: childThreadId,
-                turn: this.toLifecycleTurn(childTurn),
-              },
-            })
-            // The bundled Codex cc client creates a child conversation from
-            // thread/started with an empty turn and treats the history as
-            // loaded while the child is live. Replay the persisted prompt as
-            // a normal item lifecycle so the child page has its Prompt even
-            // when it is opened before the first response token arrives.
-            const childPrompt = childTurn.items.find((item) => item.type === 'userMessage')
-            if (childPrompt) this.emitItemLifecycle(peer, childThreadId, childTurn.id, childPrompt)
-            recordRunEvent('subagent.spawned', {
-              parentThreadId: thread.id,
-              parentTurnId: turn.id,
-              childThreadId,
-              model: subagentModel,
-              agentRole,
-              agentNickname,
-            })
-
-            // Stage 1 — spawnAgent (begin + end emitted together; the agent is
-            // already created so there's no real latency here).
-            const spawnId = newId()
-            // Codex v2 collabAgentToolCall.reasoningEffort is `ReasoningEffort | null`
-            // (strict enum: none|minimal|low|medium|high|xhigh). Same Oops trap as
-            // threadSource — an empty string from a sloppy resume crashes the App.
-            // Normalize here once and reuse for every stage of the lifecycle.
-            const collabEffort = normalizeReasoningEffortEnum(thread.reasoningEffort)
-            const spawnBegin: ThreadItem = {
-              type: 'collabAgentToolCall',
-              id: spawnId,
-              tool: 'spawnAgent',
-              status: 'inProgress',
-              senderThreadId: thread.id,
-              receiverThreadIds: [],
-              prompt: promptText || null,
-              model: subagentModel,
-              reasoningEffort: collabEffort,
-              agentsStates: {},
-            }
-            this.store.appendItem(turn.id, spawnBegin)
-            this.notify(peer, {
-              method: 'item/started',
-              params: {
-                threadId: thread.id,
-                turnId: turn.id,
-                item: spawnBegin,
-                startedAtMs: nowMillis(),
-              },
-            })
-            const spawnEnd: ThreadItem = {
-              type: 'collabAgentToolCall',
-              id: spawnId,
-              tool: 'spawnAgent',
-              status: 'completed',
-              senderThreadId: thread.id,
-              receiverThreadIds: [childThreadId],
-              prompt: promptText || null,
-              model: subagentModel,
-              reasoningEffort: collabEffort,
-              agentsStates: { [childThreadId]: { status: 'running', message: null } },
-            }
-            this.store.updateItem(turn.id, spawnId, () => spawnEnd)
-            this.notify(peer, {
-              method: 'item/completed',
-              params: {
-                threadId: thread.id,
-                turnId: turn.id,
-                item: spawnEnd,
-                completedAtMs: nowMillis(),
-              },
-            })
-            const waitId = newId()
-            const subagentContext: SubagentContext = {
-              childThreadId,
-              childTurnId: childTurn.id,
-              waitItemId: waitId,
-              agentPath,
-              prompt: promptText,
-              subType,
-            }
-            this.emitSubagentActivity(peer, thread.id, turn.id, subagentContext, 'started')
-
-            // Wait begins after the activity item; this is the long phase that
-            // gives Codex App its "agent is working" indicator while the
-            // subagent runs. It closes when the Task tool_result arrives.
-            const waitBegin: ThreadItem = {
-              type: 'collabAgentToolCall',
-              id: waitId,
-              tool: 'wait',
-              status: 'inProgress',
-              senderThreadId: thread.id,
-              receiverThreadIds: [childThreadId],
-              prompt: null,
-              model: null,
-              reasoningEffort: null,
-              agentsStates: {},
-            }
-            this.store.appendItem(turn.id, waitBegin)
-            this.notify(peer, {
-              method: 'item/started',
-              params: {
-                threadId: thread.id,
-                turnId: turn.id,
-                item: waitBegin,
-                startedAtMs: nowMillis(),
-              },
-            })
-
-            itemIds.set(event.toolUseId, waitId)
-            subagentContexts.set(event.toolUseId, subagentContext)
-            activeSubagents.add(event.toolUseId)
-            armWatchdog()
+            await startSubagent(event)
             return
           }
           if (event.type === 'tool_result' && activeSubagents.has(event.toolUseId)) {
-            const ctx = subagentContexts.get(event.toolUseId)
-            if (!ctx) return
-            const rawResultText = toolResultText(event.content)
-            const collabStatus: 'completed' | 'failed' = event.isError ? 'failed' : 'completed'
-            const agentStatus: 'completed' | 'errored' = event.isError ? 'errored' : 'completed'
-
-            // claude-agent-sdk's Task tool appends a metadata trailer to the
-            // result content: an `agentId: <hex>` line + a `<usage>...</usage>`
-            // block. Codex App doesn't render those — they just leak as raw
-            // text. Strip them from the visible body and route the metadata
-            // into the proper protocol fields (agentNickname / tokenUsage /
-            // metrics) so the subagent timeline carries the same identity +
-            // usage the SDK reports.
-            const parsed = parseSubagentTrailer(rawResultText)
-            const resultText = parsed.cleanText
-
-            const childTurn = this.completeSubagentChildTurn(
-              peer,
-              ctx,
-              resultText,
-              event.isError ? 'failed' : 'completed',
-              event.isError ? { message: 'subagent failed' } : null,
-              parsed.usage?.durationMs ?? null,
-            )
-            recordRunEvent('subagent.completed', {
-              parentThreadId: thread.id,
-              parentTurnId: turn.id,
-              childThreadId: ctx.childThreadId,
-              childTurnId: childTurn.id,
-              status: childTurn.status,
-              agentRole: ctx.subType ?? 'general-purpose',
-            })
-            const childThread = this.store.getThread(ctx.childThreadId)
-            if (childThread) {
-              childThread.updatedAt = nowSeconds()
-              // Replace our synthetic `agent-{hex}` nickname with the SDK-
-              // assigned id so SendMessage / SubAgent navigation in the App
-              // uses the same handle the SDK reports.
-              if (parsed.agentId) childThread.agentNickname = parsed.agentId
-              this.store.upsertThread(childThread)
-            }
-
-            // The child completion activity arrives before wait/completed in
-            // native V2. The installed Codex cc schema predates the
-            // `completed` activity kind, so only send it when the client
-            // explicitly advertises support; the wait terminal snapshot is
-            // sufficient for legacy reducers.
-            if (event.isError || this.supportsCompletedSubagentActivity(peer)) {
-              this.emitSubagentActivity(
-                peer,
-                thread.id,
-                turn.id,
-                ctx,
-                event.isError ? 'interrupted' : 'completed',
-              )
-            }
-
-            // Push the subagent's token usage as a Codex-native
-            // thread/tokenUsage/updated notification on the CHILD thread
-            // (App's status bar reads from this) and roll the totals into
-            // the parent thread so subagent costs aren't invisible.
-            if (parsed.usage && parsed.usage.totalTokens) {
-              const breakdown: TokenUsageBreakdown = {
-                totalTokens: parsed.usage.totalTokens,
-                inputTokens: 0,
-                cachedInputTokens: 0,
-                outputTokens: parsed.usage.totalTokens,
-                reasoningOutputTokens: 0,
-              }
-              const childUsage: ThreadTokenUsage = {
-                total: breakdown,
-                last: breakdown,
-                modelContextWindow: null,
-              }
-              this.notify(peer, {
-                method: 'thread/tokenUsage/updated',
-                params: {
-                  threadId: ctx.childThreadId,
-                  turnId: childTurn.id,
-                  tokenUsage: childUsage,
-                },
-              })
-              this.recordTokenUsage(peer, thread.id, turn.id, {
-                input_tokens: 0,
-                output_tokens: parsed.usage.totalTokens,
-                cache_read_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-              })
-            }
-
-            // Stage 2 close — wait (end). Re-emits the same waitItemId.
-            const waitEnd: ThreadItem = {
-              type: 'collabAgentToolCall',
-              id: ctx.waitItemId,
-              tool: 'wait',
-              status: collabStatus,
-              senderThreadId: thread.id,
-              receiverThreadIds: [ctx.childThreadId],
-              prompt: null,
-              model: null,
-              reasoningEffort: null,
-              agentsStates: { [ctx.childThreadId]: { status: agentStatus, message: null } },
-            }
-            this.store.updateItemAndMoveToEnd(turn.id, ctx.waitItemId, () => waitEnd)
-            this.notify(peer, {
-              method: 'item/completed',
-              params: {
-                threadId: thread.id,
-                turnId: turn.id,
-                item: waitEnd,
-                completedAtMs: nowMillis(),
-              },
-            })
-
-            // Codex cc 26.x does not advertise the terminal
-            // subAgentActivity kind. For a successful child, wait/completed
-            // is already the terminal display state; appending closeAgent
-            // makes the bundled client hide the finished child. Keep the
-            // legacy closeAgent cleanup only for failed results.
-            if (!this.supportsCompletedSubagentActivity(peer) && event.isError) {
-              const closeId = newId()
-              const closeBegin: ThreadItem = {
-                type: 'collabAgentToolCall',
-                id: closeId,
-                tool: 'closeAgent',
-                status: 'inProgress',
-                senderThreadId: thread.id,
-                receiverThreadIds: [ctx.childThreadId],
-                prompt: null,
-                model: null,
-                reasoningEffort: null,
-                agentsStates: {},
-              }
-              this.store.appendItem(turn.id, closeBegin)
-              this.notify(peer, {
-                method: 'item/started',
-                params: {
-                  threadId: thread.id,
-                  turnId: turn.id,
-                  item: closeBegin,
-                  startedAtMs: nowMillis(),
-                },
-              })
-              const closeEnd: ThreadItem = {
-                ...closeBegin,
-                status: collabStatus,
-                agentsStates: { [ctx.childThreadId]: { status: agentStatus, message: null } },
-              }
-              this.store.updateItem(turn.id, closeId, () => closeEnd)
-              this.notify(peer, {
-                method: 'item/completed',
-                params: {
-                  threadId: thread.id,
-                  turnId: turn.id,
-                  item: closeEnd,
-                  completedAtMs: nowMillis(),
-                },
-              })
-            }
-            // Keep the context discoverable until the child turn and wait
-            // item have both been persisted. If one of those operations throws,
-            // the outer settlement path can still finalize the child as failed.
-            activeSubagents.delete(event.toolUseId)
-            subagentContexts.delete(event.toolUseId)
-            if (activeSubagents.size === 0 && !workflowInFlight) disarmWatchdog()
+            await finishSubagent(event)
             return
           }
           if (event.type === 'text_delta') {
-            // In plan mode, text is the plan body — route to a Plan item +
-            // item/plan/delta + (later) turn/plan/updated so the App's
-            // Plan-mode UI lights up natively. Outside plan mode it's a
-            // normal agentMessage delta.
-            if (planMode) {
-              const itemId = ensurePlanItem()
-              this.store.updateItem(turn.id, itemId, (item) => {
-                if (item.type === 'plan') return { ...item, text: item.text + event.delta }
-                return item
-              })
-              this.notify(peer, {
-                method: 'item/plan/delta',
-                params: { threadId: thread.id, turnId: turn.id, itemId, delta: event.delta },
-              })
-              return
-            }
-            const itemId = ensureAgentItem()
-            this.store.updateItem(turn.id, itemId, (item) => {
-              if (item.type === 'agentMessage') return { ...item, text: item.text + event.delta }
-              return item
-            })
-            this.notify(peer, {
-              method: 'item/agentMessage/delta',
-              params: { threadId: thread.id, turnId: turn.id, itemId, delta: event.delta },
-            })
+            await appendAgentText(event)
             return
           }
           if (event.type === 'reasoning_delta') {
-            if (event.delta.length === 0) return
-            const itemId = ensureReasoningItem()
-            this.store.updateItem(turn.id, itemId, (item) => {
-              if (item.type === 'reasoning') {
-                return {
-                  ...item,
-                  summary: [(item.summary[0] ?? '') + event.delta],
-                  content: [(item.content[0] ?? '') + event.delta],
-                }
-              }
-              return item
-            })
-            this.notify(peer, {
-              method: 'item/reasoning/summaryTextDelta',
-              params: {
-                threadId: thread.id,
-                turnId: turn.id,
-                itemId,
-                delta: event.delta,
-                summaryIndex: 0,
-              },
-            })
-            this.notify(peer, {
-              method: 'item/reasoning/textDelta',
-              params: {
-                threadId: thread.id,
-                turnId: turn.id,
-                itemId,
-                delta: event.delta,
-                contentIndex: 0,
-              },
-            })
+            await appendReasoning(event)
             return
           }
           if (event.type === 'tool_use') {
-            if (isWorkflowToolName(event.toolName)) {
-              workflowLaunchToolUseIds.add(event.toolUseId)
-              workflowInFlight = true
-              armWatchdog()
-            }
-            // Defense in depth against duplicate tool_use events for the same
-            // tool_use_id. Claude SDK has been known to emit a block_start
-            // event with an empty input AND a complete copy in the final
-            // AssistantMessage — sidecar suppresses the empty start, but if
-            // anything slips through we'd otherwise create a husk
-            // commandExecution item that never closes (the second emit
-            // overwrites itemIds[] so the husk never sees its tool_result).
-            if (itemIds.has(event.toolUseId)) return
-            // Claude's TodoWrite is the equivalent of Codex's `update_plan`
-            // todo/checklist tool, which the real app-server maps to a
-            // turn/plan/updated notification (structured steps) rather than a
-            // timeline item. Mirror that: emit the structured plan and suppress
-            // the generic tool item so the App's plan/checklist UI drives off
-            // the spec'd notification.
-            if (event.toolName === 'TodoWrite') {
-              const plan = todoWriteToPlanSteps(event.input)
-              if (plan) {
-                this.notify(peer, {
-                  method: 'turn/plan/updated',
-                  params: { threadId: thread.id, turnId: turn.id, explanation: null, plan },
-                })
-              }
-              itemIds.set(event.toolUseId, '')
-              return
-            }
-            const item = this.toolUseToItem(event, thread.cwd)
-            itemIds.set(event.toolUseId, item.id)
-            itemStartedAtMs.set(item.id, nowMillis())
-            this.store.appendItem(turn.id, item)
-            this.notify(peer, {
-              method: 'item/started',
-              params: { threadId: thread.id, turnId: turn.id, item, startedAtMs: nowMillis() },
-            })
-            if (item.type === 'fileChange') {
-              this.notify(peer, {
-                method: 'item/fileChange/patchUpdated',
-                params: {
-                  threadId: thread.id,
-                  turnId: turn.id,
-                  itemId: item.id,
-                  changes: item.changes,
-                },
-              })
-            }
+            await openToolItem(event)
             return
           }
           if (event.type === 'tool_output_delta') {
@@ -2855,69 +2989,7 @@ export class CodexClaudeAppServer {
             return
           }
           if (event.type === 'tool_result') {
-            if (workflowLaunchToolUseIds.delete(event.toolUseId)) {
-              workflowInFlight = workflowLaunchToolUseIds.size > 0
-              if (activeSubagents.size === 0 && !workflowInFlight) disarmWatchdog()
-            }
-            const itemId = itemIds.get(event.toolUseId)
-            if (!itemId) return
-            const resultText = toolResultText(event.content)
-            const durationMs = (() => {
-              const started = itemStartedAtMs.get(itemId)
-              return started == null ? null : Math.max(0, nowMillis() - started)
-            })()
-            const parsedExitCode = parseExitCodeFromResult(event.content) ?? (event.isError ? 1 : 0)
-            const updated = this.store.updateItem(turn.id, itemId, (item) => {
-              if (item.type === 'commandExecution') {
-                return {
-                  ...item,
-                  status: event.isError ? 'failed' : 'completed',
-                  aggregatedOutput: item.aggregatedOutput ?? resultText,
-                  exitCode: parsedExitCode,
-                  durationMs,
-                }
-              }
-              if (item.type === 'fileChange')
-                return { ...item, status: event.isError ? 'failed' : 'completed' }
-              if (item.type === 'mcpToolCall') {
-                // Protocol-correct shape: McpToolCallResult = {content[], structuredContent, _meta};
-                // McpToolCallError = {message}. We previously shipped raw event.content for both
-                // which crashed App's ts-rs deserializer for any tool that returned anything richer
-                // than a primitive. Always wrap into the strict shape.
-                return {
-                  ...item,
-                  status: event.isError ? 'failed' : 'completed',
-                  result: event.isError ? null : wrapMcpToolResult(event.content),
-                  error: event.isError ? wrapMcpToolError(event.content) : null,
-                  durationMs,
-                }
-              }
-              if (item.type === 'webSearch') {
-                return { ...item, action: parseWebSearchAction(item.query, resultText) }
-              }
-              return item
-            })
-            const item = updated?.items.find((candidate) => candidate.id === itemId)
-            if (item?.type === 'commandExecution' && resultText && !commandOutputSeen.has(itemId)) {
-              this.notify(peer, {
-                method: 'item/commandExecution/outputDelta',
-                params: { threadId: thread.id, turnId: turn.id, itemId, delta: resultText },
-              })
-            }
-            if (item)
-              this.notify(peer, {
-                method: 'item/completed',
-                params: { threadId: thread.id, turnId: turn.id, item, completedAtMs: nowMillis() },
-              })
-            const diff = await gitDiff(thread.cwd)
-            if (this.store.getTurn(turn.id)?.status !== 'inProgress') return
-            if (diff) {
-              this.store.updateTurnDiff(turn.id, diff)
-              this.notify(peer, {
-                method: 'turn/diff/updated',
-                params: { threadId: thread.id, turnId: turn.id, diff },
-              })
-            }
+            await closeToolItem(event)
             return
           }
           if (event.type === 'notice') {
@@ -2944,39 +3016,7 @@ export class CodexClaudeAppServer {
             return
           }
           if (event.type === 'hook') {
-            // Render the hook event as a Codex hookPrompt item alongside the
-            // (still-emitted) notice line, so the user sees structured hook
-            // activity in the timeline instead of just a one-liner warning.
-            // All fragments of the same hook run share one hookRunId so App
-            // groups them under a single execution; the format matches
-            // Codex's own hookprompt items (one synthetic run id per emit).
-            const hookRunId = newId()
-            const fragments: Array<{ text: string; hookRunId: string }> = [
-              { text: `Hook · ${event.hookName}`, hookRunId },
-            ]
-            if (event.status) fragments.push({ text: `status: ${event.status}`, hookRunId })
-            if (event.decision) fragments.push({ text: `decision: ${event.decision}`, hookRunId })
-            if (event.message) fragments.push({ text: event.message, hookRunId })
-            const hookItem: ThreadItem = { type: 'hookPrompt', id: newId(), fragments }
-            this.store.appendItem(turn.id, hookItem)
-            this.notify(peer, {
-              method: 'item/started',
-              params: {
-                threadId: thread.id,
-                turnId: turn.id,
-                item: hookItem,
-                startedAtMs: nowMillis(),
-              },
-            })
-            this.notify(peer, {
-              method: 'item/completed',
-              params: {
-                threadId: thread.id,
-                turnId: turn.id,
-                item: hookItem,
-                completedAtMs: nowMillis(),
-              },
-            })
+            await renderHookItem(event)
             return
           }
           if (event.type === 'metrics') {
