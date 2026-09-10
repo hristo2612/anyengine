@@ -421,7 +421,9 @@ test('auto-reserve: a child that is not over its limit is forwarded verbatim', a
 // each turn. Claude/Grok run on the mock runtime here, gpt-* on the fake child.
 // ---------------------------------------------------------------------------
 
-const SWITCH_ENV = { FAKE_CODEX_NO_APPROVAL: '1' }
+// Grok models are hidden in mock mode unless they are named explicitly, and
+// `thread/settings/update` only accepts a model the picker offers.
+const SWITCH_ENV = { FAKE_CODEX_NO_APPROVAL: '1', ANYENGINE_GROK_MODELS: 'grok-4.6,grok-4.5' }
 
 function text(value: string): Wire {
   return { type: 'text', text: value }
@@ -751,6 +753,63 @@ test('mid-thread switch: a switch waits for the turn that is already running', a
     const moved = await runUpstreamTurn(client, threadId, 'gpt-5.6-sol', 'switch now')
     assert.equal(moved.params.threadId, threadId)
     assert.deepEqual(await switchPairs(home), [['claude', 'gpt']])
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test("mid-thread switch: the desktop's own signal is thread/settings/update, not the turn", async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-switch-settings-'))
+  const client = launch(home, {
+    ...SWITCH_ENV,
+    FAKE_CODEX_STATE_FILE: join(home, 'fake-state.json'),
+  })
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+    const start = await client.request('thread/start', { cwd: home, model: 'sonnet' })
+    const threadId = start.result.thread.id
+    await runLocalTurn(client, threadId, 'sonnet', 'remember the codeword BANANA')
+
+    // Exactly what ChatGPT.app 26.901 sends when the picker moves: the model on
+    // a settings update, then a turn that names no model at all.
+    const settings = await client.request('thread/settings/update', {
+      threadId,
+      model: 'grok-4.6',
+      effort: 'medium',
+      multiAgentMode: 'explicitRequestOnly',
+    })
+    assert.equal(settings.result.model, 'grok-4.6')
+    const turn = await client.request('turn/start', {
+      threadId,
+      cwd: home,
+      model: null,
+      input: [text('what is the codeword')],
+    })
+    const answer = await localAnswer(client, threadId, turn.result.turn.id)
+    assert.match(answer, /Conversation so far, continued from another model/)
+    assert.match(answer, /remember the codeword BANANA/)
+    await client.waitFor(
+      (m) => m.method === 'turn/completed' && m.params?.turn?.id === turn.result.turn.id,
+    )
+
+    // ...and the same signal moves the thread to the real Codex child.
+    await client.request('thread/settings/update', { threadId, model: 'gpt-5.6-sol' })
+    const upstream = await client.request('turn/start', {
+      threadId,
+      model: null,
+      input: [text('and again')],
+    })
+    assert.ok(upstream.result?.turn?.id)
+    await client.waitFor((m) => m.method === 'turn/completed' && m.params?.threadId === threadId)
+    const state = await readState(home)
+    assert.match(JSON.stringify(state.injected['fake-thread-1']), /remember the codeword BANANA/)
+
+    assert.deepEqual(await switchPairs(home), [
+      ['claude', 'grok'],
+      ['grok', 'gpt'],
+    ])
   } finally {
     await client.close()
     await rm(home, { recursive: true, force: true })

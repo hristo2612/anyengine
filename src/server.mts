@@ -1552,6 +1552,10 @@ export class CodexClaudeAppServer {
     const model = rawModel ? normalizeSelectableModelId(rawModel, thread.model) : null
     const reasoningEffort = reasoningEffortFromParams(params, null)
     if (model) {
+      // This is how the desktop announces a model change on an existing thread
+      // (the following `turn/start` carries `model: null`). Moving between
+      // Claude and Grok hands the conversation over here (src/rehome.mts).
+      this.rehomeLocalThread(thread, model)
       const newBackend = isCodexOpenAiModel(model) ? 'codex' : 'claude'
       thread.runtimeBackend = newBackend
       thread.model = model

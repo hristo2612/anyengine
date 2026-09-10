@@ -104,6 +104,11 @@ const THREAD_ID_KEYS = ['threadId', 'thread_id'] as const
 // ThreadStartParams / ThreadResumeParams / ThreadForkParams; turn/start does
 // not).
 const INSTRUCTION_LIFECYCLE_METHODS = new Set(['thread/start', 'thread/resume', 'thread/fork'])
+// How the desktop announces a model change on an existing thread. Verified
+// live on ChatGPT.app 26.901: moving the picker sends `thread/settings/update`
+// with the new model and the following `turn/start` carries `model: null`, so
+// the switch has to be caught here as well as on the turn.
+const MODEL_CHANGE_METHODS = new Set(['thread/settings/update', 'thread/metadata/update'])
 
 export function isClaudeModelId(model: string): boolean {
   const id = model.trim().toLowerCase()
@@ -312,9 +317,12 @@ export class NativeCodexMux {
       await this.handleMerged(peer, request, params)
       return true
     }
-    // Routing is decided per TURN from its model, not once at thread/start:
-    // this may hand the thread to another engine before it is routed below.
-    if (method === 'turn/start' && (await this.prepareTurnRouting(peer, request, params)))
+    // Routing follows the model, not the thread's creation path: either of
+    // these may hand the thread to another engine before it is routed below.
+    if (
+      (method === 'turn/start' || MODEL_CHANGE_METHODS.has(method)) &&
+      (await this.prepareEngineSwitch(peer, request, params))
+    )
       return true
     if (method === 'thread/read' && (await this.mergeRehomedThreadRead(peer, request, params)))
       return true
@@ -770,23 +778,41 @@ export class NativeCodexMux {
     return 'gpt'
   }
 
-  // Called for every `turn/start` before it is routed. Returns true when the
-  // turn was already answered here (a refusal); false lets it continue, by
-  // which point ownership matches the model on this turn.
-  private async prepareTurnRouting(
+  // Called before a `turn/start` or a model change is routed. Returns true when
+  // the request was already answered here (a refusal); false lets it continue,
+  // by which point ownership matches the model.
+  private async prepareEngineSwitch(
     peer: RpcPeer,
     request: JsonRpcRequest,
     params: Record<string, unknown>,
   ): Promise<boolean> {
     const threadId = threadIdOf(params)
-    const model = typeof params.model === 'string' ? params.model.trim() : ''
     // A summary / title turn carries the desktop's own default model and must
     // never move the thread it is summarizing.
-    if (!threadId || !model || params.outputSchema != null) return false
+    if (!threadId || params.outputSchema != null) return false
+    // Only an explicitly named model moves a thread. This desktop's
+    // `turn/start` carries `model: null` and means "whatever the thread is set
+    // to", which is by definition the engine that already owns it; the switch
+    // it made arrived earlier, on `thread/settings/update`.
+    const model = typeof params.model === 'string' ? params.model.trim() : ''
+    if (!model) return false
     const to = engineForModel(model)
     const from = this.currentEngine(threadId)
     if (from === to) return false
     if (this.activeUpstreamTurns.has(threadId) || this.local.hasActiveTurn(threadId)) {
+      if (request.method !== 'turn/start') {
+        // A picker change while the thread is answering: pin what owns it now
+        // so the switch is still noticed once the turn is done, and let the
+        // settings update through untouched.
+        this.rememberEngine({
+          id: threadId,
+          engine: from,
+          upstreamThreadId: this.store.getThreadEngine(threadId)?.upstreamThreadId ?? null,
+          pendingPrefix: null,
+          carriedTurnId: this.store.getThreadEngine(threadId)?.carriedTurnId ?? null,
+        })
+        return false
+      }
       this.failRequest(
         peer,
         request.id,
@@ -795,7 +821,7 @@ export class NativeCodexMux {
       return true
     }
     try {
-      await this.rehomeThread(peer, threadId, from, to, params)
+      await this.rehomeThread(peer, threadId, from, to, model, params)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       debugLog('thread.rehomeFailed', { threadId, from, to, message })
@@ -810,6 +836,7 @@ export class NativeCodexMux {
     threadId: string,
     from: Engine,
     to: Engine,
+    model: string,
     turnParams: Record<string, unknown>,
   ): Promise<void> {
     const state = this.store.getThreadEngine(threadId)
@@ -830,9 +857,9 @@ export class NativeCodexMux {
       return
     }
     if (to === 'gpt') {
-      await this.rehomeToUpstream(peer, threadId, knownUpstreamId, turnParams)
+      await this.rehomeToUpstream(peer, threadId, knownUpstreamId, model, turnParams)
     } else {
-      await this.rehomeToLocal(peer, threadId, knownUpstreamId, to, turnParams)
+      await this.rehomeToLocal(peer, threadId, knownUpstreamId, to, model, turnParams)
     }
     debugLog('thread.rehomed', { threadId, from, to })
   }
@@ -843,6 +870,7 @@ export class NativeCodexMux {
     peer: RpcPeer,
     threadId: string,
     knownUpstreamId: string | null,
+    model: string,
     turnParams: Record<string, unknown>,
   ): Promise<void> {
     const sides = await this.readBothSides(peer, threadId, knownUpstreamId)
@@ -877,7 +905,7 @@ export class NativeCodexMux {
         await this.upstream.request(
           'thread/start',
           {
-            model: turnParams.model,
+            model,
             ...(cwd ? { cwd } : {}),
             ...(typeof turnParams.developerInstructions === 'string'
               ? { developerInstructions: turnParams.developerInstructions }
@@ -925,13 +953,14 @@ export class NativeCodexMux {
     threadId: string,
     knownUpstreamId: string | null,
     to: Engine,
+    model: string,
     turnParams: Record<string, unknown>,
   ): Promise<void> {
     const sides = await this.readBothSides(peer, threadId, knownUpstreamId)
     const upstreamThread = sides.upstreamThread
     this.local.adoptThread(peer, {
       threadId,
-      model: String(turnParams.model ?? ''),
+      model,
       cwd: rehomeCwd(turnParams, sides.localThread, upstreamThread),
       transcript: formatTranscript(transcriptEntriesFromTurns(sides.turns)),
       preview: typeof upstreamThread?.preview === 'string' ? upstreamThread.preview : '',
