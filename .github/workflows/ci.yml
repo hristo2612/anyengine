@@ -33,10 +33,27 @@ jobs:
         run: npm install --no-audit --no-fund
       - run: npm install --global @openai/codex@0.142.3 --no-audit --no-fund
       - run: CODEX_REAL="$(command -v codex)" npm run check:rust-protocol-fixtures
-      - run: npm run check       # biome format + lint
+      # biome format + lint, the file-size ratchet and the dependency guard.
+      # `CI` is set, so a stale scripts/size-baseline.json fails here instead of
+      # being silently rewritten.
+      - run: npm run check
       - run: npm run typecheck   # tsc --noEmit
       - run: npm run build       # tsc -> dist/
-      - run: npm test            # build + node --test (Node 24 has stable node:sqlite)
+      # build + node --test with coverage; fails under the line floor in
+      # package.json (Node 24 has stable node:sqlite and built-in coverage).
+      - run: npm run test:coverage
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   cargo-test:
     name: cargo (${{ matrix.os }})
