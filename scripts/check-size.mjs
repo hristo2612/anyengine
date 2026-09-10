@@ -7,13 +7,11 @@
 //     grandfathered.
 //   - A listed file may shrink but never grow past its recorded number, and
 //     leaves the baseline for good once it drops under the cap.
+//   - Shrinking rewrites the baseline automatically.
 //
 // The cap was 800 when this landed, which was simply the length the big
 // modules happened to have. 500 is what a module written today should stay
 // under; the ones above it are frozen where they are and can only come down.
-//   - A listed file may shrink but never grow past its recorded number.
-//   - Shrinking rewrites the baseline automatically. Drop below MAX_LINES and
-//     the file leaves the baseline for good.
 //
 // The point is not the exact cap. It is that the big modules stop absorbing new
 // code: to add behaviour to an over-cap file, extract a module first.

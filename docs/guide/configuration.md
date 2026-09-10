@@ -245,6 +245,7 @@ export ANYENGINE_NODE="/absolute/path/to/node"
 | `ANYENGINE_WEBSEARCH` | `0` advertises `webSearch: false` in `modelProvider/capabilities/read`. |
 | `ANYENGINE_PERMISSION_MODE` | Overrides the Claude Code permission mode for the `agent-sdk-sidecar` runtime. |
 | `ANYENGINE_SUBAGENT_TIMEOUT_MS` | How long a turn waits for a launched sub-agent before failing it. |
+| `ANYENGINE_SUBAGENT_COMPLETED` | Forces the modern sub-agent presentation on (`1`) or off (`0`), overriding what the client declared at `initialize`. On, a sub-agent gets `subAgentActivity` `started` / `completed` markers. Off, it gets none of them bar `interrupted`, and a failed or orphaned child is closed with a synthetic `closeAgent` instead — which is what Codex cc 26.x needs. Unset, the adapter follows the client's `subAgentActivityCompleted` capability or a `completed` entry in `subAgentActivityKinds`. |
 | `ANYENGINE_TITLE_MODEL` / `ANYENGINE_SUMMARY_MODEL` | Model used for the desktop's hidden title and summary turns. |
 | `ANYENGINE_CODEX_MODELS` | Overrides the gpt-* entries added to `model/list`. |
 | `ANYENGINE_DISABLE_CODEX_PROXY` | `1` hides the gpt-* models and the `codex-proxy` route. |
@@ -279,4 +280,3 @@ a stray value in a shell is recognisable, not because they are settings.
 | Variable | Purpose |
 | --- | --- |
 | `ANYENGINE_PTY_HOOK_URL` / `_TOKEN` | Loopback hook-server address and token handed to `anyengine-hook-relay.mjs` through the PTY environment. |
-| `ANYENGINE_SUBAGENT_COMPLETED` | Marker the adapter sets on a sub-agent process once its result has been consumed. |

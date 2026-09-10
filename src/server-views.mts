@@ -1,3 +1,12 @@
+// How a stored thread, turn or tool call is rendered for the Codex App.
+//
+// These are the wire mappers: they take what the store holds and return the
+// exact shapes the app-server protocol promises. Nothing here talks to a
+// runtime, a peer or a child process, so a change to a payload can be read and
+// tested on its own instead of inside the protocol class they used to live in.
+// The two that walk the subagent ancestry take the store as their first
+// argument; the rest are pure.
+
 import {
   COMMAND_TOOLS,
   FILE_CHANGE_TOOLS,

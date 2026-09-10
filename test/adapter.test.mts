@@ -3593,6 +3593,93 @@ test('Task subagent emits the canonical activity lifecycle and leaves wait as th
   }
 })
 
+test('ANYENGINE_SUBAGENT_COMPLETED=0 forces the legacy sub-agent presentation over a client that wants the modern one', async () => {
+  // Pins the documented meaning of the knob (docs/guide/configuration.md).
+  // It is a tri-state override, not a marker the adapter sets on a child: `1`
+  // forces the modern sub-agent presentation on, `0` forces it off, and unset
+  // follows the client's `initialize` capabilities. The `1` direction is
+  // covered by the lifecycle test above; this is the `0` one, with a client
+  // that explicitly advertises the capability so the override is the only
+  // thing that can take it away. Both consequences are asserted, because the
+  // flag switches the whole presentation, not just the terminal kind: a
+  // legacy peer gets no `subAgentActivity` markers at all. `wait` stays the
+  // terminal item for a child that succeeded, so no synthetic `closeAgent`
+  // appears here either — that cleanup is kept for failed and orphaned
+  // children.
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      CODEX_HOME: home,
+      ANYENGINE_MOCK: '1',
+      ANYENGINE_SUBAGENT_COMPLETED: '0',
+      NODE_NO_WARNINGS: '1',
+    },
+  })
+  const reader = new JsonLineReader(proc)
+  try {
+    proc.stdin.write(
+      json({
+        id: 0,
+        method: 'initialize',
+        params: {
+          clientInfo: { name: 'codex-test-modern', title: 'Codex test', version: 'modern' },
+          capabilities: { subAgentActivityCompleted: true },
+        },
+      }),
+    )
+    await reader.nextResponse(0)
+    proc.stdin.write(
+      json({
+        id: 1,
+        method: 'thread/start',
+        params: { cwd: process.cwd(), experimentalRawEvents: false, persistExtendedHistory: false },
+      }),
+    )
+    const start = await reader.nextResponse(1)
+    const threadId = start.result.thread.id
+
+    proc.stdin.write(
+      json({
+        id: 2,
+        method: 'turn/start',
+        params: { threadId, input: [{ type: 'text', text: 'subagent check', text_elements: [] }] },
+      }),
+    )
+    await reader.nextResponse(2)
+
+    const activityKinds: string[] = []
+    const collabTools: string[] = []
+    for (let i = 0; i < 300; i += 1) {
+      const message = await reader.next()
+      if (message.method === 'item/completed') {
+        const item = message.params.item
+        if (item.type === 'subAgentActivity') activityKinds.push(item.kind)
+        if (item.type === 'collabAgentToolCall') collabTools.push(item.tool)
+      }
+      if (message.method === 'turn/completed' && message.params.threadId === threadId) break
+    }
+
+    assert.ok(
+      collabTools.includes('spawnAgent') && collabTools.includes('wait'),
+      `the sub-agent must still run its canonical lifecycle; saw ${JSON.stringify(collabTools)}`,
+    )
+    assert.deepEqual(
+      activityKinds,
+      [],
+      'ANYENGINE_SUBAGENT_COMPLETED=0 must suppress the subAgentActivity markers even though the client asked for them',
+    )
+    assert.ok(
+      !collabTools.includes('closeAgent'),
+      'a naturally completed child is still closed by wait, not by a synthetic closeAgent',
+    )
+  } finally {
+    proc.kill()
+    await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
+  }
+})
+
 test('Codex cc 26.818 settles subagents without the unsupported completed activity kind', async () => {
   const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
