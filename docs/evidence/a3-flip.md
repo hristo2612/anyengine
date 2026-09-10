@@ -134,10 +134,11 @@ and reads the keychain normally.
 
 ## Open items
 
-1. **Revert the two flags on or after 2026-09-15**, when Codex usage resets, to
-   get native GPT passthrough back: restore
-   `~/.anyengine/rollback-20260909T231247Z/runtime.env.pre-flags` (or set the
-   two variables back to `0` / unset) and restart the app.
+1. ~~**Revert the two flags on or after 2026-09-15**, when Codex usage resets, to
+   get native GPT passthrough back.~~ **Void since 2026-09-10:** A4 replaced
+   both flags with automatic reserve handling that keeps the real child and
+   follows the limit in both directions. They are gone from the live
+   `runtime.env`; see [a4-auto-reserve.md](a4-auto-reserve.md).
 2. **Claude over the SSH twin stays unusable while the keychain is unreachable.**
    Either keep Claude on the local host (now the case), teach the shim to
    re-enter the user's GUI session (`launchctl asuser`) before spawning the

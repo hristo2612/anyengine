@@ -1,6 +1,16 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import readline from 'node:readline'
+import {
+  accountUpdatedFor,
+  RESERVE_ACCOUNT_READ,
+  RESERVE_ACCOUNT_UPDATED,
+  RESERVE_AUTH_STATUS,
+  RESERVE_FIRST_READ_TIMEOUT_MS,
+  RESERVE_POLL_MS,
+  ReserveState,
+  stripReserveMarkers,
+} from './reserve.mjs'
 import type { JsonRpcId, JsonRpcResponse, RpcPeer, WireMessage } from './types.mjs'
 import { debugLog, sleep } from './util.mjs'
 
@@ -65,30 +75,17 @@ export function resolveNativeCodexBinary(env: NodeJS.ProcessEnv = process.env): 
   return real || null
 }
 
-// ANYENGINE_HIDE_RATE_LIMIT_UPSELL=1: keep the real usage numbers but drop
-// the "reserve" markers (`rateLimitReachedType`, `rateLimitUpsell`) that make
-// the desktop force its reserve model and hide the whole model picker,
-// including the Claude/Grok entries this adapter serves. GPT turns still reach
-// OpenAI and still fail natively while the account is over its limit.
+// ANYENGINE_HIDE_RATE_LIMIT_UPSELL=1: superseded by auto-reserve (src/reserve.mts),
+// kept for one release. It strips the same "reserve" markers unconditionally —
+// whether or not the limit is actually reached — and, unlike auto-reserve, also
+// empties the OpenAI half of the model list (see `mergeModelList`).
 function hideRateLimitUpsell(): boolean {
   return (process.env.ANYENGINE_HIDE_RATE_LIMIT_UPSELL ?? '').trim() === '1'
 }
 
 export function sanitizeRateLimitPayload<T>(value: T): T {
-  if (!hideRateLimitUpsell() || value == null || typeof value !== 'object') return value
-  const clone = JSON.parse(JSON.stringify(value)) as Record<string, unknown>
-  const scrub = (limits: unknown) => {
-    if (limits && typeof limits === 'object') {
-      const record = limits as Record<string, unknown>
-      if ('rateLimitReachedType' in record) record.rateLimitReachedType = null
-    }
-  }
-  scrub(clone.rateLimits)
-  const byId = clone.rateLimitsByLimitId
-  if (byId && typeof byId === 'object')
-    for (const entry of Object.values(byId as object)) scrub(entry)
-  if ('rateLimitUpsell' in clone) clone.rateLimitUpsell = null
-  return clone as T
+  if (!hideRateLimitUpsell()) return value
+  return stripReserveMarkers(value)
 }
 
 export class CodexUpstream {
@@ -110,6 +107,10 @@ export class CodexUpstream {
   private initializeResult: unknown = null
   private initializedSent = false
   private unavailable = false
+  // Auto-reserve (src/reserve.mts): the account's limit as last read from the
+  // child, plus the timer that re-reads it.
+  private readonly reserve = new ReserveState()
+  private reserveTimer: NodeJS.Timeout | null = null
 
   constructor(options: CodexUpstreamOptions) {
     this.binary = options.binary
@@ -191,7 +192,57 @@ export class CodexUpstream {
     this.initializeParams = params
     const result = await this.request('initialize', params, 30_000)
     this.initializeResult = result
+    // Before the handshake returns, so the desktop's first `account/read`
+    // already sees the right account (see RESERVE_FIRST_READ_TIMEOUT_MS).
+    await this.startReservePolling()
     return result
+  }
+
+  get reserveLimited(): boolean {
+    return this.reserve.limited
+  }
+
+  // The child only answers account reads once it is initialized, so this starts
+  // after the first handshake and then runs on its own timer. The awaited first
+  // read is capped; the timer's reads are not.
+  private async startReservePolling(): Promise<void> {
+    if (!this.reserve.active || this.reserveTimer || this.stopping) return
+    this.reserveTimer = setInterval(() => {
+      void this.readRateLimits(10_000)
+    }, RESERVE_POLL_MS)
+    this.reserveTimer.unref()
+    // Nothing to announce yet: the desktop drops every message that arrives
+    // before its initialize response, and that response has not been sent.
+    await this.readRateLimits(RESERVE_FIRST_READ_TIMEOUT_MS, false)
+  }
+
+  private async readRateLimits(timeoutMs: number, announce = true): Promise<void> {
+    if (!this.running || this.stopping) return
+    try {
+      const result = await this.request('account/rateLimits/read', {}, timeoutMs)
+      if (this.reserve.observeRead(result, 'poll') && announce) await this.announceAccount()
+    } catch (error) {
+      debugLog('reserve.readFailed', {
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  // Tell the desktop the account it should re-read. Without this it would keep
+  // the shape it learned at the last `account/read` until its own next poll.
+  private async announceAccount(): Promise<void> {
+    if (this.reserve.limited) {
+      this.onMessage({ jsonrpc: '2.0', method: 'account/updated', params: RESERVE_ACCOUNT_UPDATED })
+      return
+    }
+    try {
+      const params = accountUpdatedFor(await this.request('account/read', {}, 10_000))
+      if (params) this.onMessage({ jsonrpc: '2.0', method: 'account/updated', params })
+    } catch (error) {
+      debugLog('reserve.announceFailed', {
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   markInitialized(): void {
@@ -276,6 +327,10 @@ export class CodexUpstream {
       clearTimeout(this.restartTimer)
       this.restartTimer = null
     }
+    if (this.reserveTimer) {
+      clearInterval(this.reserveTimer)
+      this.reserveTimer = null
+    }
     const child = this.child
     this.child = null
     this.failPending('adapter shutting down')
@@ -306,7 +361,12 @@ export class CodexUpstream {
       // peer; for server requests it calls rewriteServerRequestId() so the
       // desktop never sees the child's raw id.
       if (/rateLimits/i.test(message.method) && 'params' in message) {
-        this.onMessage({ ...message, params: sanitizeRateLimitPayload(message.params) })
+        if (this.reserve.observeUpdate(message.params)) void this.announceAccount()
+        this.onMessage({ ...message, params: this.maskRateLimits(message.params) })
+        return
+      }
+      if (this.reserve.limited && message.method === 'account/updated') {
+        this.onMessage({ ...message, params: RESERVE_ACCOUNT_UPDATED })
         return
       }
       this.onMessage(message)
@@ -324,10 +384,7 @@ export class CodexUpstream {
       if (entry.peer) {
         const forwarded: JsonRpcResponse = { jsonrpc: '2.0', id: entry.downId }
         if (response.error) forwarded.error = response.error
-        else
-          forwarded.result = /rateLimits/i.test(entry.method)
-            ? sanitizeRateLimitPayload(response.result ?? null)
-            : (response.result ?? null)
+        else forwarded.result = this.transformResult(entry.method, response.result ?? null)
         debugLog('codex.upstream.response', {
           method: entry.method,
           downId: entry.downId,
@@ -340,6 +397,27 @@ export class CodexUpstream {
       if (response.error) entry.reject?.(new Error(response.error.message))
       else entry.resolve?.(response.result)
     }
+  }
+
+  // The only place the child's answers are rewritten on their way to the
+  // desktop. A rate-limit read decides the reserve state and then loses its
+  // reserve markers; while the limit is reached the account report becomes the
+  // externally-authenticated shape (src/reserve.mts). Everything else is
+  // forwarded verbatim.
+  private transformResult(method: string, result: unknown): unknown {
+    if (/rateLimits/i.test(method)) {
+      this.reserve.observeRead(result, method)
+      return this.maskRateLimits(result)
+    }
+    if (!this.reserve.limited) return result
+    if (method === 'account/read') return RESERVE_ACCOUNT_READ
+    if (method === 'getAuthStatus') return RESERVE_AUTH_STATUS
+    return result
+  }
+
+  private maskRateLimits<T>(value: T): T {
+    if (this.reserve.limited) return stripReserveMarkers(value)
+    return sanitizeRateLimitPayload(value)
   }
 
   // Called by the mux once it knows which peer should see a server request.

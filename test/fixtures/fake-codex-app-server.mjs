@@ -207,6 +207,36 @@ async function handleRequest(message) {
         ],
         nextCursor: null,
       })
+    // The real child reports the signed-in ChatGPT account and its usage.
+    // FAKE_CODEX_RATE_LIMIT=reached puts it over the Codex limit, the state
+    // the desktop reads as "reserve" (test/reserve.test.mts, src/reserve.mts).
+    case 'account/read':
+      return respond(id, {
+        account: { type: 'chatgpt', email: 'fake@example.com', planType: 'pro' },
+        requiresOpenaiAuth: true,
+      })
+    case 'account/rateLimits/read': {
+      const reached = process.env.FAKE_CODEX_RATE_LIMIT === 'reached'
+      const rateLimits = {
+        limitId: 'codex',
+        limitName: 'Codex',
+        primary: {
+          usedPercent: reached ? 100 : 12,
+          resetsAt: now() + 3600,
+          windowDurationMins: 300,
+        },
+        secondary: null,
+        credits: null,
+        planType: 'pro',
+        rateLimitReachedType: reached ? 'rate_limit_reached' : null,
+      }
+      return respond(id, {
+        rateLimits,
+        rateLimitsByLimitId: { codex: rateLimits },
+        rateLimitUpsell: reached ? { banner_type: 'luna_reserve', ctas: [] } : null,
+        accountId: 'fake-account',
+      })
+    }
     case 'config/read':
       return respond(id, {
         config: {

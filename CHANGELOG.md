@@ -7,6 +7,30 @@ versioning or publishing metadata.
 
 ## Unreleased
 
+### Reserve mode handles itself
+
+- **The desktop's model picker survives a spent Codex quota, without giving up
+  the real Codex child.** While the account is out of Codex usage the desktop
+  hides the whole picker — Claude and Grok included — and shows a blocking
+  usage banner, because it takes its own ChatGPT identity from the local host's
+  `account/read` and `getAuthStatus`. The adapter now reads
+  `account/rateLimits/read` from the child (once before the handshake returns,
+  then every five minutes; the desktop never asks for it) and, while the limit
+  is reached, answers those two calls with the same externally-authenticated
+  shape it serves when there is no child at all, rewrites `account/updated` to
+  match, and drops the `rateLimitReachedType` / `rateLimitUpsell` markers from
+  the rate-limit payloads it forwards. The real usage numbers, the model list
+  and the child are untouched: gpt-* threads still reach the child and still
+  fail with the account's own usage-limit error. The moment a read says the
+  limit lifted, the rewriting stops and the desktop is told to re-read the
+  account. Each transition logs one `reserve.entered` / `reserve.cleared` line.
+  `ANYENGINE_AUTO_RESERVE=0` turns it off.
+- **`ANYENGINE_HIDE_RATE_LIMIT_UPSELL` and `ANYENGINE_NATIVE_CODEX=0` are
+  superseded** as a reserve-mode workaround. Both still work for one release —
+  the first still strips the markers unconditionally and empties the OpenAI
+  half of the model list, the second still removes the child — but neither is
+  needed now, and neither follows the limit back down.
+
 ### MCP tools, skills and plugins inside the desktop app
 
 - **Tool calls no longer deadlock a Claude thread.** Every tool that was not

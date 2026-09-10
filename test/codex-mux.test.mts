@@ -313,3 +313,104 @@ test('codex-shim passes the desktop -c globals through to the adapter and child'
     await rm(home, { recursive: true, force: true })
   }
 })
+
+// Auto-reserve through the real forwarding path (src/reserve.mts). The fake
+// child reports a ChatGPT account and, with FAKE_CODEX_RATE_LIMIT=reached, an
+// account that is out of Codex usage — the state the desktop turns into
+// "reserve mode".
+async function accountRead(client: StdioClient, timeoutMs = 10_000): Promise<Wire> {
+  const deadline = Date.now() + timeoutMs
+  let last = await client.request('account/read', {})
+  while (last.result?.account?.type === 'chatgpt' && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 100))
+    last = await client.request('account/read', {})
+  }
+  return last
+}
+
+test('auto-reserve: while the limit is reached the account report loses its ChatGPT shape', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-reserve-'))
+  const client = launch(home, { FAKE_CODEX_RATE_LIMIT: 'reached' })
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+
+    // The adapter re-read the child's limits before the handshake returned
+    // (the desktop never asks for them), so the desktop's FIRST account read
+    // already carries the externally-authenticated shape.
+    const account = await client.request('account/read', {})
+    assert.deepEqual(account.result, {
+      account: { type: 'amazonBedrock' },
+      requiresOpenaiAuth: false,
+    })
+
+    // ...and so does the auth status the desktop calls its own backend with.
+    const auth = await client.request('getAuthStatus', { includeToken: true })
+    assert.deepEqual(auth.result, {
+      authMethod: null,
+      authToken: null,
+      requiresOpenaiAuth: false,
+    })
+
+    // The reserve markers are gone from the forwarded read; the real usage
+    // numbers are not.
+    const limits = await client.request('account/rateLimits/read', {})
+    assert.equal(limits.result.rateLimits.rateLimitReachedType, null)
+    assert.equal(limits.result.rateLimitsByLimitId.codex.rateLimitReachedType, null)
+    assert.equal(limits.result.rateLimitUpsell, null)
+    assert.equal(limits.result.rateLimits.primary.usedPercent, 100)
+
+    // The child is still there: gpt-* threads keep going to it.
+    const start = await client.request('thread/start', { cwd: home, model: 'gpt-5.6-sol' })
+    assert.equal(start.result.thread.id, 'fake-thread-1')
+    assert.equal(start.result.modelProvider, 'openai')
+
+    const transitions = (await readFile(join(home, 'debug.jsonl'), 'utf8'))
+      .split('\n')
+      .filter((line) => line.includes('"reserve.'))
+      .map((line) => JSON.parse(line).event)
+    assert.deepEqual(transitions, ['reserve.entered'], 'one line, once')
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('auto-reserve: ANYENGINE_AUTO_RESERVE=0 forwards the child verbatim', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-reserve-off-'))
+  const client = launch(home, { FAKE_CODEX_RATE_LIMIT: 'reached', ANYENGINE_AUTO_RESERVE: '0' })
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+    const account = await accountRead(client, 1_000)
+    assert.equal(account.result.account.type, 'chatgpt')
+    assert.equal(account.result.requiresOpenaiAuth, true)
+    const auth = await client.request('getAuthStatus', { includeToken: true })
+    assert.equal(auth.result.fake, true, 'the child answers the auth status itself')
+    const limits = await client.request('account/rateLimits/read', {})
+    assert.equal(limits.result.rateLimits.rateLimitReachedType, 'rate_limit_reached')
+    assert.equal(limits.result.rateLimitUpsell.banner_type, 'luna_reserve')
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('auto-reserve: a child that is not over its limit is forwarded verbatim', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-reserve-clear-'))
+  const client = launch(home)
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+    const account = await accountRead(client, 1_000)
+    assert.equal(account.result.account.type, 'chatgpt')
+    const limits = await client.request('account/rateLimits/read', {})
+    assert.equal(limits.result.rateLimits.rateLimitReachedType, null)
+    assert.equal(limits.result.rateLimits.primary.usedPercent, 12)
+    const log = await readFile(join(home, 'debug.jsonl'), 'utf8')
+    assert.ok(!log.includes('"reserve.entered"'), 'no transition without a reached limit')
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})

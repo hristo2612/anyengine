@@ -140,6 +140,28 @@ export ANYENGINE_PTY_ARGS=""
 # export ANYENGINE_PTY_STATE_DIR="/tmp/anyengine-pty"
 ```
 
+## Reserve mode
+
+```bash
+# On by default. While the account's Codex usage is spent, the desktop hides
+# the whole model picker (Claude and Grok included) and shows a blocking usage
+# banner on any host that reports a ChatGPT account. The adapter reads the
+# child's `account/rateLimits/read` (once at the handshake, then every five
+# minutes) and, while the limit is reached, answers `account/read`,
+# `getAuthStatus` and `account/updated` with the externally-authenticated shape
+# it serves when there is no Codex child, and strips the reserve markers from
+# the rate-limit payloads it forwards. The child keeps running and gpt-* threads
+# still reach it, so they still fail with the account's own usage-limit error.
+# The transform stops with the first read that says the limit lifted.
+export ANYENGINE_AUTO_RESERVE=0   # turn it off
+```
+
+Superseded by the above, kept working for one release:
+`ANYENGINE_HIDE_RATE_LIMIT_UPSELL=1` strips the same markers unconditionally
+*and* empties the OpenAI half of the model list, and `ANYENGINE_NATIVE_CODEX=0`
+removes the child altogether. Neither follows the limit back down. See
+[the A4 evidence](https://github.com/hristo2612/anyengine/blob/main/docs/evidence/a4-auto-reserve.md).
+
 ## Daemon
 
 ```bash
@@ -161,7 +183,9 @@ export ANYENGINE_NODE="/absolute/path/to/node"
 | `ANYENGINE_VERSION_SUFFIX` | Tag after the version to distinguish the adapter from real codex (default `anyengine`; set `""` to behave exactly like upstream codex). |
 | `CODEX_REAL` | Real Codex CLI for non-app-server commands / `codex` passthrough. |
 | `ANYENGINE_REAL_CODEX` | Real `codex` binary spawned as the native-codex child (default: the bundled desktop binary, then `CODEX_REAL`). |
-| `ANYENGINE_NATIVE_CODEX` | `0` disables auto-detecting the real binary (explicit `ANYENGINE_REAL_CODEX` still applies). |
+| `ANYENGINE_NATIVE_CODEX` | `0` disables auto-detecting the real binary (explicit `ANYENGINE_REAL_CODEX` still applies). Superseded as a reserve-mode workaround. |
+| `ANYENGINE_AUTO_RESERVE` | `0` disables the automatic reserve-mode handling (default on). |
+| `ANYENGINE_HIDE_RATE_LIMIT_UPSELL` | Legacy: strip the reserve markers unconditionally and hide the OpenAI models. Superseded by `ANYENGINE_AUTO_RESERVE`. |
 | `ANYENGINE_GPT_ROUTE` | `native` (default, real app-server child) or `exec` (legacy `codex exec` proxy) for gpt-* threads. |
 | `ANYENGINE_TITLE_ROUTE` | `real` (default) or `local` for the desktop's hidden title/summary threads under the multiplexer. |
 | `ANYENGINE_RUNTIME_TYPE` | Active backend route. |
