@@ -29,6 +29,13 @@
         "noAssignInExpressions": "off",
         "noControlCharactersInRegex": "off",
         "noTemplateCurlyInString": "off"
+      },
+      "complexity": {
+        "recommended": true,
+        "noExcessiveCognitiveComplexity": {
+          "level": "warn",
+          "options": { "maxAllowedComplexity": 30 }
+        }
       }
     }
   }
