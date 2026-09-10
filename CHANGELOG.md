@@ -7,6 +7,32 @@ versioning or publishing metadata.
 
 ## Unreleased
 
+### MCP tools, skills and plugins inside the desktop app
+
+- **Tool calls no longer deadlock a Claude thread.** Every tool that was not
+  `Bash`, `Edit`, `Write` or `MultiEdit` was answered with
+  `item/fileChange/requestApproval` while the item it named was an
+  `mcpToolCall`. The Codex app-server protocol has no approval request for that
+  item type, the desktop app drew no card, and the turn waited forever — which
+  is what every `mcp__*` call, `ToolSearch` and `Skill` did. The approval now
+  follows the item anyengine actually emitted: a command approval for `Bash`, a
+  file-change approval for `Edit` / `Write` / `MultiEdit`, and everything else
+  runs immediately, the way Codex runs MCP tools under its own tools approval
+  mode. The `mcpToolCall` item and its result still reach the app.
+- **The Plugins pane loads.** `plugin/installed` and
+  `externalAgentConfig/import/readHistories` were unimplemented, and the pane
+  re-polled the pair every two seconds behind "Loading plugins…" forever.
+  `plugin/list`, `plugin/installed`, `plugin/read` and `plugin/skill/read` now
+  answer from `CODEX_HOME` on disk — the `[plugins."<name>@<marketplace>"]`
+  blocks of `config.toml` resolved to their newest package under
+  `plugins/cache/`. Nothing is written.
+- **A plugin's MCP servers reach every engine.** The stdio servers declared by
+  plugins from the user's own marketplaces are merged into the record handed to
+  Claude (`--mcp-config`) and to Grok (ACP `mcpServers`), with their `env`
+  carried through. The bundled `openai-*` marketplaces are excluded: their
+  servers are the desktop app's own runtime and belong to the real Codex child.
+  `ANYENGINE_CODEX_PLUGIN_MCP=0` turns the merge off.
+
 ### Rebrand: claude-codex / jinn-pty -> anyengine
 
 - The project is now **anyengine**. The package, the binary, the Rust protocol

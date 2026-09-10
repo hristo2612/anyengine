@@ -49,3 +49,33 @@ the rollback command and the two environment limits found on the way are in
 
 The legacy env-name shim and the `~/.claude-codex/runtime.env` fallback are
 removed one release after the flip.
+
+## B5b — MCP tools and plugins in the app (done)
+
+A `jinn init` on a daily-driver Mac registered everywhere, but nothing that
+needed a tool could finish inside a ChatGPT.app thread. Two defects, both in
+this repository:
+
+1. The approval request was chosen by tool name, not by the item anyengine had
+   just emitted, so every non-`Bash` / non-file tool asked for a file-change
+   approval on an `mcpToolCall` item. There is no such card in the protocol.
+2. `plugin/installed` and `externalAgentConfig/import/readHistories` were
+   unimplemented, so the Plugins pane never left its loading state.
+
+Both fixed, plus the plugin catalog now feeds the user's own stdio MCP servers
+to every engine. Mechanism, in-app evidence and rollback:
+[evidence/b5b-mcp-approvals.md](evidence/b5b-mcp-approvals.md).
+
+Still open, and deliberately not done here:
+
+- **Plugin skills are not enumerated.** `skills/list` still reads only
+  `~/.claude/skills` and `<cwd>/.claude/skills`
+  (`src/claude-capabilities.mts`). A teammate installed as a Codex plugin shows
+  up in the app only because `jinn init` also writes the Claude Code skill. The
+  fix is to extend `listClaudeSkills` with each enabled plugin's `skills/`
+  directory under a `plugin` scope and read the display name from
+  `agents/openai.yaml`.
+- **The remote plugin catalog** (Plugins → Public) is fetched by the desktop
+  from its own backend; a local app-server cannot fill it.
+- **`plugin/install` / `plugin/uninstall` are still no-ops.** Installing from
+  inside the app does not change `config.toml`; use the `codex` CLI.
