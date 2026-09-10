@@ -18,9 +18,17 @@ versioning or publishing metadata.
   the orphaned `scripts/smoke-subagents.mjs` (no npm script, no doc entry, no
   caller), the unimported `grokBinaryAvailable` and `enqueueWorkflowTask`
   exports, the leftover `RESERVE_MODEL_IDS` constant, and 16 unused imports.
-  424 lines out of `src/` and `scripts/`; `server.mts` 5133 → 5056,
-  `server-helpers.mts` 1106 → 1076, `codex-mux.mts` 1207 → 1205. Running log:
+  the already-dead `readConfigReasoningEffort` helper, and 16 unused imports.
+  437 lines out of `src/` and `scripts/`; `server.mts` 5133 → 5056,
+  `server-helpers.mts` 1106 → 1062, `codex-mux.mts` 1207 → 1205. Running log:
   [docs/hardening-log.md](docs/hardening-log.md).
+- **The `CLAUDE_CODEX_*` compatibility shim is now covered by a test.** It was
+  kept alive by a single import in `adapter.mts` whose binding nothing read, so
+  it looked exactly like an unused import — and no test would have caught its
+  removal, because the only coverage called the migration function directly
+  with an injected environment. `adapter.mts` now uses an explicit side-effect
+  import, and a test spawns a real adapter with only the legacy spelling set
+  and asserts it arrives under the new one.
 
 ### Quality gates
 

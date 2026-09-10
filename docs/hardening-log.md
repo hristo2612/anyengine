@@ -9,11 +9,14 @@ test lines added. Coverage is the `npm run test:coverage` total.
 
 | Date | PR | Topic | Lines removed | Coverage | Risk |
 | --- | --- | --- | --- | --- | --- |
-| 2026-09-10 | #1 | Dead code and dead config | 424 | 81.46 % → 81.70 % | Low |
+| 2026-09-10 | [#6](https://github.com/hristo2612/anyengine/pull/6) | Dead code and dead config | 437 | 81.46 % → 81.86 % | One near-miss, caught and fixed in the same PR |
 
 ## 2026-09-10 — PR #1, dead code and dead config
 
-**Cut.** The unreachable second `thread/settings/update` arm of the `server.mts`
+**Cut.** `readConfigReasoningEffort` in `server-helpers.mts` (already dead on
+`main`: imported by `server.mts`, called by nothing; the App's effort dropdown
+is served by `configWriteResponse` and `loadPersistedConfig` instead). The
+unreachable second `thread/settings/update` arm of the `server.mts`
 dispatch switch and its `threadSettingsUpdate` method (67 lines), the orphaned
 `scripts/smoke-subagents.mjs` (343 lines — no npm script, no entry in
 `scripts/AGENTS.md`, referenced by nothing but itself, never run by CI), two
@@ -31,7 +34,31 @@ what the live handler does with each, plus the absence of the
 The rest of the cuts are reachability facts the type checker and the suite
 confirm. 229 → 230 tests, all green.
 
-**Risky?** No. The one judgement call is `smoke-subagents.mjs`: it is a working
+**One near-miss, worth reading.** Running Biome's `noUnusedImports` fix over
+`src/` deleted `import { migratedLegacyEnvNames } from './env-compat.mjs'` from
+`adapter.mts`. The binding really was unread — but the *module* was
+load-bearing for its side effect: its body copies every legacy
+`CLAUDE_CODEX_*` name onto `ANYENGINE_*` before anything else reads
+`process.env`. Nothing failed. `tsc` was happy, all 230 tests were green, and
+the one-release compatibility promise in the README, `docs/plan.md` and
+`scripts/codex-shim` was silently broken, because the only test touching that
+code called the function directly with an injected env.
+
+Fixed in this PR: `adapter.mts` carries a side-effect `import
+'./env-compat.mjs'` with a comment saying why it must stay one, the misleading
+unread `migratedLegacyEnvNames` export is gone, and a new test
+("legacy CLAUDE_CODEX_* names still reach a running adapter") spawns a real
+adapter with only `CLAUDE_CODEX_MODELS` set and asserts the models reach
+`model/list`. Verified the test actually bites: it fails with the import
+removed and passes with it restored.
+
+The lesson generalises — **an automated unused-import fix cannot see a
+side-effect import.** `src/env-compat.mts` is the only module in `src/` with a
+top-level side effect (checked), so the hazard is bounded, but the rule for
+this repo is now: an import with no used binding gets a test before it gets
+deleted.
+
+**Risky?** No, after the above. The one judgement call is `smoke-subagents.mjs`: it is a working
 manual diagnostic, but nothing wires it up and no gate covers it, so it was
 rotting. It is one `git revert` away if it is wanted back.
 

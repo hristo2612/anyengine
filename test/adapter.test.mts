@@ -387,6 +387,51 @@ test('thread/settings/update is the metadata handler for every shape the app sen
   }
 })
 
+test('legacy CLAUDE_CODEX_* names still reach a running adapter', async () => {
+  // The rebrand promises one release of CLAUDE_CODEX_* compatibility (README,
+  // docs/plan.md, scripts/codex-shim). Inside the adapter that promise is kept
+  // by a single side-effect import in src/adapter.mts, which nothing else
+  // references — so it looks exactly like an unused import to a linter, and
+  // deleting it breaks the shim without failing a single unit test. This test
+  // exercises the promise end to end, through a real adapter process, so the
+  // import cannot be removed silently again.
+  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const env = { ...process.env }
+  for (const name of Object.keys(env)) if (name.startsWith('ANYENGINE_')) delete env[name]
+  const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: {
+      ...env,
+      CODEX_HOME: home,
+      NODE_NO_WARNINGS: '1',
+      CLAUDE_CODEX_MOCK: '1',
+      // Only the legacy spelling is set; ANYENGINE_MODELS is not.
+      CLAUDE_CODEX_MODELS: JSON.stringify([{ id: 'legacy-shim', displayName: 'Legacy Shim' }]),
+    },
+  })
+  const reader = new JsonLineReader(proc)
+  try {
+    proc.stdin.write(
+      json({
+        id: 1,
+        method: 'initialize',
+        params: { clientInfo: { name: 'test', version: '0' }, capabilities: null },
+      }),
+    )
+    await reader.nextResponse(1)
+    proc.stdin.write(json({ id: 2, method: 'model/list', params: {} }))
+    const models = await reader.nextResponse(2)
+    const ids = (models.result.data ?? []).map((model: { id: string }) => model.id)
+    assert.ok(
+      ids.includes('legacy-shim'),
+      `CLAUDE_CODEX_MODELS did not reach the adapter as ANYENGINE_MODELS; saw ${JSON.stringify(ids)}`,
+    )
+  } finally {
+    proc.kill()
+    await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
+  }
+})
+
 test('run registry records thread and turn lifecycle without raw prompt or response text', async () => {
   const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
   const runLog = join(home, 'runs.jsonl')
