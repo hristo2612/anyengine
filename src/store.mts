@@ -1,7 +1,14 @@
 import { mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
-import type { ThreadItem, ThreadRecord, ThreadStatus, TurnRecord, TurnStatus } from './types.mjs'
+import type {
+  ThreadEngineRecord,
+  ThreadItem,
+  ThreadRecord,
+  ThreadStatus,
+  TurnRecord,
+  TurnStatus,
+} from './types.mjs'
 import { adapterHome, jsonClone, nowSeconds } from './util.mjs'
 
 const require = createRequire(import.meta.url)
@@ -85,7 +92,69 @@ export class SessionStore {
         updated_at INTEGER NOT NULL
       );
     `)
+    // Mid-thread engine switching (src/rehome.mts). One row per app-facing
+    // thread that has been re-homed at least once: which engine owns it now
+    // and, when it has ever been served by the real Codex child, the child's
+    // own thread id (identical to the app id for a thread born upstream, a
+    // separate id for a local thread that was handed over). Presence of a row
+    // overrides the default `thread/start`-time ownership, so a switch
+    // survives an adapter restart.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS thread_engines (
+        id TEXT PRIMARY KEY,
+        engine TEXT NOT NULL,
+        upstream_thread_id TEXT,
+        pending_prefix TEXT,
+        carried_turn_id TEXT,
+        updated_at INTEGER NOT NULL
+      );
+    `)
+    this.ensureColumn('thread_engines', 'carried_turn_id', 'TEXT')
+    // Transcript carried over to a local engine, applied to the prompt of the
+    // first turn after the switch and cleared with it.
+    this.ensureColumn('threads', 'rehome_prefix', 'TEXT')
     this.sanitizeLegacyEnumColumns()
+  }
+
+  getThreadEngine(threadId: string): ThreadEngineRecord | null {
+    const row = this.db.prepare('SELECT * FROM thread_engines WHERE id = ?').get(threadId)
+    return row ? rowToThreadEngine(row) : null
+  }
+
+  setThreadEngine(record: ThreadEngineRecord): void {
+    this.db
+      .prepare(`
+        INSERT INTO thread_engines
+          (id, engine, upstream_thread_id, pending_prefix, carried_turn_id, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          engine=excluded.engine,
+          upstream_thread_id=excluded.upstream_thread_id,
+          pending_prefix=excluded.pending_prefix,
+          carried_turn_id=excluded.carried_turn_id,
+          updated_at=excluded.updated_at
+      `)
+      .run(
+        record.id,
+        record.engine,
+        record.upstreamThreadId,
+        record.pendingPrefix,
+        record.carriedTurnId ?? null,
+        nowSeconds(),
+      )
+  }
+
+  listThreadEngines(): ThreadEngineRecord[] {
+    const rows = this.db.prepare('SELECT * FROM thread_engines').all() as unknown[]
+    return rows.map((row) => rowToThreadEngine(row))
+  }
+
+  clearThreadEnginePrefix(threadId: string): void {
+    this.db.prepare('UPDATE thread_engines SET pending_prefix = NULL WHERE id = ?').run(threadId)
+  }
+
+  updateRehomePrefix(threadId: string, prefix: string | null): void {
+    this.db.prepare('UPDATE threads SET rehome_prefix = ? WHERE id = ?').run(prefix, threadId)
   }
 
   setNativeCodexThread(threadId: string): void {
@@ -153,8 +222,9 @@ export class SessionStore {
           id, session_id, forked_from_id, preview, name, archived, cwd, model, reasoning_effort,
           model_provider, claude_session_id, source, created_at, updated_at, status_json,
           approval_policy, sandbox_mode, permission_profile_id, ephemeral, thread_source, agent_role, agent_nickname,
-          base_instructions, developer_instructions, personality, runtime_backend, codex_session_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          base_instructions, developer_instructions, personality, runtime_backend, codex_session_id,
+          rehome_prefix
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           session_id=excluded.session_id,
           forked_from_id=excluded.forked_from_id,
@@ -180,7 +250,8 @@ export class SessionStore {
           developer_instructions=excluded.developer_instructions,
           personality=excluded.personality,
           runtime_backend=excluded.runtime_backend,
-          codex_session_id=excluded.codex_session_id
+          codex_session_id=excluded.codex_session_id,
+          rehome_prefix=excluded.rehome_prefix
       `)
       .run(
         thread.id,
@@ -210,6 +281,7 @@ export class SessionStore {
         thread.personality,
         thread.runtimeBackend,
         thread.codexSessionId,
+        thread.rehomePrefix ?? null,
       )
   }
 
@@ -672,6 +744,7 @@ export class SessionStore {
       personality: row.personality == null ? null : String(row.personality),
       runtimeBackend: row.runtime_backend === 'codex' ? 'codex' : 'claude',
       codexSessionId: row.codex_session_id == null ? null : String(row.codex_session_id),
+      rehomePrefix: row.rehome_prefix == null ? null : String(row.rehome_prefix),
     }
   }
 
@@ -687,5 +760,15 @@ export class SessionStore {
       diff: String(row.diff ?? ''),
       error: row.error_json == null ? null : JSON.parse(String(row.error_json)),
     }
+  }
+}
+
+function rowToThreadEngine(row: any): ThreadEngineRecord {
+  return {
+    id: String(row.id),
+    engine: row.engine === 'gpt' ? 'gpt' : row.engine === 'grok' ? 'grok' : 'claude',
+    upstreamThreadId: row.upstream_thread_id == null ? null : String(row.upstream_thread_id),
+    pendingPrefix: row.pending_prefix == null ? null : String(row.pending_prefix),
+    carriedTurnId: row.carried_turn_id == null ? null : String(row.carried_turn_id),
   }
 }

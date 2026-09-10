@@ -7,6 +7,14 @@
 // be answered before the turn completes) / thread/list (two pages) /
 // model/list / config/read, and echoes anything else back as a `fake` result
 // so default-route tests can see the request reached the child.
+//
+// For the mid-thread engine switch (src/rehome.mts) it also keeps a per-thread
+// turn history that `thread/read` returns, accepts `thread/inject_items`, and
+// mirrors both into FAKE_CODEX_STATE_FILE so a test can see exactly what the
+// adapter carried over. Three env switches shape the awkward paths:
+// FAKE_CODEX_NO_APPROVAL=1 (turns complete without the approval round-trip),
+// FAKE_CODEX_NO_INJECT=1 (the child refuses injection, exercising the
+// prefix fallback) and FAKE_CODEX_FAIL_START=1 (thread/start always fails).
 import { writeFileSync } from 'node:fs'
 import readline from 'node:readline'
 
@@ -25,6 +33,24 @@ if (process.env.FAKE_CODEX_ARGV_FILE) {
 
 let nextThread = 0
 let nextTurn = 0
+// threadId -> turns in the shape `thread/read` returns them.
+const threadTurns = new Map()
+// threadId -> raw Responses items handed over by thread/inject_items.
+const injectedItems = new Map()
+// threadId -> the `input` array of every turn/start, newest last.
+const turnInputs = new Map()
+
+function writeState() {
+  if (!process.env.FAKE_CODEX_STATE_FILE) return
+  writeFileSync(
+    process.env.FAKE_CODEX_STATE_FILE,
+    JSON.stringify({
+      injected: Object.fromEntries(injectedItems),
+      turnInputs: Object.fromEntries(turnInputs),
+      turns: Object.fromEntries(threadTurns),
+    }),
+  )
+}
 let nextServerRequestId = 1
 const pendingServerRequests = new Map()
 let initialized = false
@@ -87,6 +113,8 @@ async function handleRequest(message) {
         platformOs: 'macos',
       })
     case 'thread/start': {
+      if (process.env.FAKE_CODEX_FAIL_START === '1')
+        return fail(id, -32000, 'fake child refuses to start a thread')
       const threadId = `fake-thread-${++nextThread}`
       const record = thread(threadId)
       notify('thread/started', { thread: record })
@@ -107,8 +135,13 @@ async function handleRequest(message) {
       })
     }
     case 'thread/resume':
+      if (process.env.FAKE_CODEX_FAIL_RESUME === '1')
+        return fail(id, -32000, 'fake child cannot resume that thread')
       return respond(id, {
-        thread: thread(params.threadId, { preview: 'resumed by fake' }),
+        thread: thread(params.threadId, {
+          preview: 'resumed by fake',
+          turns: threadTurns.get(params.threadId) ?? [],
+        }),
         model: 'gpt-5.6-sol',
         modelProvider: 'openai',
         cwd: process.cwd(),
@@ -123,43 +156,65 @@ async function handleRequest(message) {
     case 'turn/start': {
       const threadId = params.threadId
       const turnId = `fake-turn-${++nextTurn}`
+      const inputs = turnInputs.get(threadId) ?? []
+      inputs.push(params.input ?? [])
+      turnInputs.set(threadId, inputs)
       respond(id, { turn: { id: turnId, items: [], status: 'inProgress', error: null } })
       notify('turn/started', { threadId, turn: { id: turnId, items: [], status: 'inProgress' } })
-      const itemId = `${turnId}-cmd`
-      notify('item/started', {
-        threadId,
-        turnId,
-        item: { type: 'commandExecution', id: itemId, command: 'ls', status: 'inProgress' },
-      })
-      // The approval round-trip. The child's id space starts at 1 on purpose:
-      // the test client also sends its own request with id 1, so a raw
-      // (unrewritten) forward would collide.
-      const decision = await serverRequest('item/commandExecution/requestApproval', {
-        threadId,
-        turnId,
-        itemId,
-        command: 'ls',
-        cwd: process.cwd(),
-        reason: null,
-      })
-      notify('serverRequest/resolved', { threadId, requestId: nextServerRequestId - 1 })
-      notify('item/completed', {
-        threadId,
-        turnId,
-        item: {
-          type: 'commandExecution',
-          id: itemId,
+      if (process.env.FAKE_CODEX_NO_APPROVAL !== '1') {
+        const itemId = `${turnId}-cmd`
+        notify('item/started', {
+          threadId,
+          turnId,
+          item: { type: 'commandExecution', id: itemId, command: 'ls', status: 'inProgress' },
+        })
+        // The approval round-trip. The child's id space starts at 1 on purpose:
+        // the test client also sends its own request with id 1, so a raw
+        // (unrewritten) forward would collide.
+        const decision = await serverRequest('item/commandExecution/requestApproval', {
+          threadId,
+          turnId,
+          itemId,
           command: 'ls',
-          status: decision?.decision === 'accept' ? 'completed' : 'declined',
-          approvalDecision: decision,
-        },
-      })
+          cwd: process.cwd(),
+          reason: null,
+        })
+        notify('serverRequest/resolved', { threadId, requestId: nextServerRequestId - 1 })
+        notify('item/completed', {
+          threadId,
+          turnId,
+          item: {
+            type: 'commandExecution',
+            id: itemId,
+            command: 'ls',
+            status: decision?.decision === 'accept' ? 'completed' : 'declined',
+            approvalDecision: decision,
+          },
+        })
+      }
       notify('item/agentMessage/delta', {
         threadId,
         turnId,
         itemId: `${turnId}-msg`,
         delta: 'PONG',
       })
+      // Remembered as history so a later `thread/read` (and with it a switch
+      // back to another engine) sees what was said here.
+      const history = threadTurns.get(threadId) ?? []
+      history.push({
+        id: turnId,
+        status: 'completed',
+        startedAt: now(),
+        completedAt: now(),
+        durationMs: 1,
+        error: null,
+        items: [
+          { type: 'userMessage', id: `${turnId}-user`, content: params.input ?? [] },
+          { type: 'agentMessage', id: `${turnId}-msg`, text: 'PONG', phase: null },
+        ],
+      })
+      threadTurns.set(threadId, history)
+      writeState()
       notify('turn/completed', {
         threadId,
         turn: { id: turnId, items: [], status: 'completed', error: null },
@@ -182,6 +237,25 @@ async function handleRequest(message) {
         nextCursor: 'fake-page-2',
         backwardsCursor: null,
       })
+    }
+    case 'thread/read': {
+      const target = params.threadId
+      return respond(id, {
+        // `fake: true` marks the answer as the child's, for the routing tests.
+        fake: true,
+        thread: thread(target, {
+          turns: params.includeTurns ? (threadTurns.get(target) ?? []) : [],
+        }),
+      })
+    }
+    case 'thread/inject_items': {
+      if (process.env.FAKE_CODEX_NO_INJECT === '1')
+        return fail(id, -32601, 'thread/inject_items is not supported')
+      const existing = injectedItems.get(params.threadId) ?? []
+      existing.push(...(params.items ?? []))
+      injectedItems.set(params.threadId, existing)
+      writeState()
+      return respond(id, {})
     }
     case 'thread/loaded/list':
       return respond(id, { data: ['fake-loaded'], nextCursor: null })

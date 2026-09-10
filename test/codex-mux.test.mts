@@ -414,3 +414,345 @@ test('auto-reserve: a child that is not over its limit is forwarded verbatim', a
     await rm(home, { recursive: true, force: true })
   }
 })
+
+// ---------------------------------------------------------------------------
+// Mid-thread engine switching (src/rehome.mts). The desktop keeps ONE thread
+// while its model picker moves between engines; routing follows the model on
+// each turn. Claude/Grok run on the mock runtime here, gpt-* on the fake child.
+// ---------------------------------------------------------------------------
+
+const SWITCH_ENV = { FAKE_CODEX_NO_APPROVAL: '1' }
+
+function text(value: string): Wire {
+  return { type: 'text', text: value }
+}
+
+// The mock runtime echoes the prompt it was handed, so the completed agent
+// message is where a carried transcript becomes observable.
+async function localAnswer(client: StdioClient, threadId: string, turnId: string): Promise<string> {
+  const completed = await client.waitFor(
+    (m) =>
+      m.method === 'item/completed' &&
+      m.params?.threadId === threadId &&
+      m.params?.turnId === turnId &&
+      m.params?.item?.type === 'agentMessage',
+  )
+  return String(completed.params.item.text ?? '')
+}
+
+async function runLocalTurn(
+  client: StdioClient,
+  threadId: string,
+  model: string,
+  prompt: string,
+): Promise<string> {
+  const started = await client.request('turn/start', {
+    threadId,
+    model,
+    input: [text(prompt)],
+  })
+  assert.ok(started.result?.turn?.id, `turn/start rejected: ${JSON.stringify(started.error)}`)
+  const answer = await localAnswer(client, threadId, started.result.turn.id)
+  await client.waitFor(
+    (m) => m.method === 'turn/completed' && m.params?.turn?.id === started.result.turn.id,
+  )
+  return answer
+}
+
+async function runUpstreamTurn(
+  client: StdioClient,
+  threadId: string,
+  model: string,
+  prompt: string,
+): Promise<Wire> {
+  const started = await client.request('turn/start', {
+    threadId,
+    model,
+    input: [text(prompt)],
+  })
+  assert.ok(started.result?.turn?.id, `turn/start rejected: ${JSON.stringify(started.error)}`)
+  const completed = await client.waitFor(
+    (m) => m.method === 'turn/completed' && m.params?.turn?.id === started.result.turn.id,
+  )
+  return completed
+}
+
+function readState(home: string): Promise<Wire> {
+  return readFile(join(home, 'fake-state.json'), 'utf8').then((raw) => JSON.parse(raw) as Wire)
+}
+
+function rehomeLines(home: string): Promise<Wire[]> {
+  return readFile(join(home, 'debug.jsonl'), 'utf8').then((raw) =>
+    raw
+      .split('\n')
+      .filter((line) => line.includes('"thread.rehomed"'))
+      .map((line) => JSON.parse(line) as Wire),
+  )
+}
+
+function switchPairs(home: string): Promise<string[][]> {
+  return rehomeLines(home).then((lines) =>
+    lines.map((line) => [String(line.from), String(line.to)]),
+  )
+}
+
+test('mid-thread switch: a GPT thread answers on Claude and goes back to GPT', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-switch-gpt-'))
+  const client = launch(home, {
+    ...SWITCH_ENV,
+    FAKE_CODEX_STATE_FILE: join(home, 'fake-state.json'),
+  })
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+
+    // Born on GPT: the child owns the thread and its id.
+    const start = await client.request('thread/start', { cwd: home, model: 'gpt-5.6-sol' })
+    const threadId = start.result.thread.id
+    assert.equal(threadId, 'fake-thread-1')
+    await runUpstreamTurn(client, threadId, 'gpt-5.6-sol', 'remember the codeword BANANA')
+
+    // Picker moved to Sonnet. This used to come back as the child's "the
+    // 'sonnet' model is not supported when using Codex with a ChatGPT account".
+    const answer = await runLocalTurn(client, threadId, 'sonnet', 'what is the codeword')
+    assert.match(answer, /Claude Code adapter mock response/, 'answered by the local runtime')
+    assert.match(answer, /Conversation so far, continued from another model/)
+    assert.match(answer, /remember the codeword BANANA/, 'the GPT turn was carried over')
+
+    // One thread, both halves of the history, in order.
+    const read = await client.request('thread/read', { threadId, includeTurns: true })
+    assert.equal(read.result.thread.id, threadId)
+    const roles = read.result.thread.turns.flatMap((turn: Wire) =>
+      turn.items.filter((i: Wire) => i.type === 'userMessage').map((i: Wire) => i.content[0].text),
+    )
+    assert.deepEqual(roles, ['remember the codeword BANANA', 'what is the codeword'])
+
+    // ...and back to GPT: the same child thread is resumed and the Claude turn
+    // is injected into it, so nothing is lost in either direction.
+    const backToGpt = await runUpstreamTurn(client, threadId, 'gpt-5.6-sol', 'codeword again')
+    assert.equal(backToGpt.params.threadId, threadId)
+    const state = await readState(home)
+    const injected = JSON.stringify(state.injected[threadId])
+    assert.match(injected, /what is the codeword/, 'the Claude turn reached the child')
+    assert.ok(!state.turnInputs[threadId].at(-1)[0].text.includes('Conversation so far'))
+
+    assert.deepEqual(await switchPairs(home), [
+      ['gpt', 'claude'],
+      ['claude', 'gpt'],
+    ])
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('mid-thread switch: a Claude thread moves to GPT under one id, and Grok in between', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-switch-claude-'))
+  const client = launch(home, {
+    ...SWITCH_ENV,
+    FAKE_CODEX_STATE_FILE: join(home, 'fake-state.json'),
+  })
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+
+    const start = await client.request('thread/start', { cwd: home, model: 'sonnet' })
+    const threadId = start.result.thread.id
+    assert.notEqual(threadId, 'fake-thread-1')
+    await runLocalTurn(client, threadId, 'sonnet', 'remember the codeword BANANA')
+
+    // Claude -> Grok: never leaves the local layer, but the session is reset,
+    // so the conversation only survives because it is carried over.
+    const grok = await runLocalTurn(client, threadId, 'grok-4.6', 'what is the codeword')
+    assert.match(grok, /Conversation so far, continued from another model/)
+    assert.match(grok, /remember the codeword BANANA/)
+
+    // Grok -> GPT: a NEW child thread is created and aliased, so every
+    // notification the desktop sees still carries the id it started with.
+    const completed = await runUpstreamTurn(client, threadId, 'gpt-5.6-sol', 'and again')
+    assert.equal(completed.params.threadId, threadId)
+    const state = await readState(home)
+    assert.equal(state.injected[threadId], undefined, 'the child thread has its own id')
+    assert.match(JSON.stringify(state.injected['fake-thread-1']), /remember the codeword BANANA/)
+
+    // One row in the list, under the app's id; the child's id never surfaces.
+    const list = await client.request('thread/list', { limit: 50, sortKey: 'updated_at' })
+    const ids = list.result.data.map((entry: Wire) => entry.id)
+    assert.equal(ids.filter((id: string) => id === threadId).length, 1)
+    assert.ok(!ids.includes('fake-thread-1'))
+
+    // GPT -> Grok closes the loop: the child's turns come back with it.
+    const back = await runLocalTurn(client, threadId, 'grok-4.6', 'one more time')
+    assert.match(back, /and again/, 'the GPT turn was carried back')
+
+    // ...and Grok -> Claude, the fourth switch on the same thread.
+    const claudeAgain = await runLocalTurn(client, threadId, 'sonnet', 'last time')
+    assert.match(claudeAgain, /remember the codeword BANANA/, 'still one conversation')
+    assert.match(claudeAgain, /one more time/)
+
+    assert.deepEqual(await switchPairs(home), [
+      ['claude', 'grok'],
+      ['grok', 'gpt'],
+      ['gpt', 'grok'],
+      ['grok', 'claude'],
+    ])
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('mid-thread switch: ownership survives a restart, and a same-engine turn is untouched', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-switch-restart-'))
+  let client = launch(home, SWITCH_ENV)
+  let threadId = ''
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+    const start = await client.request('thread/start', { cwd: home, model: 'gpt-5.6-sol' })
+    threadId = start.result.thread.id
+    await runUpstreamTurn(client, threadId, 'gpt-5.6-sol', 'remember the codeword BANANA')
+    await runLocalTurn(client, threadId, 'sonnet', 'what is the codeword')
+  } finally {
+    await client.close()
+  }
+
+  const store = new SessionStore(join(home, 'state.sqlite'))
+  const engine = store.getThreadEngine(threadId)
+  store.close()
+  assert.deepEqual(engine, {
+    id: threadId,
+    engine: 'claude',
+    upstreamThreadId: threadId,
+    pendingPrefix: null,
+    carriedTurnId: null,
+  })
+
+  // A fresh adapter (and a fresh fake child, which knows nothing about the
+  // switch) still answers this thread on Claude.
+  client = launch(home, SWITCH_ENV)
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+    const answer = await runLocalTurn(client, threadId, 'sonnet', 'still here')
+    assert.match(answer, /Claude Code adapter mock response/)
+    // Same engine as the thread already has: nothing is re-homed, and the
+    // conversation is not carried over a second time.
+    assert.ok(!answer.includes('Conversation so far'), 'no-op for a same-engine turn')
+    // debug.jsonl spans both launches: still only the one switch from before.
+    assert.deepEqual(await switchPairs(home), [['gpt', 'claude']])
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('mid-thread switch: a failed handover keeps the previous owner, and the injection has a fallback', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-switch-fail-'))
+  let client = launch(home, { ...SWITCH_ENV, FAKE_CODEX_FAIL_START: '1' })
+  let threadId = ''
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+    const start = await client.request('thread/start', { cwd: home, model: 'sonnet' })
+    threadId = start.result.thread.id
+    await runLocalTurn(client, threadId, 'sonnet', 'remember the codeword BANANA')
+
+    const refused = await client.request('turn/start', {
+      threadId,
+      model: 'gpt-5.6-sol',
+      input: [text('and now')],
+    })
+    assert.equal(refused.result, undefined)
+    assert.match(String(refused.error.message), /could not switch this thread to gpt-5\.6-sol/)
+    assert.match(String(refused.error.message), /refuses to start a thread/)
+
+    const store = new SessionStore(join(home, 'state.sqlite'))
+    const engine = store.getThreadEngine(threadId)
+    store.close()
+    assert.equal(engine, null, 'ownership did not move')
+
+    // The thread still answers on the engine it had.
+    const answer = await runLocalTurn(client, threadId, 'sonnet', 'what is the codeword')
+    assert.match(answer, /Claude Code adapter mock response/)
+    assert.ok(!answer.includes('Conversation so far'), 'and it was never handed over')
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+
+  // A child that refuses `thread/inject_items` (older protocol) still gets the
+  // conversation — prefixed onto the first turn's input instead.
+  const fallbackHome = await mkdtemp(join(tmpdir(), 'ccx-switch-noinject-'))
+  client = launch(fallbackHome, {
+    ...SWITCH_ENV,
+    FAKE_CODEX_NO_INJECT: '1',
+    FAKE_CODEX_STATE_FILE: join(fallbackHome, 'fake-state.json'),
+  })
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+    const start = await client.request('thread/start', { cwd: fallbackHome, model: 'sonnet' })
+    const localThreadId = start.result.thread.id
+    await runLocalTurn(client, localThreadId, 'sonnet', 'remember the codeword BANANA')
+    await runUpstreamTurn(client, localThreadId, 'gpt-5.6-sol', 'what is the codeword')
+    const state = await readState(fallbackHome)
+    assert.equal(state.injected['fake-thread-1'], undefined)
+    const firstInput = state.turnInputs['fake-thread-1'][0]
+    assert.match(firstInput[0].text, /Conversation so far, continued from another model/)
+    assert.match(firstInput[0].text, /remember the codeword BANANA/)
+    assert.deepEqual(firstInput[1], { type: 'text', text: 'what is the codeword' })
+  } finally {
+    await client.close()
+    await rm(fallbackHome, { recursive: true, force: true })
+  }
+})
+
+test('mid-thread switch: a switch waits for the turn that is already running', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-switch-busy-'))
+  const client = launch(home, SWITCH_ENV)
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+    // `on-request` + `workspace-write` is the configuration where the mock
+    // runtime asks for an approval and holds the turn open until it is
+    // answered — a turn that is genuinely still running.
+    const start = await client.request('thread/start', {
+      cwd: home,
+      model: 'sonnet',
+      approvalPolicy: 'on-request',
+      sandbox: 'workspace-write',
+    })
+    const threadId = start.result.thread.id
+    const running = client.request('turn/start', {
+      threadId,
+      model: 'sonnet',
+      input: [text('run a bash approval')],
+    })
+    const approval = await client.waitFor(
+      (m) =>
+        m.method === 'item/commandExecution/requestApproval' && m.params?.threadId === threadId,
+    )
+
+    const refused = await client.request('turn/start', {
+      threadId,
+      model: 'gpt-5.6-sol',
+      input: [text('switch now')],
+    })
+    assert.equal(refused.result, undefined)
+    assert.match(String(refused.error.message), /still answering/)
+    assert.match(String(refused.error.message), /gpt-5\.6-sol/)
+
+    client.send({ jsonrpc: '2.0', id: approval.id, result: { decision: 'accept' } })
+    await running
+    await client.waitFor((m) => m.method === 'turn/completed' && m.params?.threadId === threadId)
+
+    // Once the turn is done the same switch goes through.
+    const moved = await runUpstreamTurn(client, threadId, 'gpt-5.6-sol', 'switch now')
+    assert.equal(moved.params.threadId, threadId)
+    assert.deepEqual(await switchPairs(home), [['claude', 'gpt']])
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})

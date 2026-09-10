@@ -162,6 +162,20 @@ Superseded by the above, kept working for one release:
 removes the child altogether. Neither follows the limit back down. See
 [the A4 evidence](https://github.com/hristo2612/anyengine/blob/main/docs/evidence/a4-auto-reserve.md).
 
+## Mid-thread engine switching
+
+```bash
+# Routing follows the model on each turn. When it names another engine the
+# thread is handed over, carrying a compact transcript of the conversation so
+# far. This caps that block; past it the first user message and the most recent
+# exchanges are kept, with a one-line note about the gap (default 12000).
+export ANYENGINE_REHOME_MAX_CHARS="12000"
+```
+
+Ownership (the engine, and the real Codex thread id behind it) is stored in the
+adapter's `state.sqlite`, so a switch survives a restart. See
+[the A5 evidence](https://github.com/hristo2612/anyengine/blob/main/docs/evidence/a5-mid-thread-switch.md).
+
 ## Daemon
 
 ```bash
@@ -186,6 +200,7 @@ export ANYENGINE_NODE="/absolute/path/to/node"
 | `ANYENGINE_NATIVE_CODEX` | `0` disables auto-detecting the real binary (explicit `ANYENGINE_REAL_CODEX` still applies). Superseded as a reserve-mode workaround. |
 | `ANYENGINE_AUTO_RESERVE` | `0` disables the automatic reserve-mode handling (default on). |
 | `ANYENGINE_HIDE_RATE_LIMIT_UPSELL` | Legacy: strip the reserve markers unconditionally and hide the OpenAI models. Superseded by `ANYENGINE_AUTO_RESERVE`. |
+| `ANYENGINE_REHOME_MAX_CHARS` | Cap on the transcript carried to another engine mid-thread (default 12000). |
 | `ANYENGINE_GPT_ROUTE` | `native` (default, real app-server child) or `exec` (legacy `codex exec` proxy) for gpt-* threads. |
 | `ANYENGINE_TITLE_ROUTE` | `real` (default) or `local` for the desktop's hidden title/summary threads under the multiplexer. |
 | `ANYENGINE_RUNTIME_TYPE` | Active backend route. |

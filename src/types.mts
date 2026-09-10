@@ -44,6 +44,22 @@ export interface RpcPeer {
   close(): void
 }
 
+// Ownership of an app-facing thread after a mid-thread engine switch
+// (src/rehome.mts). `upstreamThreadId` is the real Codex child's thread id
+// backing this thread — equal to `id` when the thread was born upstream.
+// `pendingPrefix` is a carried-over transcript that could not be injected into
+// the child and is prefixed to the next upstream turn's input instead.
+export interface ThreadEngineRecord {
+  id: string
+  engine: 'claude' | 'grok' | 'gpt'
+  upstreamThreadId: string | null
+  pendingPrefix: string | null
+  // The last LOCAL turn already handed to the child. Turns after it are what a
+  // later switch back to GPT carries over; the child keeps its own turns, so
+  // re-carrying them would duplicate the conversation.
+  carriedTurnId?: string | null
+}
+
 export interface ThreadRecord {
   id: string
   sessionId: string
@@ -102,6 +118,9 @@ export interface ThreadRecord {
   baseInstructions: string | null
   developerInstructions: string | null
   personality: string | null
+  // Transcript carried over from another engine (src/rehome.mts), prefixed to
+  // the prompt of the first turn after the switch and cleared with it.
+  rehomePrefix?: string | null
 }
 
 export type ThreadStatus =

@@ -4,8 +4,21 @@ import {
   providerFor,
 } from './bridge-instructions.mjs'
 import type { CodexUpstream } from './codex-upstream.mjs'
+import {
+  type Engine,
+  engineForModel,
+  formatTranscript,
+  injectItemsFor,
+  transcriptEntriesFromTurns,
+} from './rehome.mjs'
 import type { SessionStore } from './store.mjs'
-import type { JsonRpcRequest, JsonRpcResponse, RpcPeer, WireMessage } from './types.mjs'
+import type {
+  JsonRpcRequest,
+  JsonRpcResponse,
+  RpcPeer,
+  ThreadEngineRecord,
+  WireMessage,
+} from './types.mjs'
 import { claudeModelOptions, codexExecRouteEnabled, debugLog, isCodexOpenAiModel } from './util.mjs'
 
 // Native-codex multiplexer. Sits in front of the local protocol layer
@@ -31,6 +44,28 @@ export interface MuxLocalServer {
   // `codex exec` proxy row (hidden from merged lists because the real
   // server lists the same conversation natively); null = unknown locally.
   localThreadOwner(threadId: string): 'claude' | 'codex-exec' | null
+  // The model on the local thread row, or null when there is no row. Decides
+  // which local engine (Claude / Grok) currently owns the thread.
+  localThreadModel(threadId: string): string | null
+  // True while the local layer is running a turn on this thread; a mid-thread
+  // engine switch waits for it rather than cutting it off.
+  hasActiveTurn(threadId: string): boolean
+  // Hand a thread back to a local engine, creating the row when the thread was
+  // born on the real Codex child (src/rehome.mts).
+  adoptThread(peer: RpcPeer, input: RehomeAdoption): void
+}
+
+// What the local layer needs to take over a thread mid-conversation.
+export interface RehomeAdoption {
+  threadId: string
+  model: string
+  cwd: string | null
+  // Compact conversation so far, prefixed to the first turn's prompt.
+  transcript: string | null
+  preview?: string
+  createdAt?: number | null
+  approvalPolicy?: string | null
+  sandboxMode?: string | null
 }
 
 export interface NativeCodexMuxOptions {
@@ -107,6 +142,11 @@ export class NativeCodexMux {
   private readonly upstreamThreads = new Map<string, UpstreamThreadInfo>()
   private primaryPeer: RpcPeer | null = null
   private stopped = false
+  // Thread-id aliases created by a mid-thread switch to GPT: the desktop keeps
+  // the id it has always known, the child answers under its own. Only threads
+  // whose two ids differ appear here (a thread born upstream keeps one id).
+  private readonly upstreamIdByApp = new Map<string, string>()
+  private readonly appIdByUpstream = new Map<string, string>()
 
   constructor(options: NativeCodexMuxOptions) {
     this.store = options.store
@@ -114,6 +154,7 @@ export class NativeCodexMux {
     this.local = options.local
     this.onNotification = options.onNotification ?? null
     this.bridgeCatalog = options.bridgeCatalog ?? null
+    for (const record of this.store.listThreadEngines()) this.rememberAlias(record)
   }
 
   upstreamModels(): BridgeCatalogModel[] {
@@ -181,9 +222,10 @@ export class NativeCodexMux {
   // Messages from the child: server requests get a rewritten id and go to
   // the thread's peer; notifications are forwarded verbatim (ownership is
   // learned on the way through).
-  onUpstreamMessage(message: WireMessage): void {
+  onUpstreamMessage(incoming: WireMessage): void {
     if (this.stopped) return
-    if (!('method' in message) || !message.method) return
+    if (!('method' in incoming) || !incoming.method) return
+    const message = this.toAppThreadIds(incoming)
     const params = asRecord(message.params)
     const threadId = threadIdOf(params)
     if ('id' in message && message.id != null) {
@@ -270,17 +312,64 @@ export class NativeCodexMux {
       await this.handleMerged(peer, request, params)
       return true
     }
+    // Routing is decided per TURN from its model, not once at thread/start:
+    // this may hand the thread to another engine before it is routed below.
+    if (method === 'turn/start' && (await this.prepareTurnRouting(peer, request, params)))
+      return true
+    if (method === 'thread/read' && (await this.mergeRehomedThreadRead(peer, request, params)))
+      return true
     const route = this.routeRequest(method, params)
     debugLog('codex.mux.route', { method, id: request.id, route, threadId: threadIdOf(params) })
     if (route === 'local') return false
     const threadId = threadIdOf(params)
     if (threadId) this.peerByThread.set(threadId, peer)
+    const outgoing = this.forUpstream(request, threadId)
     if (INSTRUCTION_LIFECYCLE_METHODS.has(method)) {
-      this.forwardThreadLifecycle(peer, this.withBridgeInstructions(request))
+      this.forwardThreadLifecycle(
+        outgoing.peer(peer),
+        this.withBridgeInstructions(outgoing.request),
+      )
       return true
     }
-    this.upstream.forwardRequest(peer, request.id, method, request.params)
+    this.upstream.forwardRequest(outgoing.peer(peer), request.id, method, outgoing.request.params)
     return true
+  }
+
+  // Everything a request needs on its way to the child: the carried transcript
+  // that could not be injected rides on the first turn's input, and an aliased
+  // thread id is swapped for the child's own (and swapped back on the answer).
+  private forUpstream(
+    request: JsonRpcRequest,
+    appThreadId: string | null,
+  ): { request: JsonRpcRequest; peer: (peer: RpcPeer) => RpcPeer } {
+    let params = request.params
+    if (request.method === 'turn/start' && appThreadId) {
+      const pending = this.store.getThreadEngine(appThreadId)?.pendingPrefix
+      if (pending) {
+        const record = asRecord(params)
+        params = {
+          ...record,
+          input: [
+            { type: 'text', text: pending },
+            ...(Array.isArray(record.input) ? record.input : []),
+          ],
+        }
+        this.store.clearThreadEnginePrefix(appThreadId)
+        debugLog('thread.rehome.prefixApplied', { threadId: appThreadId })
+      }
+    }
+    const upstreamId = appThreadId ? this.upstreamIdByApp.get(appThreadId) : undefined
+    if (!appThreadId || !upstreamId) {
+      return { request: { ...request, params }, peer: (peer) => peer }
+    }
+    return {
+      request: { ...request, params: rewriteThreadIds(params, appThreadId, upstreamId) },
+      peer: (peer) => ({
+        id: peer.id,
+        send: (message) => peer.send(rewriteThreadIds(message, upstreamId, appThreadId)),
+        close: () => peer.close(),
+      }),
+    }
   }
 
   private routeRequest(method: string, params: Record<string, unknown>): Route {
@@ -311,6 +400,10 @@ export class NativeCodexMux {
   }
 
   private ownerOf(threadId: string): Route {
+    // A thread that has been re-homed is owned by whatever the last switch
+    // decided, whichever side created it (src/rehome.mts).
+    const rehomed = this.store.getThreadEngine(threadId)
+    if (rehomed) return rehomed.engine === 'gpt' ? 'upstream' : 'local'
     if (this.store.isNativeCodexThread(threadId)) return 'upstream'
     const local = this.local.localThreadOwner(threadId)
     if (local === 'claude') return 'local'
@@ -485,11 +578,15 @@ export class NativeCodexMux {
       debugLog('codex.mux.threadListUpstreamFailed', { message: String(upstreamSettled.reason) })
     }
     const localResult = localSettled.status === 'fulfilled' ? asRecord(localSettled.value) : null
-    const upstreamData = Array.isArray(upstreamResult?.data) ? upstreamResult.data : []
-    for (const entry of upstreamData) {
+    const rawUpstreamData = Array.isArray(upstreamResult?.data) ? upstreamResult.data : []
+    const upstreamData = rawUpstreamData.map((entry) => {
       const id = idOf(asRecord(entry))
       if (id) this.store.setNativeCodexThread(id)
-    }
+      const appId = id ? this.appIdByUpstream.get(id) : undefined
+      // A thread the desktop knows under its original id is listed under that
+      // id, not the child's, so a re-homed thread stays ONE row.
+      return id && appId ? rewriteThreadIds(entry, id, appId) : entry
+    })
     const localData = (Array.isArray(localResult?.data) ? localResult.data : []).filter((entry) => {
       const id = idOf(asRecord(entry))
       return id != null && this.local.localThreadOwner(id) === 'claude'
@@ -499,13 +596,34 @@ export class NativeCodexMux {
     }
     const sortKey = params.sortKey === 'created_at' ? 'createdAt' : 'updatedAt'
     const direction = params.sortDirection === 'asc' ? 1 : -1
-    const data = [...upstreamData, ...localData].sort((a, b) => {
+    const data = this.dedupeRehomedRows(upstreamData, localData).sort((a, b) => {
       const av = Number(asRecord(a)[sortKey] ?? 0)
       const bv = Number(asRecord(b)[sortKey] ?? 0)
       if (av !== bv) return (av - bv) * direction
       return String(asRecord(a).id).localeCompare(String(asRecord(b).id)) * direction
     })
     return { ...upstreamResult, data }
+  }
+
+  // A re-homed thread has a row on both sides. Keep the one from the engine
+  // that owns it now, so the desktop still sees exactly one thread.
+  private dedupeRehomedRows(upstreamData: unknown[], localData: unknown[]): unknown[] {
+    const tagged = [
+      ...upstreamData.map((entry) => ({ entry, upstream: true })),
+      ...localData.map((entry) => ({ entry, upstream: false })),
+    ]
+    const counts = new Map<string, number>()
+    for (const row of tagged) {
+      const id = idOf(asRecord(row.entry))
+      if (id) counts.set(id, (counts.get(id) ?? 0) + 1)
+    }
+    return tagged
+      .filter((row) => {
+        const id = idOf(asRecord(row.entry))
+        if (!id || (counts.get(id) ?? 0) < 2) return true
+        return row.upstream === (this.currentEngine(id) === 'gpt')
+      })
+      .map((row) => row.entry)
   }
 
   private async mergeLoadedList(peer: RpcPeer, params: Record<string, unknown>): Promise<unknown> {
@@ -626,10 +744,324 @@ export class NativeCodexMux {
     const threadId = threadIdOf(asRecord(params))
     if (threadId && this.upstream.available && this.ownerOf(threadId) === 'upstream') {
       this.peerByThread.set(threadId, peer)
-      this.upstream.notify(method, params)
+      const upstreamId = this.upstreamIdByApp.get(threadId)
+      this.upstream.notify(
+        method,
+        upstreamId ? rewriteThreadIds(params, threadId, upstreamId) : params,
+      )
       return true
     }
     return false
+  }
+
+  // ---------------------------------------------------------------------
+  // Mid-thread engine switching (src/rehome.mts, docs/evidence/a5-*.md)
+  // ---------------------------------------------------------------------
+
+  // Which engine owns this thread right now. A re-home record wins; otherwise
+  // the thread is whatever its creation path made it.
+  private currentEngine(threadId: string): Engine {
+    const rehomed = this.store.getThreadEngine(threadId)
+    if (rehomed) return rehomed.engine
+    if (this.store.isNativeCodexThread(threadId)) return 'gpt'
+    const model = this.local.localThreadModel(threadId)
+    if (model != null) return engineForModel(model)
+    // Unknown ids belong to the child (CLI resumes, subagents, codex_app).
+    return 'gpt'
+  }
+
+  // Called for every `turn/start` before it is routed. Returns true when the
+  // turn was already answered here (a refusal); false lets it continue, by
+  // which point ownership matches the model on this turn.
+  private async prepareTurnRouting(
+    peer: RpcPeer,
+    request: JsonRpcRequest,
+    params: Record<string, unknown>,
+  ): Promise<boolean> {
+    const threadId = threadIdOf(params)
+    const model = typeof params.model === 'string' ? params.model.trim() : ''
+    // A summary / title turn carries the desktop's own default model and must
+    // never move the thread it is summarizing.
+    if (!threadId || !model || params.outputSchema != null) return false
+    const to = engineForModel(model)
+    const from = this.currentEngine(threadId)
+    if (from === to) return false
+    if (this.activeUpstreamTurns.has(threadId) || this.local.hasActiveTurn(threadId)) {
+      this.failRequest(
+        peer,
+        request.id,
+        `this thread is still answering; wait for the current turn to finish before switching to ${model}`,
+      )
+      return true
+    }
+    try {
+      await this.rehomeThread(peer, threadId, from, to, params)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      debugLog('thread.rehomeFailed', { threadId, from, to, message })
+      this.failRequest(peer, request.id, `could not switch this thread to ${model}: ${message}`)
+      return true
+    }
+    return false
+  }
+
+  private async rehomeThread(
+    peer: RpcPeer,
+    threadId: string,
+    from: Engine,
+    to: Engine,
+    turnParams: Record<string, unknown>,
+  ): Promise<void> {
+    const state = this.store.getThreadEngine(threadId)
+    const knownUpstreamId =
+      state?.upstreamThreadId ?? (this.store.isNativeCodexThread(threadId) ? threadId : null)
+    if (from !== 'gpt' && to !== 'gpt') {
+      // Claude <-> Grok never leaves the local layer: it does the session reset,
+      // the transcript and the `thread.rehomed` line itself (server.mts), so
+      // only the ownership record moves here — and it has to, or a restart
+      // would forget the choice.
+      this.rememberEngine({
+        id: threadId,
+        engine: to,
+        upstreamThreadId: knownUpstreamId,
+        pendingPrefix: null,
+        carriedTurnId: state?.carriedTurnId ?? null,
+      })
+      return
+    }
+    if (to === 'gpt') {
+      await this.rehomeToUpstream(peer, threadId, knownUpstreamId, turnParams)
+    } else {
+      await this.rehomeToLocal(peer, threadId, knownUpstreamId, to, turnParams)
+    }
+    debugLog('thread.rehomed', { threadId, from, to })
+  }
+
+  // Local engine -> the real Codex child. Resumes the child thread this app
+  // thread already had, else starts a new one and aliases it.
+  private async rehomeToUpstream(
+    peer: RpcPeer,
+    threadId: string,
+    knownUpstreamId: string | null,
+    turnParams: Record<string, unknown>,
+  ): Promise<void> {
+    const sides = await this.readBothSides(peer, threadId, knownUpstreamId)
+    const cwd = rehomeCwd(turnParams, sides.localThread, sides.upstreamThread)
+    // Only the local turns the child has not been given yet: it keeps its own
+    // history, so re-carrying it would duplicate the conversation.
+    const carried = this.store.getThreadEngine(threadId)?.carriedTurnId ?? null
+    const fresh = localTurnsAfter(sides.localTurns, carried)
+    const carriedTurnId = idOf(asRecord(sides.localTurns.at(-1))) ?? carried
+    const transcript = formatTranscript(transcriptEntriesFromTurns(fresh))
+    let upstreamId: string | null = null
+    if (knownUpstreamId) {
+      try {
+        const resumed = asRecord(
+          await this.upstream.request(
+            'thread/resume',
+            { threadId: knownUpstreamId, ...(cwd ? { cwd } : {}) },
+            30_000,
+          ),
+        )
+        upstreamId = idOf(asRecord(resumed.thread)) ?? knownUpstreamId
+      } catch (error) {
+        debugLog('thread.rehome.resumeFailed', {
+          threadId,
+          upstreamThreadId: knownUpstreamId,
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+    if (!upstreamId) {
+      const started = asRecord(
+        await this.upstream.request(
+          'thread/start',
+          {
+            model: turnParams.model,
+            ...(cwd ? { cwd } : {}),
+            ...(typeof turnParams.developerInstructions === 'string'
+              ? { developerInstructions: turnParams.developerInstructions }
+              : {}),
+          },
+          30_000,
+        ),
+      )
+      upstreamId = idOf(asRecord(started.thread))
+      if (!upstreamId) throw new Error('the Codex child did not return a thread id')
+      this.upstreamThreads.set(upstreamId, upstreamThreadInfoFrom(started))
+    }
+    let pendingPrefix: string | null = null
+    if (transcript) {
+      try {
+        await this.upstream.request(
+          'thread/inject_items',
+          { threadId: upstreamId, items: injectItemsFor(transcript) },
+          30_000,
+        )
+      } catch (error) {
+        // The child refused the injection (older protocol, unknown item
+        // shape). Fall back to prefixing the first turn's input.
+        debugLog('thread.rehome.injectFailed', {
+          threadId,
+          message: error instanceof Error ? error.message : String(error),
+        })
+        pendingPrefix = transcript
+      }
+    }
+    this.store.setNativeCodexThread(upstreamId)
+    this.rememberEngine({
+      id: threadId,
+      engine: 'gpt',
+      upstreamThreadId: upstreamId,
+      pendingPrefix,
+      carriedTurnId,
+    })
+  }
+
+  // The real Codex child -> a local engine. The local session is always reset,
+  // so the whole merged conversation is carried over.
+  private async rehomeToLocal(
+    peer: RpcPeer,
+    threadId: string,
+    knownUpstreamId: string | null,
+    to: Engine,
+    turnParams: Record<string, unknown>,
+  ): Promise<void> {
+    const sides = await this.readBothSides(peer, threadId, knownUpstreamId)
+    const upstreamThread = sides.upstreamThread
+    this.local.adoptThread(peer, {
+      threadId,
+      model: String(turnParams.model ?? ''),
+      cwd: rehomeCwd(turnParams, sides.localThread, upstreamThread),
+      transcript: formatTranscript(transcriptEntriesFromTurns(sides.turns)),
+      preview: typeof upstreamThread?.preview === 'string' ? upstreamThread.preview : '',
+      createdAt: typeof upstreamThread?.createdAt === 'number' ? upstreamThread.createdAt : null,
+    })
+    this.rememberEngine({
+      id: threadId,
+      engine: to,
+      // Kept so a later switch back reuses the same child thread and
+      // `thread/read` can still merge both halves of the history.
+      upstreamThreadId: knownUpstreamId,
+      pendingPrefix: null,
+      carriedTurnId: this.store.getThreadEngine(threadId)?.carriedTurnId ?? null,
+    })
+  }
+
+  // Both halves of a re-homed thread's history, in one chronological list.
+  private async readBothSides(
+    peer: RpcPeer,
+    threadId: string,
+    upstreamThreadId: string | null,
+  ): Promise<{
+    localThread: Record<string, unknown> | null
+    upstreamThread: Record<string, unknown> | null
+    localTurns: unknown[]
+    upstreamTurns: unknown[]
+    turns: unknown[]
+  }> {
+    const wantsLocal = this.local.localThreadOwner(threadId) != null
+    const [localSettled, upstreamSettled] = await Promise.allSettled([
+      wantsLocal
+        ? this.local.dispatch(peer, 'thread/read', { threadId, includeTurns: true })
+        : Promise.resolve(null),
+      upstreamThreadId
+        ? this.upstream.request(
+            'thread/read',
+            { threadId: upstreamThreadId, includeTurns: true },
+            30_000,
+          )
+        : Promise.resolve(null),
+    ])
+    if (localSettled.status === 'rejected')
+      debugLog('thread.rehome.localReadFailed', { threadId, message: String(localSettled.reason) })
+    if (upstreamSettled.status === 'rejected')
+      debugLog('thread.rehome.upstreamReadFailed', {
+        threadId,
+        message: String(upstreamSettled.reason),
+      })
+    const localThread =
+      localSettled.status === 'fulfilled' && localSettled.value != null
+        ? asRecord(asRecord(localSettled.value).thread)
+        : null
+    const upstreamThread =
+      upstreamSettled.status === 'fulfilled' && upstreamSettled.value != null
+        ? asRecord(asRecord(upstreamSettled.value).thread)
+        : null
+    const localTurns = Array.isArray(localThread?.turns) ? localThread.turns : []
+    const upstreamTurns = Array.isArray(upstreamThread?.turns) ? upstreamThread.turns : []
+    // Turns from the two engines are interleaved by start time. Timestamps are
+    // whole seconds on the local side, so two turns can tie; the engine that
+    // owns the thread right now is the one that ran last, so on a tie the
+    // other side goes first.
+    const upstreamFirst = this.currentEngine(threadId) !== 'gpt'
+    const turns = [
+      ...localTurns.map((turn) => ({ turn, rank: upstreamFirst ? 1 : 0 })),
+      ...upstreamTurns.map((turn) => ({ turn, rank: upstreamFirst ? 0 : 1 })),
+    ]
+      .sort((a, b) => startedAtOf(a.turn) - startedAtOf(b.turn) || a.rank - b.rank)
+      .map((entry) => entry.turn)
+    return { localThread, upstreamThread, localTurns, upstreamTurns, turns }
+  }
+
+  // `thread/read` on a thread that has lived on both sides answers with ONE
+  // thread carrying both halves of the item history, in order.
+  private async mergeRehomedThreadRead(
+    peer: RpcPeer,
+    request: JsonRpcRequest,
+    params: Record<string, unknown>,
+  ): Promise<boolean> {
+    const threadId = threadIdOf(params)
+    if (!threadId || params.includeTurns === false) return false
+    const state = this.store.getThreadEngine(threadId)
+    if (!state?.upstreamThreadId) return false
+    if (this.local.localThreadOwner(threadId) == null) return false
+    try {
+      const sides = await this.readBothSides(peer, threadId, state.upstreamThreadId)
+      const base =
+        state.engine === 'gpt'
+          ? (sides.upstreamThread ?? sides.localThread)
+          : (sides.localThread ?? sides.upstreamThread)
+      if (!base) return false
+      peer.send({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: { thread: { ...base, id: threadId, turns: sides.turns } },
+      })
+      return true
+    } catch (error) {
+      debugLog('thread.rehome.mergedReadFailed', {
+        threadId,
+        message: error instanceof Error ? error.message : String(error),
+      })
+      return false
+    }
+  }
+
+  private rememberEngine(record: ThreadEngineRecord): void {
+    this.store.setThreadEngine(record)
+    this.rememberAlias(record)
+  }
+
+  private rememberAlias(record: ThreadEngineRecord): void {
+    const upstreamId = record.upstreamThreadId
+    if (!upstreamId || upstreamId === record.id) return
+    this.upstreamIdByApp.set(record.id, upstreamId)
+    this.appIdByUpstream.set(upstreamId, record.id)
+  }
+
+  // Child -> desktop: an aliased thread id becomes the one the app knows.
+  private toAppThreadIds<T extends WireMessage>(message: T): T {
+    if (this.appIdByUpstream.size === 0) return message
+    const params = asRecord((message as { params?: unknown }).params)
+    const upstreamId = threadIdOf(params) ?? idOf(asRecord(params.thread))
+    if (!upstreamId) return message
+    const appId = this.appIdByUpstream.get(upstreamId)
+    return appId ? rewriteThreadIds(message, upstreamId, appId) : message
+  }
+
+  private failRequest(peer: RpcPeer, id: JsonRpcRequest['id'], message: string): void {
+    peer.send({ jsonrpc: '2.0', id, error: { code: -32000, message } })
   }
 
   private recordUpstreamThread(threadId: string, peer: RpcPeer | null): void {
@@ -644,6 +1076,58 @@ export class NativeCodexMux {
     }
     return this.primaryPeer ?? this.peers.values().next().value ?? null
   }
+}
+
+// Swap one thread id for another anywhere in a JSON-RPC message. Thread ids
+// are opaque and unique, so an exact string match is the whole rule; it covers
+// `threadId`, `thread.id`, `parentThreadId`, `receiverThreadIds` and any field
+// a future protocol version adds without this module having to know them.
+function rewriteThreadIds<T>(value: T, from: string, to: string): T {
+  if (!from || from === to) return value
+  const walk = (input: unknown): unknown => {
+    if (typeof input === 'string') return input === from ? to : input
+    if (Array.isArray(input)) return input.map(walk)
+    if (input && typeof input === 'object') {
+      const out: Record<string, unknown> = {}
+      for (const [key, entry] of Object.entries(input as Record<string, unknown>))
+        out[key] = walk(entry)
+      return out
+    }
+    return input
+  }
+  return walk(value) as T
+}
+
+// Local turns record seconds, the child's may record milliseconds. Normalize
+// to seconds so the two histories can be ordered against each other; anything
+// past the year 5138 in seconds is read as a millisecond timestamp.
+const MILLISECOND_EPOCH_FLOOR = 100_000_000_000
+
+function startedAtOf(turn: unknown): number {
+  const value = asRecord(turn).startedAt
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  return value >= MILLISECOND_EPOCH_FLOOR ? Math.floor(value / 1000) : value
+}
+
+// The local turns that follow the last one already handed to the child. An
+// unknown watermark (a turn since deleted) carries everything, which repeats
+// context rather than losing it.
+function localTurnsAfter(turns: unknown[], carriedTurnId: string | null): unknown[] {
+  if (!carriedTurnId) return turns
+  const index = turns.findIndex((turn) => idOf(asRecord(turn)) === carriedTurnId)
+  return index < 0 ? turns : turns.slice(index + 1)
+}
+
+// cwd for a re-homed thread: the turn's own, then whichever side last knew one.
+function rehomeCwd(
+  turnParams: Record<string, unknown>,
+  localThread: Record<string, unknown> | null,
+  upstreamThread: Record<string, unknown> | null,
+): string | null {
+  for (const candidate of [turnParams.cwd, localThread?.cwd, upstreamThread?.cwd]) {
+    if (typeof candidate === 'string' && candidate.length > 0) return candidate
+  }
+  return null
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

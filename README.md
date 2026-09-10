@@ -4,9 +4,10 @@
 
 **Run Claude, Grok and GPT inside the ChatGPT desktop app.**
 
-Pick the engine per thread. Spawn mixed sub-agents ("two on Grok, two on
-Claude") and watch them in the app's own agent view. GPT threads pass straight
-through to the real Codex, untouched.
+Pick the engine per turn — move the picker mid-conversation and the thread
+follows, in either direction, with its history. Spawn mixed sub-agents ("two on
+Grok, two on Claude") and watch them in the app's own agent view. GPT threads
+pass straight through to the real Codex, untouched.
 
 ## How it works
 

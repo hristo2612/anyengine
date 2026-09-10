@@ -21,7 +21,12 @@ import {
   providerFor,
 } from './bridge-instructions.mjs'
 import { listClaudeHooks, listClaudeSkills } from './claude-capabilities.mjs'
-import { type MuxLocalServer, NativeCodexMux, routeForModel } from './codex-mux.mjs'
+import {
+  type MuxLocalServer,
+  NativeCodexMux,
+  type RehomeAdoption,
+  routeForModel,
+} from './codex-mux.mjs'
 import {
   codexPluginMarketplaces,
   findCodexPlugin,
@@ -43,6 +48,12 @@ import {
   providerLoopSelectionInputFromEnv,
   resolveProviderLoopSelection,
 } from './provider-loop-selection.mjs'
+import {
+  type Engine,
+  engineForModel,
+  formatTranscript,
+  transcriptEntriesFromTurns,
+} from './rehome.mjs'
 import { recordRunEvent } from './run-registry.mjs'
 import { normalizeRuntimeType } from './runtime-config.mjs'
 import {
@@ -327,6 +338,9 @@ export class CodexClaudeAppServer {
         if (!thread) return null
         return thread.runtimeBackend === 'codex' ? 'codex-exec' : 'claude'
       },
+      localThreadModel: (threadId) => this.store.getThread(threadId)?.model ?? null,
+      hasActiveTurn: (threadId) => this.activeTurnByThread.has(threadId),
+      adoptThread: (peer, input) => this.adoptRehomedThread(peer, input),
     }
     let mux: NativeCodexMux | null = null
     const upstream = new CodexUpstream({
@@ -350,6 +364,91 @@ export class CodexClaudeAppServer {
     })
     if (options.eager) upstream.start()
     return mux
+  }
+
+  // A thread handed back to a local engine by the multiplexer (src/rehome.mts).
+  // The row may not exist at all — a thread born on the real Codex child is
+  // only an id here — so it is created on the spot with the child's cwd and
+  // policy. The runtime session is reset either way: neither engine can resume
+  // the other's session, so the carried transcript is what continues the
+  // conversation, applied to the first turn's prompt.
+  private adoptRehomedThread(peer: RpcPeer, input: RehomeAdoption): void {
+    const now = nowSeconds()
+    const existing = this.store.getThread(input.threadId)
+    const thread: ThreadRecord = existing
+      ? {
+          ...existing,
+          model: input.model,
+          cwd: input.cwd ?? existing.cwd,
+          updatedAt: now,
+          status: { type: 'idle' },
+          runtimeBackend: 'claude',
+          claudeSessionId: null,
+          codexSessionId: null,
+          rehomePrefix: input.transcript,
+        }
+      : {
+          id: input.threadId,
+          sessionId: input.threadId,
+          forkedFromId: null,
+          preview: input.preview ?? '',
+          name: null,
+          archived: false,
+          cwd: input.cwd ?? process.cwd(),
+          model: input.model,
+          reasoningEffort: null,
+          modelProvider: 'claude-code',
+          claudeSessionId: null,
+          source: 'appServer',
+          createdAt: input.createdAt ?? now,
+          updatedAt: now,
+          status: { type: 'idle' },
+          approvalPolicy: input.approvalPolicy ?? 'never',
+          sandboxMode: input.sandboxMode ?? 'danger-full-access',
+          permissionProfileId: null,
+          ephemeral: false,
+          threadSource: 'user',
+          agentRole: null,
+          agentNickname: null,
+          baseInstructions: null,
+          developerInstructions: null,
+          personality: null,
+          runtimeBackend: 'claude',
+          codexSessionId: null,
+          rehomePrefix: input.transcript,
+        }
+    this.store.upsertThread(thread)
+    this.activePeerByThread.set(thread.id, peer)
+  }
+
+  // Claude <-> Grok mid-thread switch. Both engines are served by the local
+  // layer, so the multiplexer leaves this one here (and it works with no
+  // native Codex child attached at all). gpt-* never reaches this path.
+  private rehomeLocalThread(thread: ThreadRecord, model: string): void {
+    const from = engineForModel(thread.model)
+    const to = engineForModel(model)
+    if (from === to || from === 'gpt' || to === 'gpt') return
+    const transcript = formatTranscript(transcriptEntriesFromTurns(this.store.listTurns(thread.id)))
+    thread.claudeSessionId = null
+    thread.rehomePrefix = transcript
+    debugLog('thread.rehomed', {
+      threadId: thread.id,
+      from,
+      to,
+      carriedChars: transcript?.length ?? 0,
+    })
+    recordRunEvent('thread.rehomed', { threadId: thread.id, from, to })
+  }
+
+  // The carried transcript rides on the prompt of the first turn after a
+  // switch and is consumed there. Never on a summary/title turn: those run on
+  // their own model and must not inherit a conversation.
+  private applyRehomePrefix(thread: ThreadRecord, prompt: string, isSummary: boolean): string {
+    const prefix = thread.rehomePrefix
+    if (!prefix || isSummary) return prompt
+    thread.rehomePrefix = null
+    this.store.updateRehomePrefix(thread.id, null)
+    return prompt ? `${prefix}\n\n${prompt}` : prefix
   }
 
   hasActiveTurns(): boolean {
@@ -1870,6 +1969,9 @@ export class CodexClaudeAppServer {
     const reasoningEffort = reasoningEffortFromParams(params, thread.reasoningEffort)
     const permissionProfileId = permissionProfileIdFromParams(params)
     const permissionProfile = permissionProfilePolicy(permissionProfileId)
+    // Routing is per turn, not per thread: a model from another engine hands
+    // the thread over before the turn runs (src/rehome.mts).
+    if (model && params.outputSchema == null) this.rehomeLocalThread(thread, model)
     if (model) thread.model = model
     if (reasoningEffort) thread.reasoningEffort = reasoningEffort
     if (permissionProfileId) {
@@ -1890,6 +1992,11 @@ export class CodexClaudeAppServer {
       thread.updatedAt = nowSeconds()
       this.store.upsertThread(thread)
     }
+    // What actually reaches the engine: the user's text, prefixed once with a
+    // transcript when this is the first turn after an engine switch. The
+    // stored `userMessage` item keeps the user's own input, so the App's
+    // transcript is unchanged.
+    const runtimePrompt = this.applyRehomePrefix(thread, prompt, params.outputSchema != null)
     const initialItems: ThreadItem[] = [{ type: 'userMessage', id: newId(), content: input }]
     const imageItems: ThreadItem[] = []
     for (const img of images) {
@@ -1955,7 +2062,7 @@ export class CodexClaudeAppServer {
       }
       // Carry parsed images through the params bag so runRuntimeTurn can hand
       // them to the runtime context without re-parsing user input.
-      void this.runRuntimeTurn(peer, thread, turn, prompt, {
+      void this.runRuntimeTurn(peer, thread, turn, runtimePrompt, {
         ...params,
         _imageInputs: images,
       }).catch((error) => {

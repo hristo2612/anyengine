@@ -6,6 +6,7 @@ export type RunRegistryEventName =
   | 'thread.started'
   | 'thread.resumed'
   | 'thread.forked'
+  | 'thread.rehomed'
   | 'turn.started'
   | 'turn.completed'
   | 'turn.failed'

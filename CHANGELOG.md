@@ -7,6 +7,36 @@ versioning or publishing metadata.
 
 ## Unreleased
 
+### Switch engines mid-thread
+
+- **The model picker now works in the middle of a conversation, in every
+  direction.** A thread used to be bound to one engine at `thread/start`:
+  moving a GPT thread to Sonnet came back as the real Codex child's *"the
+  'sonnet' model is not supported when using Codex with a ChatGPT account"*,
+  and the reverse could not work at all. Routing is decided per **turn** from
+  `turn/start.model`; when the resolved engine differs from the one that owns
+  the thread, the thread is handed over first and the turn runs on the new
+  engine. The desktop keeps the one thread it has always had.
+- **The conversation comes with it.** The handover carries a compact
+  transcript of the thread so far — the user and assistant messages, in order,
+  without tool calls or reasoning. To Claude or Grok it seeds a fresh runtime
+  session as the prompt prefix of the first turn (the stored user message is
+  untouched, so the app's transcript does not change). To GPT it is handed to
+  the child through `thread/inject_items`, and prefixed onto the first turn's
+  input when the child refuses the injection. Past
+  `ANYENGINE_REHOME_MAX_CHARS` (12000) the block keeps the first user message
+  and the most recent exchanges, and says so in one line.
+- **One thread, one history.** Ownership — the engine plus the child thread id
+  behind it — is persisted, so a switch survives an adapter restart.
+  `thread/read` on a thread that has lived on both sides answers with both
+  halves of the item history in order, and `thread/list` shows it once, under
+  the id the desktop has always known.
+- **Guards.** A switch while a turn is running is refused with a readable
+  message instead of cutting the turn off; a turn whose model already matches
+  the owner is untouched (no behaviour change for the common path); a handover
+  that fails leaves the thread with its previous owner and errors the turn.
+  Each handover logs one `thread.rehomed {from,to}` line.
+
 ### Reserve mode handles itself
 
 - **The desktop's model picker survives a spent Codex quota, without giving up
