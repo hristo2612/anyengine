@@ -11,6 +11,7 @@ test lines added. Coverage is the `npm run test:coverage` total.
 | --- | --- | --- | --- | --- | --- |
 | 2026-09-10 | [#6](https://github.com/hristo2612/anyengine/pull/6) | Dead code and dead config | 437 | 81.46 % → 81.86 % | One near-miss, caught and fixed in the same PR |
 | 2026-09-10 | [#7](https://github.com/hristo2612/anyengine/pull/7) | Split `server.mts` | 1252 off the baseline | 81.86 % → 81.76 % | Medium — pure moves, verified per commit |
+| 2026-09-10 | [#8](https://github.com/hristo2612/anyengine/pull/8) | Tighter rules | — | floor 80 → 80.7 | Low — every gate verified to fail on a planted violation |
 
 ## 2026-09-10 — PR #1, dead code and dead config
 
@@ -127,3 +128,50 @@ and `stopped`. Extracting it means passing eight callbacks through a seam,
 which trades a big file for a worse abstraction. The 800-line cap now does the
 work instead: `server.mts` cannot grow, so the next feature has to carve its
 own module.
+
+
+## 2026-09-10 — PR #8, rules
+
+Five gates became seven, and three existing ones got stricter. Everything here
+passes on today's tree *because* of the two PRs before it — that is the order
+the work had to happen in.
+
+**New: complexity ratchet** (`scripts/check-complexity.mjs`). Biome warns past
+30, but a warning fails nothing, which is exactly how `server.mts` reached 186
+without anyone stopping it. The gate freezes two numbers in
+`scripts/complexity-baseline.json` — the worst function (**112**) and the count
+over the threshold (**15**) — and either may fall but never rise. A fall
+rewrites the baseline for the same commit, like the size ratchet; in CI it
+never writes, so a stale baseline is an error.
+
+**New: env-docs gate** (`scripts/check-env-docs.mjs`). Fails when `src/**`
+reads an `ANYENGINE_*` name with no entry in `docs/guide/configuration.md`.
+**37 of the 86 settings were undocumented**; all are now written down, including
+a new section for the experimental `agent-http` / `agentapi` / `claude-p`
+routes and one for the three names the adapter sets on its own children rather
+than reading from you. The checker understands the doc's existing
+`` `ANYENGINE_PTY_COLS` / `_ROWS` `` shorthand, so the house style counts as
+documentation; four genuinely ambiguous multi-segment rows were spelled out
+instead, which reads better anyway.
+
+**Tighter: file-size cap 800 → 500.** 800 was never a principle, just the
+length the big modules happened to have. Thirteen files are now grandfathered
+at their current length and may only shrink. One of them,
+`server-workspace.mts` at 606, is a file PR #7 *added* — it is the fs/process/
+search block moved wholesale, and splitting it three ways is the obvious next
+job rather than something to hide behind a looser cap.
+
+**Tighter: Biome.** `noUnusedVariables`, `noUnusedImports` and `noUselessElse`
+are errors, not warnings — all three are at zero after PR #6. `useAwait` was
+considered and rejected: 44 violations, mostly interface conformance
+(`async` methods that satisfy a promise-returning signature without awaiting),
+so it would be noise rather than a finding.
+
+**Tighter: coverage floor 80 → 80.7**, one point under today's 81.75 %.
+
+**Every gate was verified to fail.** Not just to pass: a planted unused import
+plus an undocumented `ANYENGINE_TOTALLY_NEW_KNOB` were added to
+`src/run-registry.mts`, `biome check` exited 1 and the env-docs gate named the
+knob; both went green again on revert. The complexity ratchet was checked the
+same way by lowering its baseline to 100 and watching it name
+`native-runtime.mts:497`.

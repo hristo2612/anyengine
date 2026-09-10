@@ -1,6 +1,6 @@
 # Quality gates
 
-Five small gates, all of them scripts you can read. The worry they answer:
+Seven small gates, all of them scripts you can read. The worry they answer:
 generated code drifts into an over-engineered mess long before anyone notices.
 Each gate freezes one axis of that drift at today's value.
 
@@ -23,9 +23,9 @@ setting.
 `--test-coverage-lines=80`. No extra dependency, and the same runner that
 already runs the suite.
 
-Line coverage on 2026-09-10 was **81.40 %** over 47 modules, so the floor sits
-one point under it. Below 80 the run exits non-zero and CI is red. Raise the
-floor when the real number rises; do not lower it.
+Line coverage on 2026-09-10 was **81.75 %** over 52 modules, so the floor sits
+one point under it at **80.7**. Below it the run exits non-zero and CI is red.
+Raise the floor when the real number rises; do not lower it.
 
 The thinnest modules today are `codex-proxy-runtime.mjs` (8.78 %, only reached
 through a live Codex child), `transports.mjs` (50.50 %) and
@@ -61,9 +61,15 @@ Biome's `complexity` group is on at recommended, with
 (Biome's default is 15). Warnings do not fail `npm run check`; they surface hot
 spots so review can push back.
 
-There are **20** today, the worst being a cognitive complexity of 186 in
-`src/server.mts`. That number is the drift, quantified — treat a rise in the
-count as a review comment.
+There are **15** today, the worst being a cognitive complexity of 112 in
+`src/native-runtime.mts`. `server.mts`'s 186 is gone: `runRuntimeTurn`'s event
+handler was split into named steps and now sits at 70.
+
+Because a warning fails nothing, the numbers used to drift — which is how 186
+happened. `scripts/check-complexity.mjs` now freezes both of them in
+`scripts/complexity-baseline.json`: the worst function may never get worse, and
+the count of hot spots may never grow. Either may fall, and a fall rewrites the
+baseline for the same commit, exactly like the size ratchet.
 
 ## 4. Dependency guard
 
@@ -78,7 +84,15 @@ node scripts/check-deps.mjs --update
 Commit the baseline with a one-line justification. `devDependencies` are not
 guarded — they never reach a user's machine.
 
-## 5. Secrets
+## 5. Environment-variable docs
+
+`scripts/check-env-docs.mjs` fails when `src/**` reads an `ANYENGINE_*` name
+that has no entry in [configuration](guide/configuration.md). Undocumented
+settings are how a codebase grows knobs nobody can find; there are **86** today
+and all of them are written down. Names read only by the smoke and acceptance
+scripts are fixtures, not configuration, and are out of scope.
+
+## 6. Secrets
 
 `gitleaks protect --staged` runs in the pre-push hook (install it with
 `brew install gitleaks`), and `gitleaks/gitleaks-action@v2` scans full history

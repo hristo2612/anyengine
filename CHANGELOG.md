@@ -32,6 +32,16 @@ versioning or publishing metadata.
 
 ### Quality gates
 
+- **Two new gates, three tightened.** `scripts/check-complexity.mjs` freezes the
+  worst cognitive complexity (112) and the number of hot spots (15) so neither
+  can rise — Biome's warning at 30 fails nothing, which is how `server.mts`
+  reached 186 unnoticed. `scripts/check-env-docs.mjs` fails when `src/**` reads
+  an `ANYENGINE_*` name with no entry in the configuration guide; 37 of the 86
+  settings were undocumented and are now written down. The file-size cap drops
+  from 800 to 500 lines with the thirteen files above it grandfathered at their
+  current length; `noUnusedVariables`, `noUnusedImports` and `noUselessElse`
+  become errors; the coverage floor rises from 80 to 80.7.
+
 - **Coverage is measured and floored.** `npm test` now runs the Node 24
   built-in coverage collector over `dist/src/**` and fails under 80 % lines.
   Today's number is 81.40 % across 47 modules. No new dependency: the runner

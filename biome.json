@@ -36,6 +36,15 @@
           "level": "warn",
           "options": { "maxAllowedComplexity": 30 }
         }
+      },
+      "correctness": {
+        "recommended": true,
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error"
+      },
+      "style": {
+        "recommended": true,
+        "noUselessElse": "error"
       }
     }
   }

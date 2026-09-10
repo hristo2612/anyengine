@@ -2,9 +2,15 @@
 // File-size ratchet: files never grow.
 //
 // Rule:
-//   - Every `src/**/*.mts` file must be at or under MAX_LINES (800), unless it
-//     is listed in `scripts/size-baseline.json` with the length it had when the
-//     ratchet was introduced.
+//   - Every `src/**/*.mts` file is capped at MAX_LINES (500), unless it is
+//     listed in `scripts/size-baseline.json` with the length it had when it was
+//     grandfathered.
+//   - A listed file may shrink but never grow past its recorded number, and
+//     leaves the baseline for good once it drops under the cap.
+//
+// The cap was 800 when this landed, which was simply the length the big
+// modules happened to have. 500 is what a module written today should stay
+// under; the ones above it are frozen where they are and can only come down.
 //   - A listed file may shrink but never grow past its recorded number.
 //   - Shrinking rewrites the baseline automatically. Drop below MAX_LINES and
 //     the file leaves the baseline for good.
@@ -20,7 +26,7 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const MAX_LINES = 800
+const MAX_LINES = 500
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = join(root, 'scripts', 'size-baseline.json')
 

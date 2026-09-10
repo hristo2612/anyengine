@@ -46,7 +46,6 @@ import {
   asRecord,
   buildSystemPromptAddendum,
   compactSummary,
-  emptyTokenBreakdown,
   fallbackStructuredText,
   gitDiff,
   hasLegacyPermissionParams,
@@ -78,7 +77,6 @@ import {
   summarizeInjectedItem,
   summarizeRpcParams,
   todoWriteToPlanSteps,
-  tokenBreakdownFromClaudeUsage,
   toolResultText,
   userInputAnswersAsContent,
   wrapMcpToolError,
@@ -125,7 +123,6 @@ import type {
 import {
   claudeModelOptions,
   claudeOutputFormat,
-  codexCliVersion,
   codexExecRouteEnabled,
   codexHome,
   codexProxyModelOptions,
