@@ -105,6 +105,7 @@ import {
   wrapMcpToolError,
   wrapMcpToolResult,
 } from './server-helpers.mjs'
+import { WorkspaceOps } from './server-workspace.mjs'
 import type { SessionStore } from './store.mjs'
 import type {
   ClaudeRuntime,
@@ -220,9 +221,6 @@ export class CodexClaudeAppServer {
   private subagentStateByTurn = new Map<string, ActiveSubagentState>()
   private fuzzySessions = new Map<string, { roots: string[] }>()
   private commandSessionAllow = new Map<string, Set<string>>()
-  private commandProcesses = new Map<string, ChildProcess>()
-  private processHandles = new Map<string, ChildProcess>()
-  private fsWatchers = new Map<string, FSWatcher>()
   private goals = new Map<string, Record<string, unknown>>()
   private elicitationCounts = new Map<string, number>()
   private tokenUsageByThread = new Map<string, TokenUsageBreakdown>()
@@ -237,6 +235,12 @@ export class CodexClaudeAppServer {
   private configOverrides: Record<string, unknown> = {}
   private readonly configPath = join(adapterHome(), 'config.json')
   private idleCheckHandler: (() => void) | null = null
+  // `fs/*`, `command/exec*`, `process/*` and the thread shell command live in
+  // src/server-workspace.mts; it owns the child processes and watchers they
+  // create and only needs a way back to the peer.
+  private readonly workspace = new WorkspaceOps((peer, notification) =>
+    this.notify(peer, notification),
+  )
   private stopped = false
   // Native-codex multiplexer (docs/guide/backends.md). Null when no real
   // codex binary is configured or ANYENGINE_GPT_ROUTE=exec.
@@ -970,39 +974,39 @@ export class CodexClaudeAppServer {
       case 'account/rateLimits/read':
         return this.accountRateLimits()
       case 'fs/readFile':
-        return this.fsReadFile(asRecord(params))
+        return this.workspace.fsReadFile(asRecord(params))
       case 'fs/readDirectory':
-        return this.fsReadDirectory(asRecord(params))
+        return this.workspace.fsReadDirectory(asRecord(params))
       case 'fs/getMetadata':
-        return this.fsGetMetadata(asRecord(params))
+        return this.workspace.fsGetMetadata(asRecord(params))
       case 'fs/writeFile':
-        return this.fsWriteFile(asRecord(params))
+        return this.workspace.fsWriteFile(asRecord(params))
       case 'fs/createDirectory':
-        return this.fsCreateDirectory(asRecord(params))
+        return this.workspace.fsCreateDirectory(asRecord(params))
       case 'fs/remove':
-        return this.fsRemove(asRecord(params))
+        return this.workspace.fsRemove(asRecord(params))
       case 'fs/copy':
-        return this.fsCopy(asRecord(params))
+        return this.workspace.fsCopy(asRecord(params))
       case 'fs/watch':
-        return this.fsWatch(peer, asRecord(params))
+        return this.workspace.fsWatch(peer, asRecord(params))
       case 'fs/unwatch':
-        return this.fsUnwatch(asRecord(params))
+        return this.workspace.fsUnwatch(asRecord(params))
       case 'command/exec':
-        return this.commandExec(peer, asRecord(params))
+        return this.workspace.commandExec(peer, asRecord(params))
       case 'command/exec/write':
-        return this.commandExecWrite(asRecord(params))
+        return this.workspace.commandExecWrite(asRecord(params))
       case 'command/exec/terminate':
-        return this.commandExecTerminate(asRecord(params))
+        return this.workspace.commandExecTerminate(asRecord(params))
       case 'command/exec/resize':
         return {}
       case 'process/spawn':
-        return this.processSpawn(peer, asRecord(params))
+        return this.workspace.processSpawn(peer, asRecord(params))
       case 'process/writeStdin':
-        return this.processWriteStdin(asRecord(params))
+        return this.workspace.processWriteStdin(asRecord(params))
       case 'process/kill':
-        return this.processKill(asRecord(params))
+        return this.workspace.processKill(asRecord(params))
       case 'process/resizePty':
-        return this.processResizePty(asRecord(params))
+        return this.workspace.processResizePty(asRecord(params))
       case 'externalAgentConfig/detect':
         return { items: [] }
       case 'externalAgentConfig/import':
@@ -1575,54 +1579,14 @@ export class CodexClaudeAppServer {
 
   private threadShellCommand(peer: RpcPeer, params: Record<string, unknown>): unknown {
     const threadId = stringOr(params.threadId, '')
-    const thread = this.store.getThread(threadId)
     const command = stringOr(params.command, '')
     if (!command) return {}
-    const shell = process.env.SHELL || '/bin/sh'
-    const cwd = thread?.cwd ?? process.cwd()
-    const processId = newId()
-    debugLog('thread.shellCommand.start', { threadId, processId, cwd, command })
-    const child = spawn(shell, ['-lc', command], { cwd, env: process.env, stdio: 'pipe' })
-    this.commandProcesses.set(processId, child)
-    child.stdout?.on('data', (chunk) =>
-      this.notify(peer, {
-        method: 'command/exec/outputDelta',
-        params: {
-          processId,
-          stream: 'stdout',
-          deltaBase64: Buffer.from(chunk).toString('base64'),
-          capReached: false,
-        },
-      }),
-    )
-    child.stderr?.on('data', (chunk) =>
-      this.notify(peer, {
-        method: 'command/exec/outputDelta',
-        params: {
-          processId,
-          stream: 'stderr',
-          deltaBase64: Buffer.from(chunk).toString('base64'),
-          capReached: false,
-        },
-      }),
-    )
-    child.once('error', (error) =>
-      debugLog('thread.shellCommand.error', { threadId, processId, error: error.message }),
-    )
-    child.once('close', (code, signal) => {
-      debugLog('thread.shellCommand.close', { threadId, processId, code, signal })
-      this.commandProcesses.delete(processId)
-    })
-    return {}
+    const cwd = this.store.getThread(threadId)?.cwd ?? process.cwd()
+    return this.workspace.shellCommand(peer, { threadId, command, cwd })
   }
 
   private threadBackgroundTerminalsClean(params: Record<string, unknown>): unknown {
-    debugLog('thread.backgroundTerminals.clean', {
-      threadId: stringOr(params.threadId, ''),
-      activeCommandProcesses: this.commandProcesses.size,
-      activeProcessHandles: this.processHandles.size,
-    })
-    return {}
+    return this.workspace.backgroundTerminalsClean(stringOr(params.threadId, ''))
   }
 
   private reviewStart(peer: RpcPeer, params: Record<string, unknown>): unknown {
@@ -3929,441 +3893,6 @@ export class CodexClaudeAppServer {
     // real rate-limit data from the Anthropic SDK (no headers exposed), the
     // notification was empty noise. The initial snapshot still fires once
     // post-handshake in `initialize` so the UI populates on first connect.
-  }
-
-  private async fsReadFile(params: Record<string, unknown>): Promise<unknown> {
-    const { readFile } = await import('node:fs/promises')
-    const path = stringOr(params.path ?? params.filePath, '')
-    return { dataBase64: (await readFile(path)).toString('base64') }
-  }
-
-  private async fsReadDirectory(params: Record<string, unknown>): Promise<unknown> {
-    const { readdir } = await import('node:fs/promises')
-    const path = stringOr(params.path, process.cwd())
-    const entries = await readdir(path, { withFileTypes: true })
-    return {
-      entries: entries.map((entry) => ({
-        fileName: entry.name,
-        isDirectory: entry.isDirectory(),
-        isFile: entry.isFile(),
-      })),
-    }
-  }
-
-  private async fsGetMetadata(params: Record<string, unknown>): Promise<unknown> {
-    const { stat } = await import('node:fs/promises')
-    const path = stringOr(params.path, '')
-    const metadata = await stat(path)
-    return {
-      isDirectory: metadata.isDirectory(),
-      isFile: metadata.isFile(),
-      isSymlink: metadata.isSymbolicLink(),
-      createdAtMs: metadata.birthtimeMs,
-      modifiedAtMs: metadata.mtimeMs,
-    }
-  }
-
-  private async fsWriteFile(params: Record<string, unknown>): Promise<unknown> {
-    const { writeFile } = await import('node:fs/promises')
-    const path = stringOr(params.path, '')
-    const data =
-      typeof params.dataBase64 === 'string'
-        ? Buffer.from(params.dataBase64, 'base64')
-        : Buffer.alloc(0)
-    await writeFile(path, data)
-    return {}
-  }
-
-  private async fsCreateDirectory(params: Record<string, unknown>): Promise<unknown> {
-    const { mkdir } = await import('node:fs/promises')
-    await mkdir(stringOr(params.path, ''), { recursive: params.recursive !== false })
-    return {}
-  }
-
-  private async fsRemove(params: Record<string, unknown>): Promise<unknown> {
-    const { rm } = await import('node:fs/promises')
-    await rm(stringOr(params.path, ''), {
-      recursive: params.recursive !== false,
-      force: params.force !== false,
-    })
-    return {}
-  }
-
-  private async fsCopy(params: Record<string, unknown>): Promise<unknown> {
-    const { cp } = await import('node:fs/promises')
-    await cp(stringOr(params.sourcePath, ''), stringOr(params.destinationPath, ''), {
-      recursive: params.recursive === true,
-    })
-    return {}
-  }
-
-  private async fsWatch(peer: RpcPeer, params: Record<string, unknown>): Promise<unknown> {
-    const { realpath } = await import('node:fs/promises')
-    const watchId = stringOr(params.watchId, newId())
-    const path = await realpath(stringOr(params.path, process.cwd()))
-    this.fsWatchers.get(watchId)?.close()
-    const watcher = watch(path, { persistent: false }, (_eventType, filename) => {
-      const changedPath = filename ? `${path}/${String(filename)}` : path
-      this.notify(peer, { method: 'fs/changed', params: { watchId, changedPaths: [changedPath] } })
-    })
-    this.fsWatchers.set(watchId, watcher)
-    return { path }
-  }
-
-  private fsUnwatch(params: Record<string, unknown>): unknown {
-    const watchId = stringOr(params.watchId, '')
-    this.fsWatchers.get(watchId)?.close()
-    this.fsWatchers.delete(watchId)
-    return {}
-  }
-
-  private async commandExec(peer: RpcPeer, params: Record<string, unknown>): Promise<unknown> {
-    const processId = typeof params.processId === 'string' ? params.processId : newId()
-    const command = commandArray(params.command)
-    if (command.length === 0) throw new Error('command/exec requires command')
-    if (
-      (params.streamStdoutStderr === true || params.streamStdin === true || params.tty === true) &&
-      typeof params.processId !== 'string'
-    ) {
-      throw new Error('command/exec streaming requires processId')
-    }
-
-    const executable = command[0] as string
-    const streamOutput = params.streamStdoutStderr === true || params.tty === true
-    const cwd = stringOr(params.cwd, process.cwd())
-    debugLog('command.exec.start', {
-      processId,
-      cwd,
-      command,
-      streamOutput,
-      streamStdin: params.streamStdin === true,
-      tty: params.tty === true,
-    })
-    const child = spawn(executable, command.slice(1), {
-      cwd,
-      env: commandEnv(params.env),
-      stdio: 'pipe',
-    })
-    this.commandProcesses.set(processId, child)
-
-    const stdout: Buffer[] = []
-    const stderr: Buffer[] = []
-    const cap =
-      params.disableOutputCap === true
-        ? Number.POSITIVE_INFINITY
-        : numberOr(params.outputBytesCap, 1_000_000)
-    let stdoutBytes = 0
-    let stderrBytes = 0
-
-    const capture = (target: Buffer[], chunk: Buffer, currentBytes: number): number => {
-      if (currentBytes >= cap) return currentBytes
-      const allowed = Math.min(chunk.byteLength, cap - currentBytes)
-      if (allowed > 0) target.push(chunk.subarray(0, allowed))
-      return currentBytes + allowed
-    }
-
-    child.stdout?.on('data', (chunk: Buffer | string) => {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-      if (streamOutput) {
-        this.notify(peer, {
-          method: 'command/exec/outputDelta',
-          params: {
-            processId,
-            stream: 'stdout',
-            deltaBase64: buffer.toString('base64'),
-            capReached: false,
-          },
-        })
-        return
-      }
-      stdoutBytes = capture(stdout, buffer, stdoutBytes)
-    })
-    child.stderr?.on('data', (chunk: Buffer | string) => {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-      if (streamOutput) {
-        this.notify(peer, {
-          method: 'command/exec/outputDelta',
-          params: {
-            processId,
-            stream: 'stderr',
-            deltaBase64: buffer.toString('base64'),
-            capReached: false,
-          },
-        })
-        return
-      }
-      stderrBytes = capture(stderr, buffer, stderrBytes)
-    })
-
-    const timeoutMs = params.disableTimeout === true ? null : numberOr(params.timeoutMs, 60_000)
-    let timeout: NodeJS.Timeout | null = null
-    if (timeoutMs != null && timeoutMs > 0) {
-      timeout = setTimeout(() => child.kill('SIGTERM'), timeoutMs)
-    }
-
-    return new Promise((resolve, reject) => {
-      child.once('error', (error) => {
-        debugLog('command.exec.error', {
-          processId,
-          error: error.message,
-          code: (error as NodeJS.ErrnoException).code,
-        })
-        if (timeout) clearTimeout(timeout)
-        this.commandProcesses.delete(processId)
-        reject(error)
-      })
-      child.once('close', (code, signal) => {
-        debugLog('command.exec.close', { processId, code, signal, stdoutBytes, stderrBytes })
-        if (timeout) clearTimeout(timeout)
-        this.commandProcesses.delete(processId)
-        resolve({
-          exitCode: code ?? 1,
-          stdout: streamOutput ? '' : Buffer.concat(stdout).toString('utf8'),
-          stderr: streamOutput ? '' : Buffer.concat(stderr).toString('utf8'),
-        })
-      })
-    })
-  }
-
-  private commandExecWrite(params: Record<string, unknown>): unknown {
-    const processId = stringOr(params.processId, '')
-    const child = this.commandProcesses.get(processId)
-    if (!child) throw new Error(`unknown command process: ${processId}`)
-    if (typeof params.deltaBase64 === 'string' && params.deltaBase64.length > 0) {
-      child.stdin?.write(Buffer.from(params.deltaBase64, 'base64'))
-    }
-    if (params.closeStdin === true) {
-      child.stdin?.end()
-    }
-    return {}
-  }
-
-  private commandExecTerminate(params: Record<string, unknown>): unknown {
-    const processId = stringOr(params.processId, '')
-    const child = this.commandProcesses.get(processId)
-    if (!child) throw new Error(`unknown command process: ${processId}`)
-    child.kill('SIGTERM')
-    return {}
-  }
-
-  private processSpawn(peer: RpcPeer, params: Record<string, unknown>): unknown {
-    const processHandle = stringOr(params.processHandle, '')
-    if (!processHandle) throw new Error('process/spawn requires processHandle')
-    if (this.processHandles.has(processHandle))
-      throw new Error(`process handle already active: ${processHandle}`)
-    const command = commandArray(params.command)
-    if (command.length === 0) throw new Error('process/spawn requires command')
-    const cwd = stringOr(params.cwd, process.cwd())
-    const isTty = params.tty === true
-    const streamOutput = params.streamStdoutStderr === true || isTty
-    const cap =
-      params.outputBytesCap == null ? 1_000_000 : numberOr(params.outputBytesCap, 1_000_000)
-    const stdout: Buffer[] = []
-    const stderr: Buffer[] = []
-    let stdoutBytes = 0
-    let stderrBytes = 0
-    let stdoutCapReached = false
-    let stderrCapReached = false
-    let exited = false
-
-    debugLog('process.spawn.start', {
-      processHandle,
-      cwd,
-      command,
-      streamOutput,
-      streamStdin: params.streamStdin === true,
-      tty: isTty,
-    })
-
-    // For interactive TTY sessions (e.g. Codex App built-in terminal), spawn via pty-bridge.py
-    // to allocate a real pseudo-terminal (PTY) master/slave pair with ANSI echo & ZLE line editor.
-    let child: ChildProcess
-    const file = fileURLToPath(import.meta.url)
-    const candidates = [
-      join(file, '../../../scripts/pty-bridge.py'),
-      join(file, '../../scripts/pty-bridge.py'),
-      join(homedir(), '.local/share/anyengine/scripts/pty-bridge.py'),
-    ]
-    const ptyBridge = candidates.find((c) => c && existsSync(c))
-    if (isTty && ptyBridge && existsSync(ptyBridge)) {
-      child = spawn('python3', [ptyBridge, ...command], {
-        cwd,
-        env: { ...commandEnv(params.env), TERM: 'xterm-256color' },
-        stdio: ['pipe', 'pipe', 'inherit'],
-      })
-      ;(child as any).__isPtyBridge = true
-    } else {
-      child = spawn(command[0] as string, command.slice(1), {
-        cwd,
-        env: commandEnv(params.env),
-        stdio: 'pipe',
-      })
-    }
-    this.processHandles.set(processHandle, child)
-
-    const capture = (target: Buffer[], chunk: Buffer, currentBytes: number): [number, boolean] => {
-      if (currentBytes >= cap) return [currentBytes, true]
-      const allowed = Math.min(chunk.byteLength, cap - currentBytes)
-      if (allowed > 0) target.push(chunk.subarray(0, allowed))
-      return [currentBytes + allowed, allowed < chunk.byteLength]
-    }
-
-    if ((child as any).__isPtyBridge) {
-      let bufferStr = ''
-      child.stdout?.on('data', (chunk: Buffer | string) => {
-        bufferStr += chunk.toString('utf8')
-        const lines = bufferStr.split(/\r?\n/)
-        bufferStr = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const msg = JSON.parse(line)
-            if (msg.stream === 'stdout') {
-              this.notify(peer, {
-                method: 'process/outputDelta',
-                params: {
-                  processHandle,
-                  stream: 'stdout',
-                  deltaBase64: msg.delta,
-                  capReached: false,
-                },
-              })
-            }
-          } catch {}
-        }
-      })
-    } else {
-      child.stdout?.on('data', (chunk: Buffer | string) => {
-        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-        if (streamOutput) {
-          this.notify(peer, {
-            method: 'process/outputDelta',
-            params: {
-              processHandle,
-              stream: 'stdout',
-              deltaBase64: buffer.toString('base64'),
-              capReached: false,
-            },
-          })
-        } else {
-          ;[stdoutBytes, stdoutCapReached] = capture(stdout, buffer, stdoutBytes)
-        }
-      })
-      child.stderr?.on('data', (chunk: Buffer | string) => {
-        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-        if (streamOutput) {
-          this.notify(peer, {
-            method: 'process/outputDelta',
-            params: {
-              processHandle,
-              stream: 'stderr',
-              deltaBase64: buffer.toString('base64'),
-              capReached: false,
-            },
-          })
-        } else {
-          ;[stderrBytes, stderrCapReached] = capture(stderr, buffer, stderrBytes)
-        }
-      })
-    }
-
-    // Do not impose a default timeout on interactive/streaming terminal sessions (tty or streamStdin)
-    const isInteractive = isTty || params.streamStdin === true
-    const defaultTimeout = isInteractive ? 0 : 60_000
-    const timeoutMs =
-      params.timeoutMs == null ? defaultTimeout : numberOr(params.timeoutMs, defaultTimeout)
-    const timeout = timeoutMs > 0 ? setTimeout(() => child.kill('SIGTERM'), timeoutMs) : null
-
-    child.once('error', (error) => {
-      debugLog('process.spawn.error', {
-        processHandle,
-        error: error.message,
-        code: (error as NodeJS.ErrnoException).code,
-      })
-      if (exited) return
-      exited = true
-      if (timeout) clearTimeout(timeout)
-      this.processHandles.delete(processHandle)
-      setImmediate(() =>
-        this.notify(peer, {
-          method: 'process/exited',
-          params: {
-            processHandle,
-            exitCode: 1,
-            stdout: streamOutput ? '' : Buffer.concat(stdout).toString('utf8'),
-            stdoutCapReached,
-            stderr: error.message,
-            stderrCapReached: false,
-          },
-        }),
-      )
-    })
-
-    child.once('close', (code, signal) => {
-      if (exited) return
-      exited = true
-      debugLog('process.spawn.close', {
-        processHandle,
-        code,
-        signal,
-        stdoutBytes,
-        stderrBytes,
-        stdoutCapReached,
-        stderrCapReached,
-      })
-      if (timeout) clearTimeout(timeout)
-      this.processHandles.delete(processHandle)
-      this.notify(peer, {
-        method: 'process/exited',
-        params: {
-          processHandle,
-          exitCode: code ?? 1,
-          stdout: streamOutput ? '' : Buffer.concat(stdout).toString('utf8'),
-          stdoutCapReached,
-          stderr: streamOutput ? '' : Buffer.concat(stderr).toString('utf8'),
-          stderrCapReached,
-        },
-      })
-    })
-    return {}
-  }
-
-  private processWriteStdin(params: Record<string, unknown>): unknown {
-    const processHandle = stringOr(params.processHandle, '')
-    const child = this.processHandles.get(processHandle)
-    if (!child) throw new Error(`unknown process handle: ${processHandle}`)
-    if (typeof params.deltaBase64 === 'string' && params.deltaBase64.length > 0) {
-      if ((child as any).__isPtyBridge) {
-        child.stdin?.write(JSON.stringify({ action: 'input', data: params.deltaBase64 }) + '\n')
-      } else {
-        child.stdin?.write(Buffer.from(params.deltaBase64, 'base64'))
-      }
-    }
-    if (params.closeStdin === true) child.stdin?.end()
-    return {}
-  }
-
-  private processResizePty(params: Record<string, unknown>): unknown {
-    const processHandle = stringOr(params.processHandle, '')
-    const child = this.processHandles.get(processHandle)
-    if (child && (child as any).__isPtyBridge) {
-      const size = (params.size as Record<string, unknown>) || {}
-      const cols = numberOr(size.cols, 80)
-      const rows = numberOr(size.rows, 24)
-      child.stdin?.write(JSON.stringify({ action: 'resize', cols, rows }) + '\n')
-    }
-    return {}
-  }
-
-  private processKill(params: Record<string, unknown>): unknown {
-    const processHandle = stringOr(params.processHandle, '')
-    const child = this.processHandles.get(processHandle)
-    if (!child) throw new Error(`unknown process handle: ${processHandle}`)
-    if ((child as any).__isPtyBridge) {
-      child.stdin?.write(JSON.stringify({ action: 'kill' }) + '\n')
-    }
-    child.kill('SIGTERM')
-    return {}
   }
 
   private marketplaceAdd(params: Record<string, unknown>): unknown {
