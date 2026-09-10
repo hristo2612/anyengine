@@ -17,6 +17,7 @@ export default defineConfig({
       { text: 'Reference', link: '/reference/protocol-coverage' },
       { text: 'RFCs', link: '/rfcs/rust-first-runtime' },
       { text: 'Contributing', link: '/contributing' },
+      { text: 'Quality gates', link: '/quality' },
     ],
     sidebar: {
       '/guide/': [

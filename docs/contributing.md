@@ -7,7 +7,7 @@
 | [tsx](https://tsx.is) | Run `.mts` sources directly (dev loop) | `npm run dev` |
 | [tsc](https://www.typescriptlang.org) | Type-check + emit `dist/*.mjs` | `npm run build` / `npm run typecheck` |
 | [Biome](https://biomejs.dev) | Format + lint | `npm run check` / `npm run check:fix` |
-| `node --test` | Unit tests | `npm test` |
+| `node --test` | Unit tests + coverage floor | `npm test` |
 | [VitePress](https://vitepress.dev) | This docs site | `npm run docs:dev` |
 
 ```bash
@@ -15,10 +15,13 @@ npm install
 npm run dev          # tsx src/adapter.mts — run sources directly, no build
 npm run build        # tsc -> dist/ (production artifact)
 npm run typecheck    # tsc --noEmit
-npm run check        # biome format + lint (read-only)
+npm run check        # biome + file-size ratchet + dependency guard (read-only)
 npm run check:fix    # biome auto-fix
-npm test             # build + node --test dist/test/*.mjs
+npm test             # build + node --test dist/test/*.mjs, with the coverage floor
+scripts/setup-hooks.sh  # once per clone: pre-push runs the same gates + gitleaks
 ```
+
+The gates, their current numbers and why each one exists: [quality.md](quality.md).
 
 ## Conventions
 
