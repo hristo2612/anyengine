@@ -17,10 +17,10 @@ function writeJson(p,value) {
   if (handle.isNil()) fail('sync '+p)
   handle.synchronizeFile; handle.closeFile
 }
-function taskText(command,args) {
+function taskText(command,args,environment) {
   var task=$.NSTask.alloc.init, pipe=$.NSPipe.pipe
   task.launchPath=command; task.arguments=args; task.standardOutput=pipe; task.standardError=$.NSPipe.pipe
-  task.environment=$({TZ:'UTC',LC_ALL:'C',PATH:'/usr/bin:/bin'})
+  task.environment=$(environment || {TZ:'UTC',LC_ALL:'C',PATH:'/usr/bin:/bin'})
   task.launch; var data=pipe.fileHandleForReading.readDataToEndOfFile; task.waitUntilExit
   return {status:Number(task.terminationStatus),text:ObjC.unwrap($.NSString.alloc.initWithDataEncoding(data,$.NSUTF8StringEncoding)).trim()}
 }

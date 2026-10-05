@@ -5,6 +5,7 @@ import { readlinkSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import test, { after } from 'node:test'
 import { AccountLedger } from '../src/accounts-ledger.mjs'
+import { identifyProcess } from '../src/accounts-processes.mjs'
 import { rotateAccount } from '../src/accounts-rotation.mjs'
 import { m3RecoveryJxa } from '../src/control-m3-recovery-jxa.mjs'
 import { accountFixture } from './helpers/accounts-fixture.mjs'
@@ -13,6 +14,29 @@ import { removeTempDirs } from './helpers/tmp.mjs'
 
 after(() => killChildren())
 after(removeTempDirs)
+
+test('Node-free recovery recognizes a live native account holder across clock settings', async () => {
+  const p = await accountFixture()
+  const script = join(p.root, 'recognize-account.js')
+  writeFileSync(
+    script,
+    `${m3RecoveryJxa}\nfunction run(args) { return accountDead(JSON.parse(args[0])) }\n`,
+    { mode: 0o600 },
+  )
+  const identity = identifyProcess(process.pid)
+  assert.ok(identity)
+  const result = spawnSync(
+    '/usr/bin/osascript',
+    ['-l', 'JavaScript', script, JSON.stringify(identity)],
+    {
+      encoding: 'utf8',
+      timeout: 30000,
+      env: { HOME: process.env.HOME, PATH: '/usr/bin:/bin', TZ: 'Pacific/Honolulu' },
+    },
+  )
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout.trim(), 'false')
+})
 
 for (const from of ['home', 'b'])
   for (const point of ['renamed-0', 'renamed-1', 'published', 'cleanup-unlinked']) {

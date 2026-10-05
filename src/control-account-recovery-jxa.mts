@@ -28,7 +28,8 @@ function accountSave(db,old,next,extra) {
   atx(db,'UPDATE gate SET body='+aq(JSON.stringify(next))+' WHERE id=1 AND body='+aq(old.body)+';'+assertChanged()+(extra || ''))
 }
 function accountProcess(pid) {
-  var r=taskText('/bin/ps',['-p',String(pid),'-o','pid=,pgid=,lstart='])
+  // Match accounts-processes: credential holders use the system's local clock.
+  var r=taskText('/bin/ps',['-p',String(pid),'-o','pid=,pgid=,lstart='],{LANG:'C',LC_ALL:'C',PATH:'/usr/bin:/bin'})
   if (r.status === 1 && !r.text) return null
   var m=/^(\d+)\s+(\d+)\s+(.+)$/.exec(r.text)
   if (r.status !== 0 || !m) fail('account process ownership unknown')
