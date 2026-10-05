@@ -2,7 +2,7 @@
   "name": "anyengine",
   "version": "0.1.0",
   "private": true,
-  "description": "Run Claude, Grok and GPT inside the ChatGPT desktop app.",
+  "description": "Use Claude in ChatGPT/Codex and GPT in Claude Code with your existing subscriptions.",
   "license": "MIT",
   "homepage": "https://github.com/hristo2612/anyengine",
   "repository": {

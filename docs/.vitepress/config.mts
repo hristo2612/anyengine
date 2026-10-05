@@ -5,7 +5,7 @@ const repo = 'https://github.com/hristo2612/anyengine'
 export default defineConfig({
   title: 'anyengine',
   description:
-    'Use GPT and Claude across ChatGPT.app and Claude Code, with mixed agents and account controls.',
+    'Use Claude in ChatGPT/Codex and GPT in Claude Code with your existing subscriptions.',
   base: '/anyengine/',
   lastUpdated: true,
   cleanUrls: true,

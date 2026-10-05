@@ -1,9 +1,10 @@
 # Getting started
 
-AnyEngine lets you use GPT and Claude from either ChatGPT.app's coding workspace
-or Claude Code. Choose an engine per turn, carry conversation context across
-switches, and run mixed sub-agents. It uses the official vendor clients and your
-existing local logins. Grok remains available through the existing Grok backend.
+AnyEngine connects ChatGPT's Codex workspace and Claude Code, so you can use
+your Claude and ChatGPT subscriptions from either tool. Switch between Claude
+and GPT in the same conversation, and run sub-agents from both providers.
+It uses the official vendor clients and your existing local logins. Grok is also
+available through its experimental CLI backend.
 
 ## Before you start
 

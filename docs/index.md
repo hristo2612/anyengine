@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: anyengine
-  text: Your coding app, your choice of engine
-  tagline: Use GPT and Claude across ChatGPT.app and Claude Code. Switch engines in one conversation, run mixed agents, and manage your accounts locally.
+  text: Claude in ChatGPT/Codex. GPT in Claude Code.
+  tagline: Use your Claude and ChatGPT subscriptions from either tool. Switch engines in the same conversation and run sub-agents from both providers.
   actions:
     - theme: brand
       text: Get started
@@ -30,6 +30,10 @@ features:
     title: Managed installation
     details: One setup command builds and verifies the installed runtime. Activation keeps automatic rollback, and Off restores managed settings.
 ---
+
+AnyEngine connects ChatGPT's Codex workspace and Claude Code, so you can use
+your Claude and ChatGPT subscriptions from either tool. Grok is also available
+through its experimental CLI backend.
 
 ## Start from a source checkout
 

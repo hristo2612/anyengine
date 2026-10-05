@@ -2,28 +2,32 @@
 
 [![CI](https://github.com/hristo2612/anyengine/actions/workflows/ci.yml/badge.svg)](https://github.com/hristo2612/anyengine/actions/workflows/ci.yml)
 
-**Run Claude, Grok and GPT inside the ChatGPT desktop app.**
+**Claude in ChatGPT/Codex. GPT in Claude Code.**
 
-Pick the engine per turn — move the picker mid-conversation and the thread
-follows, in either direction, with its history. Spawn mixed sub-agents ("two on
-Grok, two on Claude") and watch them in the app's own agent view. GPT threads
-pass straight through to the real Codex, untouched.
+AnyEngine connects ChatGPT's Codex workspace and Claude Code, so you can use
+your Claude and ChatGPT subscriptions from either tool. Switch between Claude
+and GPT in the same conversation, and run sub-agents from both providers.
+
+Grok is also available through its experimental CLI backend.
 
 ## How it works
 
-The ChatGPT desktop app talks to a local `codex app-server`. anyengine is a
-`codex` shim that answers that protocol and routes each thread through to the
-engine you name. Claude runs on the official `claude` CLI, Grok on the official
+The ChatGPT desktop app talks to a local `codex app-server`. AnyEngine provides
+a `codex` shim and local router that connect the app to the engine you name.
+Claude runs on the official `claude` CLI, Grok on the official
 `grok` CLI, GPT on the bundled Codex. No app patching, no signing. The version
 it reports follows the app's own codex after an update. Startup compatibility
 checks and live activation checks fall back safely when a build is incompatible.
-The local router also lets Claude Code use GPT turns and GPT sub-agents.
+In Claude Code, the local router supplies GPT turns and GPT sub-agents using
+the official Codex client's authentication. Claude Code executes the tools.
 
 ```
 ChatGPT.app ──▶ codex (shim, earlier in PATH) ──▶ anyengine adapter
                                                     ├─▶ claude  (Anthropic CLI)
                                                     ├─▶ grok    (xAI CLI)
                                                     └─▶ codex   (real app-server child)
+
+Claude Code ──▶ anyengine router ──▶ GPT (authenticated by Codex)
 ```
 
 Agent text and reasoning stream into the conversation; `Bash` becomes a command
