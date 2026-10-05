@@ -8,23 +8,20 @@ available through its experimental CLI backend.
 
 ## Before you start
 
-You need macOS, Node.js 24 or newer with npm, Git, ChatGPT.app, and the official
+You need macOS, Node.js 24 or newer with npm, ChatGPT.app, and the official
 Claude Code CLI. Use zsh or bash as your login shell. Sign in to ChatGPT.app and
 Claude Code through their normal login flows before setup. Grok is optional.
 
-M1–M3 have passed local acceptance and are available in this source checkout.
-A packaged release is pending; the package is not currently published to npm.
-
-## Install from a checkout
-
-From a clean AnyEngine Git checkout, run:
+## Install
 
 ```bash
-npm run setup
+npx anyengine-cli@latest setup
 ```
 
-Setup installs dependencies, builds and verifies a versioned library outside the
-checkout, then runs the existing activation command with automatic rollback.
+Setup installs and verifies a prebuilt versioned library outside the npm cache,
+then runs the existing activation command with automatic rollback. No Git
+checkout or TypeScript tools are needed. Installing the npm package alone does
+not enable routing or restart any app.
 It asks before restarting ChatGPT.app, refuses while managed work is active, and
 checks real GPT and Claude work after activation. These checks use your existing
 plans and usage allowances. A staged app update or failed check can stop setup;
@@ -33,22 +30,26 @@ follow the diagnostic and retained recovery command instead of forcing it.
 For an unattended restart you have already authorized:
 
 ```bash
-npm run setup -- --yes
+npx anyengine-cli@latest setup --yes
 ```
 
-Open a new terminal after setup. To use the CLI in the current terminal:
+Open a new terminal after setup and check the installed runtime:
 
 ```bash
-export PATH="$HOME/.anyengine/bin:$PATH"
 anyengine status
 anyengine doctor
 ```
 
-Fresh installs manage that PATH entry in your shell configuration. Older installs
-keep their existing shell block for rollback compatibility; use the export above
-in each terminal. The control launcher
+Fresh installs manage the PATH entry in your shell configuration. For the current
+terminal or an older installation, run `export PATH="$HOME/.anyengine/bin:$PATH"`.
+The control launcher
 lives at `~/.anyengine/bin/anyengine`. For a custom root, set `ANYENGINE_ROOT`
 before setup and use the current-terminal PATH command setup prints.
+
+Run `npx anyengine-cli@latest setup` again to update. The npm package name is
+`anyengine-cli`, and the installed command is `anyengine`. A global CLI install
+(`npm install -g anyengine-cli`) is optional. Development checkouts still support
+`npm run setup` from a clean Git tree.
 
 ## Use it
 

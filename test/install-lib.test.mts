@@ -10,6 +10,7 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  renameSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -167,6 +168,24 @@ test('install-lib installs, verifies and points current at the new version', () 
       encoding: 'utf8',
     })
     assert.equal(verify.status, 0, verify.stderr)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('npm distribution installs from its publishable lockfile without a Git checkout', () => {
+  const root = mkdtempSync(join(tmpdir(), 'anyengine-lib-'))
+  try {
+    const source = makeSource(root)
+    renameSync(join(source, 'package-lock.json'), join(source, 'npm-shrinkwrap.json'))
+    const result = install(root, source, null, {}, fakeNpm, ['--no-activate'])
+    assert.equal(result.status, 0, result.stderr)
+    const lib = join(root, 'lib/9.9.9')
+    assert.ok(existsSync(join(lib, 'npm-shrinkwrap.json')))
+    assert.ok(!existsSync(join(lib, 'package-lock.json')))
+    assert.ok(!existsSync(join(root, 'lib/current')))
+    assert.equal(JSON.parse(readFileSync(join(lib, 'install-manifest.json'), 'utf8')).commit, null)
+    assert.equal(spawnSync(process.execPath, [libVerify, lib]).status, 0)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

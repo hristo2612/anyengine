@@ -1,6 +1,6 @@
 # Installation and recovery
 
-The supported local macOS setup is `npm run setup` from a clean source checkout.
+The supported local macOS setup is `npx anyengine-cli@latest setup`.
 See [Getting started](getting-started.md) for prerequisites and first use.
 
 The installed runtime lives under `~/.anyengine/lib/<version>/`. Each version
@@ -8,18 +8,24 @@ contains compiled code and production dependencies; cleaning a checkout cannot
 remove the dependencies of a running app. `lib/current` selects the active build,
 and the Bash launcher pins Node from `runtime.env`.
 
-## Update from a checkout
+## Install or update from npm
 
-Finish active app work, obtain the intended source revision, and run setup again:
+Finish active app work and run:
 
 ```bash
-npm run setup
+npx anyengine-cli@latest setup
 ```
 
-Setup stages a verified build before activation. The existing `on` command owns
-backups, app restart, postflight checks and automatic rollback. A clean Git tree
-is required so the installed version can be reproduced. Do not delete unrelated
-uncommitted files just to satisfy that check; use a clean checkout instead.
+The npm package ships compiled code and pinned runtime dependencies. Setup
+stages a verified library before activation. The existing `on` command owns
+backups, app restart, postflight checks and automatic rollback. Its runtime lives
+outside the global npm installation or npx cache, so package cleanup cannot
+remove running dependencies. `npm install -g anyengine-cli` installs the CLI
+without enabling routing; the `npx` setup command also works without a global
+install and always selects the requested package version.
+
+Development installations still support `npm run setup` from a clean checkout.
+They require Git and the build toolchain. Preserve unrelated uncommitted work.
 
 A fresh v1 install uses the full layer recovery path. Subsequent direct-v1
 updates retain their immediate prior layer checkpoints. Installations upgraded
@@ -28,10 +34,10 @@ through M1/M2 also retain their existing milestone-specific recovery.
 ## Stage without enabling
 
 ```bash
-npm run setup -- --stage-only
+npx anyengine-cli@latest setup --stage-only
 ```
 
-This installs dependencies, builds and verifies the library without moving
+This installs runtime dependencies and verifies the library without moving
 `lib/current`, editing shell or Claude settings, loading jobs, or restarting the
 app. It prints the exact command to activate the staged version later.
 

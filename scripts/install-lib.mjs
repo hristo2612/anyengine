@@ -57,6 +57,7 @@ const COPY = [
   'vendor/claude-code-proxy',
   'package.json',
   'package-lock.json',
+  'npm-shrinkwrap.json',
   'LICENSE',
   'THIRD_PARTY_NOTICES.md',
 ]
@@ -74,15 +75,19 @@ function fail(message) {
 // `<package version>-<commit>`, from a clean tree only: a lib has to be
 // something a commit can reproduce.
 function versionFromGit(dir) {
+  const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
+  if (existsSync(join(dir, 'npm-shrinkwrap.json')) && !existsSync(join(dir, 'tsconfig.json')))
+    return pkg.version
   const git = (...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim()
   if (git('status', '--porcelain') !== '') {
     fail('the source tree has uncommitted changes; commit or stash them first')
   }
-  const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
   return `${pkg.version}-${git('rev-parse', '--short=12', 'HEAD')}`
 }
 
 function sourceCommit(dir) {
+  if (existsSync(join(dir, 'npm-shrinkwrap.json')) && !existsSync(join(dir, 'tsconfig.json')))
+    return null
   try {
     return execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
   } catch {

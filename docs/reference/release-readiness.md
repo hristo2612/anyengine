@@ -6,8 +6,9 @@ experimental.
 
 ## Shippable baseline
 
-M1–M3 are locally accepted and available in this source checkout. A packaged
-release remains pending. The supported local installation is `npm run setup`.
+M1–M3 are locally accepted. The npm distribution is `anyengine-cli`, with
+`npx anyengine-cli@latest setup` as the supported local installation. It ships
+prebuilt code, the runtime fixtures and a publishable dependency lockfile.
 See [Getting started](/guide/getting-started) and the
 [acceptance record](/evidence/m3-accounts-limits).
 

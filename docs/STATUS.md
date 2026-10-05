@@ -1,5 +1,10 @@
 # Status
 
+- **npm distribution:** `anyengine-cli` ships prebuilt code and locked runtime
+  dependencies. Install or update with `npx anyengine-cli@latest setup`; the
+  installed command remains `anyengine`. Source setup remains available for
+  development. Registry publication is the final release step.
+
 - **Added, opt-in:** unified local Claude Code and Codex/ChatGPT coding-session
   browsing/search, cross-open into native marked copies, and optional automatic
   copying of new conversations. Both options default off. Continued branches

@@ -37,22 +37,18 @@ parallel sub-agents on any other one ([cross-engine bridge](docs/guide/bridge.md
 
 ## Install
 
-From a clean source checkout on macOS with Node.js 24+, npm, Git, ChatGPT.app
-and the official Claude Code CLI already installed and signed in:
+On macOS with Node.js 24+, ChatGPT.app and Claude Code installed and signed in:
 
 ```bash
-npm run setup
+npx anyengine-cli@latest setup
 ```
 
-Setup builds and verifies the installed library, installs the controls and shell
-paths, and enables routing through the existing restart/check/rollback flow.
-It asks before restarting the app. A fresh install adds the CLI to new terminals.
-For the current terminal or an older install, run:
+Setup installs the prebuilt runtime, adds the controls and shell paths, and checks
+routing with automatic rollback. It asks before restarting the app. Open a new
+terminal afterward:
 
 ```bash
-export PATH="$HOME/.anyengine/bin:$PATH"
 anyengine status
-anyengine doctor
 ```
 
 In ChatGPT.app's coding workspace, pick GPT or Claude and switch engines in the
@@ -67,8 +63,12 @@ after its live proof; bridge fallback remains available before that. See
 [Getting started](docs/guide/getting-started.md) for first use and
 [Installation and recovery](docs/guide/deployment.md) for staging and updates.
 
-M1–M3 are locally accepted and available in this source checkout. A packaged
-release is pending; this package is not currently published to npm.
+Update with the same `npx anyengine-cli@latest setup` command. The npm package
+is named `anyengine-cli`; the installed command is `anyengine`.
+
+For development from a clean checkout, use `npm run setup` instead. You can also
+install the npm CLI globally with `npm install -g anyengine-cli`; use the `npx`
+command above for setup and updates even when the installed controls are on PATH.
 
 Provide credentials only through your own shell or secret manager. Never commit
 API keys, OAuth or session data, `.env` files, or acceptance logs.

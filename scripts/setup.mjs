@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 // Build and stage first; the existing on command owns activation and rollback.
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const usage = 'usage: npm run setup -- [--yes] [--stage-only]\n'
+const usage = 'usage: anyengine setup [--yes] [--stage-only]\n'
 const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`
+export const RUNTIME_SHELL =
+  'set -e; if [ -f "$1" ]; then . "$1"; fi; ' +
+  'if [ -z "${ANYENGINE_RUNTIME_TYPE:-}${ANYENGINE_RUNTIME:-}${ANYENGINE_BACKEND:-}" ]; then export ANYENGINE_RUNTIME_TYPE=anyengine; fi; ' +
+  'shift; exec "$@"'
 
 export function setup(args, options = {}) {
   const say = options.say ?? console.log
@@ -34,15 +38,19 @@ export function setup(args, options = {}) {
   env.PATH = `${dirname(process.execPath)}:${env.PATH ?? '/usr/bin:/bin'}`
   env.ANYENGINE_ROOT = root
   env.ANYENGINE_NODE = process.execPath
+  const packaged =
+    existsSync(join(source, 'npm-shrinkwrap.json')) && !existsSync(join(source, 'tsconfig.json'))
   const git = (...argv) => {
     const result = run('git', ['-C', source, ...argv], { env, encoding: 'utf8' })
     if (result.error || result.status !== 0) throw new Error('setup requires a Git checkout')
     return result.stdout.trim()
   }
-  if (git('status', '--porcelain'))
+  if (!packaged && git('status', '--porcelain'))
     throw new Error('the checkout has uncommitted changes; commit or stash them before setup')
   const pkg = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8'))
-  const version = `${pkg.version}-${git('rev-parse', '--short=12', 'HEAD')}`
+  const version = packaged
+    ? pkg.version
+    : `${pkg.version}-${git('rev-parse', '--short=12', 'HEAD')}`
   const step = (label, command, argv) => {
     say(`setup: ${label}`)
     const result = run(command, argv, { cwd: source, env, stdio: 'inherit' })
@@ -51,8 +59,10 @@ export function setup(args, options = {}) {
         `${label} failed; activation stopped. Preserve any recovery command printed above.`,
       )
   }
-  step('install dependencies', 'npm', ['ci', '--no-audit', '--no-fund'])
-  step('build', 'npm', ['run', 'build'])
+  if (!packaged) {
+    step('install dependencies', 'npm', ['ci', '--no-audit', '--no-fund'])
+    step('build', 'npm', ['run', 'build'])
+  }
   step('stage verified library', process.execPath, [
     join(source, 'scripts/install-lib.mjs'),
     '--source',
@@ -62,18 +72,27 @@ export function setup(args, options = {}) {
     '--no-activate',
   ])
   const adapter = join(root, 'lib', version, 'dist/src/adapter.mjs')
-  if (args.includes('--stage-only')) {
-    say(
-      `Staged only. To enable: ANYENGINE_ROOT=${quote(root)} ${quote(process.execPath)} ${quote(adapter)} on --lib ${quote(version)} --auto-rollback`,
-    )
-    return 0
-  }
-  step('enable AnyEngine (includes restart and live checks)', process.execPath, [
+  const runtimeEnv = env.ANYENGINE_RUNTIME_ENV ?? join(root, 'runtime.env')
+  const activate = [
+    '-c',
+    RUNTIME_SHELL,
+    'anyengine-setup',
+    runtimeEnv,
+    process.execPath,
     adapter,
     'on',
     '--lib',
     version,
     '--auto-rollback',
+  ]
+  if (args.includes('--stage-only')) {
+    say(
+      `Staged only. To enable: ANYENGINE_ROOT=${quote(root)} /bin/bash ${activate.map(quote).join(' ')}`,
+    )
+    return 0
+  }
+  step('enable AnyEngine (includes restart and live checks)', '/bin/bash', [
+    ...activate,
     ...(args.includes('--yes') ? ['--yes'] : []),
   ])
   say('Setup complete. Fresh installs expose anyengine in new terminals.')

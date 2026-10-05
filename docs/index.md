@@ -28,27 +28,27 @@ features:
     details: Inspect usage, switch your own ChatGPT accounts, and optionally enable rotation. Rotation and replay start off.
   - icon: ↩️
     title: Managed installation
-    details: One setup command builds and verifies the installed runtime. Activation keeps automatic rollback, and Off restores managed settings.
+    details: One npm setup command installs and verifies the prebuilt runtime. Activation keeps automatic rollback, and Off restores managed settings.
 ---
 
 AnyEngine connects ChatGPT's Codex workspace and Claude Code, so you can use
 your Claude and ChatGPT subscriptions from either tool. Grok is also available
 through its experimental CLI backend.
 
-## Start from a source checkout
+## Install
 
 Install macOS prerequisites and sign in through the official clients, then run:
 
 ```bash
-npm run setup
+npx anyengine-cli@latest setup
 ```
 
 Open a new terminal afterward and run `anyengine status`. In ChatGPT.app's coding
 workspace, pick GPT or Claude. In a new Claude Code session, `/model` lists GPT.
 The existing Grok backend remains available when its CLI is configured.
 
-M1–M3 are locally accepted and available in this source checkout. A packaged
-release is pending; the package is not currently published to npm.
+The npm package is `anyengine-cli`; the installed command is `anyengine`.
+M1–M3 have passed local acceptance.
 See [Getting started](/guide/getting-started),
 [Installation and recovery](/guide/deployment), and
 [Local acceptance](/evidence/m3-accounts-limits).

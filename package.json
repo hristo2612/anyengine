@@ -1,7 +1,6 @@
 {
-  "name": "anyengine",
+  "name": "anyengine-cli",
   "version": "0.1.0",
-  "private": true,
   "description": "Use Claude in ChatGPT/Codex and GPT in Claude Code with your existing subscriptions.",
   "license": "MIT",
   "homepage": "https://github.com/hristo2612/anyengine",
@@ -13,12 +12,17 @@
     "url": "https://github.com/hristo2612/anyengine/issues"
   },
   "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "bin": {
-    "anyengine": "dist/src/adapter.mjs"
+    "anyengine": "scripts/anyengine-cli.mjs"
   },
   "files": [
-    "dist/",
+    "dist/src/",
     "scripts/",
+    "npm-shrinkwrap.json",
     "test/fixtures/claude-permission-modes.json",
     "test/fixtures/posture-schema.json",
     "test/fixtures/codex-auth-0.160.0.json",
@@ -36,6 +40,8 @@
   ],
   "scripts": {
     "setup": "node scripts/setup.mjs",
+    "prepack": "npm run build && node scripts/prepare-package.mjs",
+    "postpack": "node scripts/prepare-package.mjs --clean",
     "dev": "tsx src/adapter.mts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -72,11 +78,11 @@
     "smoke:bridge": "npm run build && node scripts/smoke-bridge.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.201",
-    "@xterm/headless": "^6.0.0",
-    "node-pty": "^1.1.0",
+    "@anthropic-ai/claude-agent-sdk": "0.3.201",
+    "@xterm/headless": "6.0.0",
+    "node-pty": "1.1.0",
     "smol-toml": "1.9.0",
-    "ws": "^8.21.0"
+    "ws": "8.21.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.2",
