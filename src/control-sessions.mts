@@ -72,7 +72,9 @@ function validate(verb: string, args: string[], o: Options): void {
   if (o.cwd && !isAbsolute(o.cwd)) throw new Error('--cwd needs an absolute directory')
   if (verb === 'on' || verb === 'off') {
     if (args.length !== 1) throw new Error(USAGE)
-  } else if (verb === 'sync') {
+    return
+  }
+  if (verb === 'sync') {
     if (o.positional.length && (o.cwd || args.includes('--limit')))
       throw new Error('--cwd and --limit apply to one-time sync, not automatic sync on/off')
     if (
@@ -80,15 +82,15 @@ function validate(verb: string, args: string[], o: Options): void {
       (o.positional.length && !['on', 'off'].includes(o.positional[0]!))
     )
       throw new Error(USAGE)
-  } else {
-    const count = ['search', 'show', 'open'].includes(verb) ? 1 : 0
-    if (o.positional.length !== count) throw new Error(USAGE)
-    if (verb === 'search' && !o.positional[0]!.trim()) throw new Error('Search needs nonempty text')
-    if (verb === 'show' || verb === 'open') parseSessionKey(o.positional[0]!)
-    if (verb === 'open' && !o.target) throw new Error(USAGE)
-    if (verb === 'open' && o.target === 'chatgpt' && o.model)
-      throw new Error('Choose the model in ChatGPT after opening')
+    return
   }
+  const count = ['search', 'show', 'open'].includes(verb) ? 1 : 0
+  if (o.positional.length !== count) throw new Error(USAGE)
+  if (verb === 'search' && !o.positional[0]!.trim()) throw new Error('Search needs nonempty text')
+  if (verb === 'show' || verb === 'open') parseSessionKey(o.positional[0]!)
+  if (verb === 'open' && !o.target) throw new Error(USAGE)
+  if (verb === 'open' && o.target === 'chatgpt' && o.model)
+    throw new Error('Choose the model in ChatGPT after opening')
 }
 function printRows(rows: SessionSummary[], json: boolean, say: Say): void {
   if (json) {
