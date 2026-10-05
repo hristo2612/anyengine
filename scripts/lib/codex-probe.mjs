@@ -16,6 +16,7 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -119,11 +120,14 @@ export function isolatedCommand(binary, args, options = {}) {
   const codex = join(probe, 'codex')
   const work = join(probe, 'work')
   const temp = join(probe, 'tmp')
+  const bin = join(probe, 'bin')
   let cleaned = true
   let homeOwned = true
   let answer
   try {
-    for (const dir of [home, codex, work, temp]) mkdirSync(dir)
+    for (const dir of [home, codex, work, temp, bin]) mkdirSync(dir)
+    // npm's Codex launcher uses /usr/bin/env node; expose only this running Node.
+    symlinkSync(process.execPath, join(bin, 'node'))
     const env = {
       ...Object.fromEntries(
         Object.entries(options.env ?? {}).filter(([key]) => key.startsWith('FAKE_')),
@@ -132,7 +136,7 @@ export function isolatedCommand(binary, args, options = {}) {
       CODEX_HOME: codex,
       TMPDIR: temp,
       CLAUDE_CONFIG_DIR: join(home, '.claude'),
-      PATH: '/usr/bin:/bin',
+      PATH: `${bin}:/usr/bin:/bin`,
       LANG: 'en_US.UTF-8',
       RUST_LOG: 'warn',
       PROBE_HOME: probe,

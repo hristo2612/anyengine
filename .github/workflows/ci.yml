@@ -15,22 +15,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        # The full suite exercises macOS sandbox-exec, launchd and BSD recovery tools.
+        os: [macos-latest]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
-      # The lockfile is generated on macOS. `npm ci` installs from it exactly,
-      # which is what we want on the macOS runner (the platform this ships on).
-      - if: runner.os == 'macOS'
-        run: npm ci --no-audit --no-fund
-      # On Linux `npm ci` fails: the runtime SDK ships per-platform native
-      # binaries as optionalDependencies and the macOS lockfile omits the Linux
-      # ones, so the Linux job resolves them with `npm install` instead.
-      - if: runner.os != 'macOS'
-        run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - run: npm install --global @openai/codex@0.160.0 --no-audit --no-fund
       - run: CODEX_REAL="$(command -v codex)" npm run check:rust-protocol-fixtures
       # biome format + lint, the file-size ratchet and the dependency guard.
@@ -57,6 +50,8 @@ jobs:
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Global [[allowlists]] requires 8.25+; match the locally verified scanner.
+          GITLEAKS_VERSION: 8.30.1
 
   cargo-test:
     name: cargo (${{ matrix.os }})

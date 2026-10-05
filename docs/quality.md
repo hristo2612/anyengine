@@ -12,6 +12,10 @@ npm run check      # biome + size ratchet + dependency guard
 npm test           # build + node --test + coverage floor
 ```
 
+The full Node suite runs on macOS, including the sandboxed Codex schema probes,
+launchd installation and BSD shell recovery checks. Portable Rust protocol tests
+run on both macOS and Linux.
+
 `scripts/setup-hooks.sh` wires the same set into a `pre-push` hook (plus
 `gitleaks protect --staged`). No husky, no lint-staged — one `core.hooksPath`
 setting.
@@ -97,6 +101,8 @@ scripts are fixtures, not configuration, and are out of scope.
 `gitleaks protect --staged` runs in the pre-push hook (install it with
 `brew install gitleaks`), and `gitleaks/gitleaks-action@v2` scans full history
 on every CI run.
+CI pins Gitleaks 8.30.1, which supports the repository's global `[[allowlists]]`
+format; older scanner versions can flag the RFC 6455 example WebSocket key.
 
 ## 7. Hermetic tests
 

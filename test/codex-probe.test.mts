@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 import test, { after } from 'node:test'
@@ -8,6 +8,26 @@ import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
 
 after(removeTempDirs)
 const { isolatedCommand } = createRequire(import.meta.url)(resolve('scripts/lib/codex-probe.mjs'))
+
+test('isolated probe runs an npm-style Codex launcher with the pinned Node and no caller PATH', {
+  skip: process.platform !== 'darwin',
+}, async () => {
+  const root = await tempDir('probe-node-launcher-')
+  const launcher = join(root, 'codex')
+  writeFileSync(
+    launcher,
+    '#!/usr/bin/env node\nconsole.log(JSON.stringify({node:process.execPath, args:process.argv.slice(2), token:process.env.OPENAI_API_KEY ?? null}))\n',
+  )
+  chmodSync(launcher, 0o700)
+  const result = isolatedCommand(launcher, ['app-server', 'generate-ts'], {
+    env: { PATH: '/not-the-caller-path', OPENAI_API_KEY: 'must-not-be-inherited' },
+  })
+  assert.equal(result.status, 0, result.stderr)
+  const seen = JSON.parse(result.stdout)
+  assert.equal(seen.node, process.execPath)
+  assert.deepEqual(seen.args, ['app-server', 'generate-ts'])
+  assert.equal(seen.token, null)
+})
 
 test('isolated official-command primitive refuses outside writes and inherits no credentials or homes', {
   skip: process.platform !== 'darwin',
