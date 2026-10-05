@@ -82,12 +82,12 @@
     "@xterm/headless": "6.0.0",
     "node-pty": "1.1.0",
     "smol-toml": "1.9.0",
-    "ws": "8.21.0"
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.2",
     "@types/node": "^26.1.0",
-    "@types/ws": "^8.18.1",
+    "@types/ws": "^8.18.2",
     "tsx": "^4.23.0",
     "typescript": "^6.0.3",
     "vitepress": "^1.6.4"
