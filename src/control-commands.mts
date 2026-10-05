@@ -17,6 +17,7 @@ import { rollbackM2 } from './control-m2-rollback.mjs'
 import { activeUpgrade } from './control-m2-upgrade.mjs'
 import { gateResult, realFlipDeps, validateSnapshot } from './control-postflight-evidence.mjs'
 import { shellQuote } from './control-scripts.mjs'
+import { sessionsCommand } from './control-sessions.mjs'
 import { readStatusLib, readStatusSmoke } from './control-status-evidence.mjs'
 import type { System } from './control-system.mjs'
 import { sameKey, settingsHash } from './degraded.mjs'
@@ -34,6 +35,7 @@ import { type WatchDeps, watchOnce } from './update-watch.mjs'
 for (const op of ['on', 'off', 'restart'] as const) registerCommand(op, flipCommand(op))
 registerCommand('accounts', accountsCommand)
 registerCommand('limits', limitsCommand)
+registerCommand('sessions', sessionsCommand)
 registerCommand('rollback', async (args, system, root, say) => {
   if (
     !['m2', 'm3'].includes(args[0] ?? '') ||

@@ -50,6 +50,16 @@ Agent SDK sidecar; runtime selection is pluggable. Status legend: **Supported**,
 | Review mode | Supported (text) | `review/start` creates an in-progress review turn and routes the prompt through Claude. No native guardian finding items. |
 | Context compaction | Supported (summary) | `thread/compact/start` routes the summary prompt and emits contextCompaction items. No native persisted rollout compaction. |
 
+## Optional conversation history
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Unified browsing and search | Opt-in | `anyengine sessions on`; CLI lists and searches local Claude Code and Codex/ChatGPT coding conversations, including archived Codex histories. |
+| Cross-open | Opt-in | Creates a marked native text copy in Claude Code or Codex/ChatGPT; optional CLI launch. Originals and continued branches remain intact. |
+| Automatic history copying | Opt-in | `sessions sync on`; copies new conversations once while AnyEngine runs. Off by default. No merge of continued branches. |
+
+See [Session browsing and cross-open](../guide/sessions.md).
+
 ## Utilities
 
 | Area | Status | Notes |

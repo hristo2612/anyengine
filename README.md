@@ -73,6 +73,26 @@ release is pending; this package is not currently published to npm.
 Provide credentials only through your own shell or secret manager. Never commit
 API keys, OAuth or session data, `.env` files, or acceptance logs.
 
+## Optional conversation history
+
+Browse and search Claude Code and Codex/ChatGPT coding conversations together,
+then cross-open a marked copy in the other tool. Both browsing and automatic
+sync start off:
+
+```bash
+anyengine sessions on
+anyengine sessions list
+anyengine sessions search "the auth bug"
+anyengine sessions open claude:YOUR-SESSION-UUID --in chatgpt
+anyengine sessions open codex:YOUR-SESSION-UUID --in claude --launch
+anyengine sessions sync on   # Optional: copy new conversations automatically
+anyengine sessions sync off
+```
+
+Originals and continued branches stay intact. Sync copies new conversations
+once; cross-open again to bring over newer history. See
+[Session browsing and cross-open](docs/guide/sessions.md) for controls and limits.
+
 ## Requirements
 
 macOS, ChatGPT.app 26.9 or newer, Node.js 24+ (for stable `node:sqlite`), and
@@ -88,6 +108,7 @@ whichever CLIs you want to route to: `claude`, `grok`. Codex ships with the app.
 | Configuration | [docs/guide/configuration.md](docs/guide/configuration.md) |
 | Backends | [docs/guide/backends.md](docs/guide/backends.md) |
 | Cross-engine bridge | [docs/guide/bridge.md](docs/guide/bridge.md) |
+| Optional session browsing and cross-open | [docs/guide/sessions.md](docs/guide/sessions.md) |
 | Capability matrix | [docs/reference/capability-matrix.md](docs/reference/capability-matrix.md) |
 | Status and next steps | [docs/STATUS.md](docs/STATUS.md) |
 | Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |

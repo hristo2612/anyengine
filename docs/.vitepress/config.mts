@@ -31,6 +31,7 @@ export default defineConfig({
             { text: 'Configuration', link: '/guide/configuration' },
             { text: 'Backends', link: '/guide/backends' },
             { text: 'Cross-engine bridge', link: '/guide/bridge' },
+            { text: 'Session browsing and cross-open', link: '/guide/sessions' },
             { text: 'Router', link: '/guide/router' },
             { text: 'GPT in Claude Code', link: '/guide/claude-code' },
             { text: 'Control commands', link: '/guide/control' },

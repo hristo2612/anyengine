@@ -2,7 +2,7 @@
 
 Run the installed `anyengine` launcher, or use `npm run anyengine -- <command>`
 from a source checkout. This build implements `status`, `doctor`, `mode`, `config`, `cache clean`,
-`on`, `off`, `rollback m2|m3`, `restart`, `smoke`, `accounts`, `limits`, and `codex`.
+`on`, `off`, `rollback m2|m3`, `restart`, `smoke`, `accounts`, `limits`, `sessions`, and `codex`.
 
 Use `npm run setup` for a clean source installation or update. It stages the
 verified library and invokes `on` with automatic rollback. After a fresh install,
@@ -14,6 +14,15 @@ Exit codes are 0 for a completed command, 1 for failed inspection or operation,
 and 2 for invalid arguments or refused settings. Read commands can return a
 partial report with explicit errors and exit 1. Importing the command registry
 performs no app, launchd, filesystem, or engine action.
+
+## Optional conversation history
+
+`sessions on` enables unified Claude Code and Codex/ChatGPT coding-history
+browsing. `sessions list`, `search`, `show` and `open` browse or create a marked
+copy in the other host. `sessions sync` copies a batch of new conversations;
+`sessions sync on|off` controls automatic copying while AnyEngine is running.
+Both options default off, and `sessions off` disables both. Originals and
+continued branches are preserved. See [Session browsing and cross-open](sessions.md).
 
 ## Accounts and limits
 

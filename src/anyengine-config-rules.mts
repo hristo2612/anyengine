@@ -150,6 +150,8 @@ export const PARSERS: Readonly<Record<string, Parser>> = {
   'claims.idleReleaseMinutes': intIn(1, 1440),
   'claims.graceMs': intIn(0, 30000),
   'claims.unclaimedFlipThreshold': intIn(1, 100),
+  'sessions.enabled': bool,
+  'sessions.sync': bool,
 }
 export const SET_CHECKS: Readonly<Record<string, (value: unknown) => void>> = {
   'claude.cli': executableFile,

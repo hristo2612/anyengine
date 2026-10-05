@@ -467,9 +467,11 @@ export async function runRouterDaemon(env: NodeJS.ProcessEnv = process.env): Pro
     throw error
   }
   log.info('router.start', { port: router.port, version: routerVersion() })
+  const { startSessionSync } = await import('./sessions-sync.mjs')
+  const sessions = startSessionSync(root, env, (message) => log.info('sessions.sync', { message }))
   const stop = (signal: string) => {
     log.info('router.stop', { signal, inflight: { ...router.context.inflight } })
-    void router.close(DRAIN_MS).then(() => process.exit(0))
+    void Promise.all([sessions.close(), router.close(DRAIN_MS)]).then(() => process.exit(0))
   }
   process.once('SIGTERM', () => stop('SIGTERM'))
   process.once('SIGINT', () => stop('SIGINT'))

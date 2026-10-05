@@ -12,6 +12,7 @@ import {
   resolveNativeCodexBinary,
 } from './bundled-codex.mjs'
 import { ClaimServer } from './claim-server.mjs'
+import { childArgv, splitCodexGlobals } from './codex-cli-args.mjs'
 import type { NativeCodexMux } from './codex-mux.mjs'
 import { CONTROL_COMMANDS } from './control-cli.mjs'
 // Side-effect import, and it has to stay one: the module body copies every
@@ -26,6 +27,7 @@ import { linkRouter, nativeFanout } from './router-link.mjs'
 import { resolveRuntimeConfig } from './runtime-config.mjs'
 import { createRuntime } from './runtime-factory.mjs'
 import { CodexClaudeAppServer } from './server.mjs'
+import { startSessionSync } from './sessions-sync.mjs'
 import {
   admitAdapterStartup,
   assertStartupBinary,
@@ -160,6 +162,9 @@ async function main(): Promise<void> {
   }
   const runtime = createRuntime()
   const server = new CodexClaudeAppServer(store, runtime)
+  const sessionSync = startSessionSync(enginePaths().root, process.env, (message) =>
+    process.stderr.write(`[anyengine] ${message}\n`),
+  )
   // Every engine's MCP server points to this adapter's loopback bridge.
   const bridge = bridgeEnabled() ? new BridgeControl(server.bridgeHost()) : null
   server.setBridge(bridge)
@@ -167,6 +172,7 @@ async function main(): Promise<void> {
   let transport: RunningTransport | null = null
   stopPreparation = () =>
     (stopping ??= (async () => {
+      await sessionSync.close()
       await claims?.stop()
       await server.stop()
       await bridge?.stop()
@@ -268,37 +274,6 @@ async function main(): Promise<void> {
 }
 
 // Return leading Codex global options verbatim, before the app-server subcommand.
-function splitCodexGlobals(argv: string[]): { globals: string[]; rest: string[] } {
-  const globals: string[] = []
-  let index = 0
-  while (index < argv.length) {
-    const arg = argv[index] ?? ''
-    if (/^(-c|--config|-m|--model|-p|--profile|-C|--cd)$/.test(arg)) {
-      globals.push(arg, argv[index + 1] ?? '')
-      index += 2
-      continue
-    }
-    if (/^(-c|--config|-m|--model|--profile|--cd)=/.test(arg)) {
-      globals.push(arg)
-      index += 1
-      continue
-    }
-    break
-  }
-  return { globals, rest: argv.slice(index) }
-}
-
-// ChatGPT.app 26.911 passes a subcommand-level `-c` after `app-server`, and
-// codex then ignores every root-level `-c`: an override placed before
-// `app-server` silently vanishes. Put ours after the app's own subcommand `-c`
-// flags when there are any; keep the root position otherwise (26.901 argv).
-function childArgv(globals: string[], extra: string[], rest: string[]): string[] {
-  const subcommandHasConfig = rest.some(
-    (arg) => arg === '-c' || arg === '--config' || /^(-c|--config)=/.test(arg),
-  )
-  return subcommandHasConfig ? [...globals, ...rest, ...extra] : [...globals, ...extra, ...rest]
-}
-
 // `anyengine selfcheck [--deep]`. Reaching main() at all proves every static
 // import resolved (ws, every src module); this also loads node:sqlite, which
 // the store requires lazily. The shim runs it before it hands the app this

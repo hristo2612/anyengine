@@ -1,7 +1,12 @@
 # Status
 
-- **M1, M2 and M3 locally accepted.** Product commit `ad0bdf7` is installed with
-  native routing, Home active, automatic rotation and replay off.
+- **Added, opt-in:** unified local Claude Code and Codex/ChatGPT coding-session
+  browsing/search, cross-open into native marked copies, and optional automatic
+  copying of new conversations. Both options default off. Continued branches
+  remain independent. See [Session browsing and cross-open](guide/sessions.md).
+
+- **M1, M2 and M3 locally accepted.** Acceptance build `ad0bdf7` used native
+  routing, Home active, automatic rotation and replay off.
 - **Live acceptance passed:** seven native and seven bridge children with three
   real Opus children; exact returned results; account continuation; overlapping
   desktop/translator work; M3-only recovery; full Off/cache cleanup and reinstall.
