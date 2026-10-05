@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import test from 'node:test'
+import test, { after } from 'node:test'
+import { BRIDGE_LINE } from '../src/bridge-instructions.mjs'
 import {
   buildGrokAgentArgs,
   grokAgentSpec,
@@ -21,6 +21,12 @@ import {
 } from '../src/grok-models.mjs'
 import { GrokRuntime } from '../src/grok-runtime.mjs'
 import type { PermissionDecision, RuntimeEvent, RuntimeTurnContext } from '../src/types.mjs'
+import { fakeCodexAt } from './helpers/adapter-client.mjs'
+import { killChildren, spawn } from './helpers/children.mjs'
+import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
+
+after(() => killChildren())
+after(removeTempDirs)
 
 const fakeGrok = resolve('test/fixtures/fake-grok.mjs')
 const adapter = resolve('dist/src/adapter.mjs')
@@ -409,6 +415,24 @@ test('grok runtime: declined approval is relayed as reject_once', async () => {
   }
 })
 
+test('grok runtime: a fetch grok labels read_only still goes to the posture', async () => {
+  const h = await harness({ FAKE_GROK_TOOL: 'web_fetch' })
+  try {
+    h.decision = { decision: 'decline' }
+    await h.run(turnContext({ prompt: 'Use a tool then reply', approvalPolicy: 'never' }))
+    assert.deepEqual(
+      h.permissions.map((p) => p.toolName),
+      ['WebFetch'],
+      'not answered locally: the server decides it by posture',
+    )
+    const fake = await h.fakeEvents()
+    const permission = fake.find((entry) => entry.kind === 'permission_response')
+    assert.equal(permission.response.result.outcome.optionId, 'reject-once')
+  } finally {
+    await h.cleanup()
+  }
+})
+
 test('grok runtime: full access spawns --always-approve and never asks the App', async () => {
   const h = await harness()
   try {
@@ -516,8 +540,8 @@ test('grok runtime: interrupt cancels the in-flight prompt', async () => {
   }
 })
 
-test('adapter routes a grok-* thread to the grok runtime and lists Grok models', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-grok-adapter-'))
+test('adapter routes a grok-* thread to the grok runtime, lists Grok models, and gives its shell no unsandboxed card', async () => {
+  const home = await tempDir('anyengine-grok-adapter-')
   const argsFile = join(home, 'args.jsonl')
   const eventsFile = join(home, 'events.jsonl')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
@@ -525,6 +549,8 @@ test('adapter routes a grok-* thread to the grok runtime and lists Grok models',
     env: {
       ...process.env,
       CODEX_HOME: home,
+      ANYENGINE_ROOT: join(home, 'control'),
+      ANYENGINE_REAL_CODEX: fakeCodexAt(home),
       ANYENGINE_HOME: join(home, 'adapter-home'),
       ANYENGINE_DEBUG_LOG: join(home, 'debug.jsonl'),
       // Configured default is the mock runtime; the grok-* model must still
@@ -586,26 +612,65 @@ test('adapter routes a grok-* thread to the grok runtime and lists Grok models',
     const turnStart = await reader.nextResponse(4)
     assert.equal(turnStart.result.turn.status, 'inProgress')
 
-    let text = ''
-    const commands: string[] = []
-    let approvals = 0
-    let turn: any = null
-    for (let i = 0; i < 500 && !turn; i += 1) {
-      const message = await reader.next()
-      if (message.method === 'item/agentMessage/delta') text += message.params.delta
-      if (message.method === 'item/started' && message.params.item?.type === 'commandExecution')
-        commands.push(message.params.item.command)
-      if (message.method === 'item/commandExecution/requestApproval') {
-        approvals += 1
-        write({ id: message.id, result: { decision: 'accept' } })
+    const runTurn = async (id: number) => {
+      const seen = { text: '', commands: [] as string[], approvals: 0, turn: null as any }
+      for (let i = 0; i < 500 && !seen.turn; i += 1) {
+        const message = await reader.next()
+        if (message.method === 'item/agentMessage/delta') seen.text += message.params.delta
+        if (message.method === 'item/started' && message.params.item?.type === 'commandExecution')
+          seen.commands.push(message.params.item.command)
+        if (message.method === 'item/commandExecution/requestApproval') {
+          seen.approvals += 1
+          write({ id: message.id, result: { decision: 'accept' } })
+        }
+        if (message.method === 'turn/completed') seen.turn = message.params.turn
       }
-      if (message.method === 'turn/completed') turn = message.params.turn
+      assert.ok(seen.turn, `turn ${id} completed`)
+      assert.equal(seen.turn.status, 'completed')
+      return seen
     }
-    assert.ok(turn, 'turn completed')
-    assert.equal(turn.status, 'completed')
-    assert.equal(text, 'PONG')
-    assert.deepEqual(commands, ['echo hi'])
-    assert.equal(approvals, 1, 'Bash approval round-tripped through the App protocol')
+    // Grok runs its shell itself, outside every sandbox (its tool maps to
+    // Bash): under workspace-write the server declines it without a card,
+    // as the relay does for Claude (docs/guide/bridge.md, "Shell").
+    const bounded = await runTurn(4)
+    assert.deepEqual(bounded.commands, ['echo hi'])
+    assert.equal(bounded.approvals, 0, 'no card for a shell no sandbox bounds')
+    assert.equal(bounded.text, 'DECLINED')
+    const declined = (await readFile(eventsFile, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+      .find((entry) => entry.kind === 'permission_response')
+    assert.equal(declined.response.result.outcome.optionId, 'reject-once')
+
+    // Full access with an approval mode that asks before every command: the
+    // shell is Grok's own there, so the approval round-trips through the App.
+    write({
+      id: 6,
+      method: 'thread/start',
+      params: {
+        cwd: home,
+        model: 'grok-4.5',
+        approvalPolicy: 'untrusted',
+        sandbox: 'danger-full-access',
+      },
+    })
+    const full = await reader.nextResponse(6)
+    write({
+      id: 7,
+      method: 'turn/start',
+      params: {
+        threadId: full.result.thread.id,
+        input: [
+          { type: 'text', text: 'Use a tool to run echo hi, then reply PONG', text_elements: [] },
+        ],
+      },
+    })
+    await reader.nextResponse(7)
+    const asked = await runTurn(7)
+    assert.equal(asked.text, 'PONG')
+    assert.deepEqual(asked.commands, ['echo hi'])
+    assert.equal(asked.approvals, 1, 'Bash approval round-tripped through the App protocol')
     const argv = (await readFile(argsFile, 'utf8'))
       .trim()
       .split('\n')
@@ -616,17 +681,15 @@ test('adapter routes a grok-* thread to the grok runtime and lists Grok models',
     assert.equal(argv[0]?.[argv[0].indexOf('-m') + 1], 'grok-4.5')
 
     // The cross-engine standing instructions reach grok as the first-prompt
-    // prefix of the fresh session (docs/guide/bridge.md), listing the
-    // catalog this adapter serves (sonnet + both grok ids).
+    // prefix of the fresh session (docs/guide/bridge.md).
     const grokEvents = (await readFile(eventsFile, 'utf8'))
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line))
     const firstPrompt = grokEvents.find((entry) => entry.method === 'session/prompt')
     const promptText = firstPrompt.params.prompt.map((block: any) => block.text ?? '').join('')
-    assert.match(promptText, /^# Other engines available\n/)
-    assert.match(promptText, /Claude Sonnet \(`sonnet`\)/)
-    assert.match(promptText, /Grok 4\.6 \(`grok-4\.6`\), Grok 4\.5 \(`grok-4\.5`\)/)
+    assert.ok(promptText.startsWith(`${BRIDGE_LINE}\n`), promptText)
+    assert.equal(promptText.split(BRIDGE_LINE).length - 1, 1)
     assert.match(promptText, /---\n\nUse a tool to run echo hi, then reply PONG$/)
 
     // The grok session id is persisted on the thread as grok:<id>.
@@ -634,7 +697,7 @@ test('adapter routes a grok-* thread to the grok runtime and lists Grok models',
     const read = await reader.nextResponse(5)
     assert.equal(read.result.thread.id, threadId)
   } finally {
-    proc.kill()
+    await killChildren()
     await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
   }
 })
@@ -642,18 +705,32 @@ test('adapter routes a grok-* thread to the grok runtime and lists Grok models',
 class JsonLineReader {
   private buffer = ''
   private queue: any[] = []
-  private waiters: Array<(value: any) => void> = []
+  private waiters: Array<{ resolve(value: any): void; reject(error: Error): void }> = []
+  private ended: Error | null = null
 
   constructor(proc: ReturnType<typeof spawn>) {
     if (!proc.stdout) throw new Error('test process has no stdout')
     proc.stdout.setEncoding('utf8')
     proc.stdout.on('data', (chunk: string) => this.push(chunk))
+    let stderr = ''
+    proc.stderr?.on('data', (chunk) => {
+      stderr = (stderr + String(chunk)).slice(-8192)
+    })
+    const fail = (error: Error) => {
+      this.ended = error
+      for (const waiter of this.waiters.splice(0)) waiter.reject(error)
+    }
+    proc.once('error', fail)
+    proc.once('close', (code, signal) =>
+      fail(new Error(`adapter closed (code=${code}, signal=${signal}): ${stderr}`)),
+    )
   }
 
   next(): Promise<any> {
     const existing = this.queue.shift()
     if (existing) return Promise.resolve(existing)
-    return new Promise((resolve) => this.waiters.push(resolve))
+    if (this.ended) return Promise.reject(this.ended)
+    return new Promise((resolve, reject) => this.waiters.push({ resolve, reject }))
   }
 
   async nextResponse(id: number): Promise<any> {
@@ -672,7 +749,7 @@ class JsonLineReader {
       if (line) {
         const message = JSON.parse(line)
         const waiter = this.waiters.shift()
-        if (waiter) waiter(message)
+        if (waiter) waiter.resolve(message)
         else this.queue.push(message)
       }
       idx = this.buffer.indexOf('\n')

@@ -1,0 +1,310 @@
+{
+  "implementationCommit": "08572a270e1458e78932709b04ffddb76960612f",
+  "baseCommit": "639354c",
+  "gates": [
+    {
+      "run": "check",
+      "command": "npm run check",
+      "exit": 0,
+      "started": "2026-10-02T06:38:47.131489+00:00",
+      "seconds": 0.85,
+      "load_before": [
+        2.501953125,
+        4.0947265625,
+        3.806640625
+      ],
+      "load_after": [
+        2.70166015625,
+        4.109375,
+        3.8134765625
+      ]
+    },
+    {
+      "run": "typecheck",
+      "command": "npm run typecheck",
+      "exit": 0,
+      "started": "2026-10-02T06:38:47.979991+00:00",
+      "seconds": 1.29,
+      "load_before": [
+        2.70166015625,
+        4.109375,
+        3.8134765625
+      ],
+      "load_after": [
+        2.70166015625,
+        4.109375,
+        3.8134765625
+      ]
+    },
+    {
+      "run": "test-1",
+      "command": "npm test",
+      "exit": 0,
+      "started": "2026-10-02T06:38:49.270477+00:00",
+      "seconds": 41.56,
+      "load_before": [
+        2.70166015625,
+        4.109375,
+        3.8134765625
+      ],
+      "load_after": [
+        5.1787109375,
+        4.65283203125,
+        4.0302734375
+      ],
+      "tests": 539,
+      "pass": 539,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "run": "test-2",
+      "command": "npm test",
+      "exit": 0,
+      "started": "2026-10-02T06:39:30.827008+00:00",
+      "seconds": 42.14,
+      "load_before": [
+        5.1787109375,
+        4.65283203125,
+        4.0302734375
+      ],
+      "load_after": [
+        5.57177734375,
+        4.93603515625,
+        4.171875
+      ],
+      "tests": 539,
+      "pass": 539,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    {
+      "run": "test-3",
+      "command": "npm test",
+      "exit": 0,
+      "started": "2026-10-02T06:40:12.963802+00:00",
+      "seconds": 42.15,
+      "load_before": [
+        5.57177734375,
+        4.93603515625,
+        4.171875
+      ],
+      "load_after": [
+        6.5009765625,
+        5.380859375,
+        4.37548828125
+      ],
+      "tests": 539,
+      "pass": 539,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    }
+  ],
+  "mutations": [
+    {
+      "mutation": "read-send",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 bridge re-applies later read restrictions on send and refuses children that cannot enforce them (680.072792ms)"
+      ],
+      "seconds": 19.38
+    },
+    {
+      "mutation": "read-child-engine",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 bridge re-applies later read restrictions on send and refuses children that cannot enforce them (974.091209ms)"
+      ],
+      "seconds": 23.53
+    },
+    {
+      "mutation": "slash-text",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 bridge model prompts cannot enter Claude slash-command dispatch on spawn, fanout or send (869.815667ms)",
+        "\u2716 PTY prompt composition neutralises model slash text but preserves the operator input byte for byte (0.822292ms)",
+        "\u2716 rehome and handover prefixes cannot become Claude slash commands; later operator turns stay intact (28.839833ms)"
+      ],
+      "seconds": 20.08
+    },
+    {
+      "mutation": "slash-flag",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 model turns disable slash commands; an operator turn keeps native commands after a child turn (2.148792ms)"
+      ],
+      "seconds": 1.78
+    },
+    {
+      "mutation": "pty-env",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 all Claude launch environments reject inherited provider, proxy, runtime and secret controls (2.68425ms)"
+      ],
+      "seconds": 1.68
+    },
+    {
+      "mutation": "sdk-env",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 all Claude launch environments reject inherited provider, proxy, runtime and secret controls (3.216208ms)"
+      ],
+      "seconds": 1.68
+    },
+    {
+      "mutation": "print-env",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 all Claude launch environments reject inherited provider, proxy, runtime and secret controls (28.820208ms)"
+      ],
+      "seconds": 1.68
+    },
+    {
+      "mutation": "read-detection",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 custom profiles and deny-read requirements prohibit every Claude read and shell path (1.172917ms)",
+        "\u2716 read-restricted delegation rejects every unsupported engine, including locally routed Grok (0.166208ms)",
+        "\u2716 read-restricted bridge exec refuses before any command reaches the upstream sandbox (0.206666ms)"
+      ],
+      "seconds": 1.64
+    },
+    {
+      "mutation": "read-decision",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 custom profiles and deny-read requirements prohibit every Claude read and shell path (1.123542ms)"
+      ],
+      "seconds": 1.63
+    },
+    {
+      "mutation": "read-launch",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 read-restricted parent disables read tools at every Claude runtime launch (0.493167ms)",
+        "\u2716 custom profiles and deny-read requirements prohibit every Claude read and shell path (1.319458ms)"
+      ],
+      "seconds": 2.14
+    },
+    {
+      "mutation": "read-shell",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 custom profiles and deny-read requirements prohibit every Claude read and shell path (1.413833ms)"
+      ],
+      "seconds": 1.62
+    },
+    {
+      "mutation": "read-inherit",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 custom profiles and deny-read requirements prohibit every Claude read and shell path (1.526916ms)"
+      ],
+      "seconds": 1.65
+    },
+    {
+      "mutation": "read-persist",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 custom profiles and deny-read requirements prohibit every Claude read and shell path (1.407583ms)"
+      ],
+      "seconds": 1.66
+    },
+    {
+      "mutation": "read-print-launch",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 read-restricted parent disables read tools at every Claude runtime launch (0.412375ms)"
+      ],
+      "seconds": 2.13
+    },
+    {
+      "mutation": "read-exec",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 custom profiles and deny-read requirements prohibit every Claude read and shell path (0.934292ms)",
+        "\u2716 read-restricted bridge exec refuses before any command reaches the upstream sandbox (0.19225ms)"
+      ],
+      "seconds": 1.6
+    },
+    {
+      "mutation": "read-property-independent",
+      "killed": true,
+      "failed_tests": [
+        "\u2716 never looser: Codex parent to Claude child (launch and relay), over every posture (2.194792ms)"
+      ],
+      "seconds": 14.36
+    }
+  ],
+  "realClaudeProbe": {
+    "binaryVersion": "2.1.287",
+    "isolation": "separate HOME and CLAUDE_CONFIG_DIR; sandbox-exec denies non-loopback networking and writes outside probe tree; fake API key and fake loopback API",
+    "cases": [
+      {
+        "name": "flag",
+        "changed": false,
+        "exited": true,
+        "requests": [
+          {
+            "url": "/api/hello",
+            "hasPrompt": false
+          }
+        ]
+      },
+      {
+        "name": "wrapper-only",
+        "changed": false,
+        "exited": true,
+        "requests": [
+          {
+            "url": "/api/hello",
+            "hasPrompt": false
+          },
+          {
+            "url": "/v1/messages?beta=true",
+            "hasPrompt": true
+          },
+          {
+            "url": "/v1/messages?beta=true",
+            "hasPrompt": true
+          },
+          {
+            "url": "/v1/messages?beta=true",
+            "hasPrompt": true
+          },
+          {
+            "url": "/v1/messages?beta=true",
+            "hasPrompt": true
+          }
+        ]
+      },
+      {
+        "name": "operator",
+        "changed": true,
+        "exited": true,
+        "requests": [
+          {
+            "url": "/api/hello",
+            "hasPrompt": false
+          }
+        ]
+      }
+    ],
+    "heapdump": {
+      "name": "flag-heap",
+      "changed": false,
+      "exited": true,
+      "requests": [
+        {
+          "url": "/api/hello",
+          "hasPrompt": false
+        }
+      ],
+      "unknownCommand": true,
+      "heapFiles": 0
+    }
+  }
+}

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import test from 'node:test'
+import test, { after } from 'node:test'
 import { runWorkflowCli, type WorkflowCliIo } from '../src/workflow-cli.mjs'
 import type { WorkflowState, WorkflowTask } from '../src/workflow-state.mjs'
+import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
+
+after(removeTempDirs)
 
 test('workflow CLI enqueues and schedules a task through the state file', async () => {
   const statePath = await tempStatePath()
@@ -112,7 +114,7 @@ test('workflow CLI shows help before validating subcommand options', async () =>
 
 test('workflow CLI health reports stale leases and run registry lag', async () => {
   const statePath = await tempStatePath()
-  const runLogPath = join(await mkdtemp(join(tmpdir(), 'anyengine-workflow-log-')), 'runs.jsonl')
+  const runLogPath = join(await tempDir('anyengine-workflow-log-'), 'runs.jsonl')
   await writeFile(runLogPath, '{"event":"turn.completed"}\n')
   await runWorkflowCli(
     ['enqueue', '--state', statePath, '--id', 'task-a', '--prompt', 'Check health.'],
@@ -150,7 +152,7 @@ test('workflow CLI health reports stale leases and run registry lag', async () =
 
 test('workflow CLI ingests local GitHub JSON through sanitized queue tasks', async () => {
   const statePath = await tempStatePath()
-  const sourcePath = join(await mkdtemp(join(tmpdir(), 'anyengine-github-json-')), 'items.json')
+  const sourcePath = join(await tempDir('anyengine-github-json-'), 'items.json')
   await writeFile(
     sourcePath,
     JSON.stringify([
@@ -233,7 +235,7 @@ function captureIo(): CapturedIo {
 }
 
 async function tempStatePath(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'anyengine-workflow-cli-'))
+  const dir = await tempDir('anyengine-workflow-cli-')
   return join(dir, 'workflow-state.json')
 }
 

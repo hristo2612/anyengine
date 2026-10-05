@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import test from 'node:test'
+import test, { after } from 'node:test'
 import {
   recordRunEvent,
   redactRunRegistryData,
   runRegistryEntry,
   runRegistryPath,
 } from '../src/run-registry.mjs'
+import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
+
+after(removeTempDirs)
 
 test('run registry redacts prompt-like fields and secret-like values', () => {
   const entry = runRegistryEntry('turn.started', {
@@ -40,7 +42,7 @@ test('run registry can be disabled without touching the filesystem', () => {
 })
 
 test('run registry appends redacted JSONL entries', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'anyengine-run-registry-'))
+  const dir = await tempDir('anyengine-run-registry-')
   const path = join(dir, 'runs.jsonl')
 
   const result = recordRunEvent(

@@ -1,4 +1,8 @@
+import { isClaudeModelId } from './codex-models.mjs'
 import { isGrokModel } from './grok-acp.mjs'
+import type { Posture } from './posture.mjs'
+import { routerServesClaude } from './router-link.mjs'
+import { asRecord, idOf } from './rpc-shape.mjs'
 import { isCodexOpenAiModel, textFromInput } from './util.mjs'
 
 // Mid-thread engine switching ("re-homing").
@@ -12,11 +16,48 @@ import { isCodexOpenAiModel, textFromInput } from './util.mjs'
 // This module is the pure half: which engine a model id belongs to, how a
 // transcript is distilled out of thread items (local `TurnRecord`s and the
 // upstream child's `thread/read` turns share the item shape), and how it is
-// trimmed and framed. The wiring lives in src/codex-mux.mts (anything that
-// crosses the upstream boundary) and src/server.mts (Claude <-> Grok, which
-// never leaves the local layer).
+// trimmed and framed, plus the id and turn-order helpers the wiring shares.
+// The wiring lives in src/codex-mux.mts (anything that crosses the upstream
+// boundary) and src/server.mts (Claude <-> Grok, which never leaves the local
+// layer).
 
 export type Engine = 'claude' | 'grok' | 'gpt'
+
+// Keep one row from the engine that currently owns a rehomed thread.
+export function dedupeRehomedRows(
+  upstreamData: unknown[],
+  localData: unknown[],
+  engine: (id: string) => Engine,
+): unknown[] {
+  const tagged = [
+    ...upstreamData.map((entry) => ({ entry, upstream: true })),
+    ...localData.map((entry) => ({ entry, upstream: false })),
+  ]
+  const counts = new Map<string, number>()
+  for (const row of tagged) {
+    const id = idOf(asRecord(row.entry))
+    if (id) counts.set(id, (counts.get(id) ?? 0) + 1)
+  }
+  return tagged
+    .filter((row) => {
+      const id = idOf(asRecord(row.entry))
+      if (!id || (counts.get(id) ?? 0) < 2) return true
+      return row.upstream === (engine(id) === 'gpt')
+    })
+    .map((row) => row.entry)
+}
+
+// What the local layer needs to take over a thread mid-conversation.
+export interface RehomeAdoption {
+  threadId: string
+  model: string
+  cwd: string | null
+  // Compact conversation so far, prefixed to the first turn's prompt.
+  transcript: string | null
+  preview?: string
+  createdAt?: number | null
+  posture?: Posture | null
+}
 
 export const REHOME_HEADER = 'Conversation so far, continued from another model:'
 export const REHOME_TRIM_NOTE = '[earlier turns trimmed]'
@@ -42,6 +83,11 @@ export function engineForModel(model: string | null | undefined): Engine {
   if (isCodexOpenAiModel(id)) return 'gpt'
   if (isGrokModel(id)) return 'grok'
   return 'claude'
+}
+
+// Only recognized Claude models use the router; unknown local ids stay local.
+export function engineForModelRouted(model: string | null | undefined): Engine {
+  return isClaudeModelId(model ?? '') && routerServesClaude() ? 'gpt' : engineForModel(model)
 }
 
 export function rehomeMaxChars(env: NodeJS.ProcessEnv = process.env): number {
@@ -107,4 +153,56 @@ export function formatTranscript(
 // first turn's input when the child refuses the injection.
 export function injectItemsFor(transcript: string): unknown[] {
   return [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: transcript }] }]
+}
+
+// cwd for a re-homed thread: the turn's own, then whichever side last knew one.
+export function rehomeCwd(
+  turnParams: Record<string, unknown>,
+  localThread: Record<string, unknown> | null,
+  upstreamThread: Record<string, unknown> | null,
+): string | null {
+  for (const candidate of [turnParams.cwd, localThread?.cwd, upstreamThread?.cwd]) {
+    if (typeof candidate === 'string' && candidate.length > 0) return candidate
+  }
+  return null
+}
+
+// Swap one thread id for another anywhere in a JSON-RPC message. Thread ids
+// are opaque and unique, so an exact string match is the whole rule; it covers
+// `threadId`, `thread.id`, `parentThreadId`, `receiverThreadIds` and any field
+// a future protocol version adds without this module having to know them.
+export function rewriteThreadIds<T>(value: T, from: string, to: string): T {
+  if (!from || from === to) return value
+  const walk = (input: unknown): unknown => {
+    if (typeof input === 'string') return input === from ? to : input
+    if (Array.isArray(input)) return input.map(walk)
+    if (input && typeof input === 'object') {
+      const out: Record<string, unknown> = {}
+      for (const [key, entry] of Object.entries(input as Record<string, unknown>))
+        out[key] = walk(entry)
+      return out
+    }
+    return input
+  }
+  return walk(value) as T
+}
+
+// Local turns record seconds, the child's may record milliseconds. Normalize
+// to seconds so the two histories can be ordered against each other; anything
+// past the year 5138 in seconds is read as a millisecond timestamp.
+const MILLISECOND_EPOCH_FLOOR = 100_000_000_000
+
+export function startedAtOf(turn: unknown): number {
+  const value = (turn as { startedAt?: unknown } | null)?.startedAt
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  return value >= MILLISECOND_EPOCH_FLOOR ? Math.floor(value / 1000) : value
+}
+
+// The local turns that follow the last one already handed to the child. An
+// unknown watermark (a turn since deleted) carries everything, which repeats
+// context rather than losing it.
+export function localTurnsAfter(turns: unknown[], carriedTurnId: string | null): unknown[] {
+  if (!carriedTurnId) return turns
+  const index = turns.findIndex((turn) => (turn as { id?: unknown } | null)?.id === carriedTurnId)
+  return index < 0 ? turns : turns.slice(index + 1)
 }

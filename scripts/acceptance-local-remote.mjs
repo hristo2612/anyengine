@@ -39,6 +39,7 @@ async function main() {
     PATH: `${bin}:${process.env.PATH ?? ''}`,
     CODEX_HOME: home,
     ANYENGINE_ADAPTER: adapter,
+    ANYENGINE_REMOTE_NATIVE_CODEX: '1',
     NODE_NO_WARNINGS: '1',
   }
   delete env.ANYENGINE_MOCK

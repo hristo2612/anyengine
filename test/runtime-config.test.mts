@@ -24,6 +24,7 @@ import {
   sanitizeAgentapiTerminalContent,
 } from '../src/http-agent-runtime.mjs'
 import { NativeClaudeRuntime, sdkResumeSessionId } from '../src/native-runtime.mjs'
+import { PROJECT_CONFIG_NOTICE } from '../src/posture-claude.mjs'
 import { resolveRuntimeConfig } from '../src/runtime-config.mjs'
 import type { RuntimeTurnContext } from '../src/types.mjs'
 import { parseWorkflowCommand, workflowRuntimePrompt } from '../src/workflow-command.mjs'
@@ -1856,7 +1857,9 @@ test('native SDK permission allow result carries original input for SDK validati
   const runtime = new NativeClaudeRuntime()
   const turns = Reflect.get(runtime, 'turns')
   assert.ok(turns instanceof Map)
-  const input = { command: 'printf ok' }
+  // A write the default (read-only) posture asks about; Bash has no card
+  // there, since no codex child sandboxes it (src/posture-claude.mts).
+  const input = { file_path: join(tmpdir(), 'ok.txt'), content: 'ok' }
   const requests: unknown[] = []
   turns.set('turn', {
     handlers: {
@@ -1871,7 +1874,7 @@ test('native SDK permission allow result carries original input for SDK validati
     const makeCanUseTool = Reflect.get(runtime, 'makeCanUseTool')
     assert.equal(typeof makeCanUseTool, 'function')
     const canUseTool = makeCanUseTool.call(runtime, { threadId: 'thread', turnId: 'turn' }, false)
-    const result = await canUseTool('Bash', input, {
+    const result = await canUseTool('Write', input, {
       toolUseID: 'tool',
       signal: new AbortController().signal,
     })
@@ -2050,7 +2053,10 @@ test('HTTP agent runtime uses one managed bridge URL per cwd/model key', async (
     baseUrl: 'http://127.0.0.1:9',
     useSse: false,
     pollIntervalMs: 20,
-    timeoutMs: 2_000,
+    // A give-up, not the behaviour under test. The mode command is a script
+    // written just now, and macOS checks a new executable on its first exec,
+    // which took up to 3 s here on a loaded machine.
+    timeoutMs: 30_000,
     sendInterruptRaw: false,
     manageBridge: true,
     modeCommand,
@@ -2108,24 +2114,16 @@ test('claude-p runtime runs each turn in its own cwd', async () => {
   const cwdB = join(tmp, 'b')
   await mkdir(cwdA)
   await mkdir(cwdB)
-  const command = join(tmp, 'fake-claude-p.mjs')
-  await writeFile(
-    command,
-    [
-      '#!/usr/bin/env node',
+  const runtime = new ClaudePTranscriptRuntime({
+    ...(await fakeClaudeP(join(tmp, 'fake-claude-p.mjs'), [
       'import { readFileSync } from "node:fs";',
       'const args = process.argv.slice(2);',
       'const input = args[args.indexOf("--input-file") + 1];',
       'const cwdArg = args[args.indexOf("--cwd") + 1];',
       'const prompt = input ? readFileSync(input, "utf8") : "";',
       'console.log(JSON.stringify({ result: `${process.cwd()}|${cwdArg}|${prompt}`, session_id: null, is_error: false }));',
-    ].join('\n'),
-  )
-  await chmod(command, 0o755)
-  const runtime = new ClaudePTranscriptRuntime({
-    command,
-    extraArgs: [],
-    timeoutMs: 2_000,
+    ])),
+    timeoutMs: GIVE_UP_MS,
     skipPermissions: false,
     resume: false,
   })
@@ -2180,24 +2178,18 @@ test('claude-p runtime runs each turn in its own cwd', async () => {
 
 test('claude-p runtime timeout terminates spawned process tree', async () => {
   const tmp = await mkdtemp(join(tmpdir(), 'anyengine-claude-p-timeout-test-'))
-  const command = join(tmp, 'hanging-claude-p.mjs')
   const childPidFile = join(tmp, 'child.pid')
-  await writeFile(
-    command,
-    [
-      '#!/usr/bin/env node',
+  const runtime = new ClaudePTranscriptRuntime({
+    ...(await fakeClaudeP(join(tmp, 'hanging-claude-p.mjs'), [
       'import { spawn } from "node:child_process";',
       'import { writeFileSync } from "node:fs";',
       `const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', detached: process.platform !== 'win32' });`,
       `writeFileSync(${JSON.stringify(childPidFile)}, String(child.pid));`,
       'setInterval(() => {}, 1000);',
-    ].join('\n'),
-  )
-  await chmod(command, 0o755)
-  const runtime = new ClaudePTranscriptRuntime({
-    command,
-    extraArgs: [],
-    timeoutMs: 1_000,
+    ])),
+    // The timeout is what this test is about, so it fires every run: long
+    // enough for a loaded machine to start the fake and its child first.
+    timeoutMs: FIRES_MS,
     skipPermissions: false,
     resume: false,
   })
@@ -2234,8 +2226,12 @@ test('claude-p runtime timeout terminates spawned process tree', async () => {
     )
 
     const childPid = Number(await readFile(childPidFile, 'utf8'))
-    await new Promise((resolve) => setTimeout(resolve, 600))
-    assert.equal(processIsAlive(childPid), false)
+    // SIGTERM at the timeout, SIGKILL 1.5 s later: the child is gone well
+    // before the give-up.
+    assert.ok(
+      await until(() => !processIsAlive(childPid), GIVE_UP_MS),
+      `child ${childPid} outlived the timeout`,
+    )
   } finally {
     await rm(tmp, { recursive: true, force: true })
   }
@@ -2243,25 +2239,17 @@ test('claude-p runtime timeout terminates spawned process tree', async () => {
 
 test('claude-p runtime retries an empty StopTimeout once', async () => {
   const tmp = await mkdtemp(join(tmpdir(), 'anyengine-claude-p-retry-test-'))
-  const command = join(tmp, 'flaky-claude-p.mjs')
   const countFile = join(tmp, 'count.txt')
-  await writeFile(
-    command,
-    [
-      '#!/usr/bin/env node',
+  const runtime = new ClaudePTranscriptRuntime({
+    ...(await fakeClaudeP(join(tmp, 'flaky-claude-p.mjs'), [
       'import { existsSync, readFileSync, writeFileSync } from "node:fs";',
       `const countFile = ${JSON.stringify(countFile)};`,
       'const count = existsSync(countFile) ? Number(readFileSync(countFile, "utf8")) : 0;',
       'writeFileSync(countFile, String(count + 1));',
       'if (count === 0) { console.error("claude-p: StopTimeout"); process.exit(2); }',
       'console.log(JSON.stringify({ result: "retry-ok", session_id: "session", is_error: false }));',
-    ].join('\n'),
-  )
-  await chmod(command, 0o755)
-  const runtime = new ClaudePTranscriptRuntime({
-    command,
-    extraArgs: [],
-    timeoutMs: 2_000,
+    ])),
+    timeoutMs: GIVE_UP_MS,
     skipPermissions: false,
     resume: false,
     stopTimeoutRetries: 1,
@@ -2299,7 +2287,9 @@ test('claude-p runtime retries an empty StopTimeout once', async () => {
       },
     )
 
+    // No baseline (the app never started this thread): project config stays out.
     assert.deepEqual(events, [
+      PROJECT_CONFIG_NOTICE,
       'claude-p did not emit its Stop hook before timing out; retrying attempt 2/2.',
       'retry-ok',
     ])
@@ -2311,25 +2301,19 @@ test('claude-p runtime retries an empty StopTimeout once', async () => {
 
 test('claude-p runtime retries a process timeout once', async () => {
   const tmp = await mkdtemp(join(tmpdir(), 'anyengine-claude-p-timeout-retry-test-'))
-  const command = join(tmp, 'timeout-then-ok-claude-p.mjs')
-  const countFile = join(tmp, 'count.txt')
-  await writeFile(
-    command,
-    [
-      '#!/usr/bin/env node',
-      'import { existsSync, readFileSync, writeFileSync } from "node:fs";',
-      `const countFile = ${JSON.stringify(countFile)};`,
-      'const count = existsSync(countFile) ? Number(readFileSync(countFile, "utf8")) : 0;',
-      'writeFileSync(countFile, String(count + 1));',
-      'if (count === 0) setInterval(() => {}, 1000);',
-      'else console.log(JSON.stringify({ result: "timeout-retry-ok", session_id: "session", is_error: false }));',
-    ].join('\n'),
-  )
-  await chmod(command, 0o755)
+  // The fake hangs while `hang` exists, and the test removes it when the
+  // runtime reports the timeout: the retry answers however late the first
+  // attempt started, or whether it started at all.
+  const hang = join(tmp, 'hang')
+  await writeFile(hang, '')
   const runtime = new ClaudePTranscriptRuntime({
-    command,
-    extraArgs: [],
-    timeoutMs: 2_000,
+    ...(await fakeClaudeP(join(tmp, 'timeout-then-ok-claude-p.mjs'), [
+      'import { existsSync } from "node:fs";',
+      `if (existsSync(${JSON.stringify(hang)})) setInterval(() => {}, 1000);`,
+      'else console.log(JSON.stringify({ result: "timeout-retry-ok", session_id: "session", is_error: false }));',
+    ])),
+    // Fires once, on the first attempt; the second answers well inside it.
+    timeoutMs: FIRES_MS,
     skipPermissions: false,
     resume: false,
     stopTimeoutRetries: 1,
@@ -2361,6 +2345,7 @@ test('claude-p runtime retries a process timeout once', async () => {
       {
         onEvent: async (event) => {
           if (event.type === 'notice') events.push(event.message)
+          if (event.type === 'notice' && /process timed out/.test(event.message)) await rm(hang)
           if (event.type === 'text_delta') events.push(event.delta)
         },
         onPermissionRequest: async () => ({ decision: 'accept' }),
@@ -2368,10 +2353,10 @@ test('claude-p runtime retries a process timeout once', async () => {
     )
 
     assert.deepEqual(events, [
+      PROJECT_CONFIG_NOTICE,
       'claude-p process timed out; retrying attempt 2/2.',
       'timeout-retry-ok',
     ])
-    assert.equal(await readFile(countFile, 'utf8'), '2')
   } finally {
     await rm(tmp, { recursive: true, force: true })
   }
@@ -2608,6 +2593,31 @@ test('agentapi terminal sanitizer removes Claude Code TUI status artifacts', () 
   )
   assert.equal(sanitizeAgentapiTerminalContent('· Slithering…'), '')
 })
+
+// The runtime's timeout, as a give-up where it is not what the test is about,
+// and where it is and so fires every run.
+const GIVE_UP_MS = 30_000
+const FIRES_MS = 3_000
+
+// A fake `claude-p` the runtime runs through node: written just now, it is
+// never exec'd itself, because macOS checks a new executable on its first
+// exec (up to 3 s here on a loaded machine) and node reading it costs nothing.
+async function fakeClaudeP(
+  path: string,
+  lines: string[],
+): Promise<{ command: string; extraArgs: string[] }> {
+  await writeFile(path, lines.join('\n'))
+  return { command: process.execPath, extraArgs: [path] }
+}
+
+async function until(condition: () => boolean, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (!condition()) {
+    if (Date.now() > deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  return true
+}
 
 function processIsAlive(pid: number): boolean {
   try {

@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readdir } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import test from 'node:test'
+import test, { after } from 'node:test'
 import {
   blockWorkflowTask,
   completeWorkflowTask,
@@ -19,6 +18,9 @@ import {
   WorkflowStateStore,
   type WorkflowTask,
 } from '../src/workflow-state.mjs'
+import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
+
+after(removeTempDirs)
 
 const now = new Date('2026-07-04T00:00:00.000Z')
 
@@ -48,7 +50,7 @@ test('workflow state parser rejects unknown task statuses', () => {
 })
 
 test('workflow state store writes through an atomic JSON file', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'anyengine-workflow-state-'))
+  const dir = await tempDir('anyengine-workflow-state-')
   const statePath = join(dir, 'nested', 'workflow-state.json')
   const store = new WorkflowStateStore(statePath)
   const nextState: WorkflowState = {

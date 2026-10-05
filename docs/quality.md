@@ -98,6 +98,73 @@ scripts are fixtures, not configuration, and are out of scope.
 `brew install gitleaks`), and `gitleaks/gitleaks-action@v2` scans full history
 on every CI run.
 
+## 7. Hermetic tests
+
+`npm test` runs every suite through `scripts/test-hermetic.mjs`: HOME,
+CODEX_HOME, CLAUDE_CONFIG_DIR and ANYENGINE_DEBUG_LOG point into one
+throwaway directory, inherited `ANYENGINE_*`, `CODEX_*`, `CLAUDE_*`,
+`ANTHROPIC_*`, `OPENAI_*`, `GROK_*` and `GIT_*` settings are dropped, and PATH
+holds only the running node and the system directories, so no real `codex`,
+`claude` or `grok` can be found. `test/hermetic.test.mts` fails any run that is
+not set up this way. A test run once wrote into the live debug log; this is the
+gate that stops it happening again.
+
+The runner also points TMPDIR into the throwaway directory and fails a run
+that leaves anything there, or that adds `anyengine-*` entries to the real temp
+directory: make temp directories with `tempDir()` from `test/helpers/tmp.mts`
+and register `after(removeTempDirs)` (after `killChildren` where the suite
+spawns children). When the temp directory is too long for the unix sockets
+suites bind inside TMPDIR (macOS's per-user one is), the root goes under
+`/tmp`; strays are still looked for in the real temp directory. Before it
+looks, the runner sweeps the bridge sockets of adapters that are no longer
+running, as the next adapter to start would. Runs may overlap: another run's
+`anyengine-hermetic-*` root is not a stray. Other tools that write
+`anyengine-*` entries into the same temp directory while a run is going
+(`npm run check:posture-schema`, the smokes, an adapter's claude-p runtime on
+the default TMPDIR) can still fail it; run them apart, or rerun.
+
+## 8. Posture schema coverage
+
+`npm run check:posture-schema` (CI, after the build) generates the app-server
+JSON schema with the pinned codex and fails when an approval policy, granular
+approval flag, sandbox mode, sandbox policy variant or field, reviewer,
+external network mode or collaboration mode is one `src/posture.mts` does not
+map, or when `test/fixtures/claude-permission-modes.json` lists a Claude mode
+it does not convert. Bumping the pin (`scripts/sync-codex-compat.mjs`) runs
+this against the new schema on the next CI run.
+
+## Synchronous config coordination
+
+`withFileLock` holds a built-in `node:sqlite` `BEGIN IMMEDIATE` transaction
+across legacy marker recovery, the short synchronous callback and marker
+release. Acquisition shares one monotonic `waitMs` deadline (10 seconds by
+default); database errors fail closed. A live transaction is never stolen
+because its marker exceeds `staleMs`. Exit or crash releases SQLite's lock;
+the next caller recovers dead main and takeover markers. PID/token and
+identity checks remain for legacy observers and replacements.
+
+`config.json.lock.sqlite` intentionally persists at the same inode. The gate
+stores no rows or schema and stays zero bytes; normal rollback and close leave
+no journal. Tests check its bounded size, stable inode and reacquisition while
+rejecting leftover main/takeover markers, asides, temporary writes and journals.
+Invalid config sets are validated before coordination setup and create no gate.
+The coordination database is opaque storage, and SQLite owns all its handles.
+Ordinary reads, copies or hashes that open and close it in an owning process
+can cancel POSIX locks held by that process's SQLite connections. Callers must
+exclude it from such file operations while their transactions are active.
+
+All published M1 builds use this gate. Initial activation must drain work from
+older builds, which only use PID markers and cannot participate in SQLite
+coordination. Active legacy markers are respected until their existing stale
+policy permits recovery; concurrent old binaries are outside the exclusion
+guarantee. Node-free recovery, backups and layer restoration must preserve the
+database and any journal/WAL sidecars, excluding them from mutation while an
+owner or waiter might exist. Never unlink, rename, truncate or restore them in
+that state. Let the next Node caller recover SQLite; no separate `sqlite3`
+executable is required. Offline cleanup requires every
+participant to have stopped. This helper remains synchronous; async flip work
+uses its separate protocol.
+
 ## What these gates do not do
 
 They do not check that the adapter actually works. Protocol and runtime changes

@@ -15,6 +15,7 @@
 //   <- prompt result {stopReason:'end_turn'|'cancelled'|..., _meta:{usage}}
 //   -> session/cancel {sessionId} (notification)
 
+import { contextPosture, isUnrestricted } from './posture.mjs'
 import type { PermissionDecision, RuntimeEvent, RuntimeTurnContext } from './types.mjs'
 
 export const GROK_SESSION_PREFIX = 'grok:'
@@ -32,8 +33,9 @@ export interface GrokPermissionOption {
 }
 
 // Claude tool names the adapter treats as read-only: grok never needs the App's
-// approval for these, mirroring anyengine / claude-p.
-const READ_ONLY_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite'])
+// approval for these, mirroring anyengine / claude-p. A fetch is network, which
+// the thread's posture decides (spec 5.6).
+const READ_ONLY_TOOLS = new Set(['Read', 'Glob', 'Grep', 'WebSearch', 'TodoWrite'])
 
 // grok tool identifiers (tool_call.title / _meta['x.ai/tool'].name / rawInput.variant)
 // onto the Claude tool names server.mts already knows how to render as native
@@ -84,8 +86,8 @@ export function grokAgentSpec(context: RuntimeTurnContext): GrokAgentSpec {
   return {
     model: context.model && isGrokModel(context.model) ? context.model : null,
     effort: normalizeGrokEffort(context.effort),
-    alwaysApprove:
-      context.approvalPolicy === 'never' || context.sandboxMode === 'danger-full-access',
+    // Only an unrestricted posture drops grok's own asks (spec 5.6, fix 4).
+    alwaysApprove: isUnrestricted(contextPosture(context)),
   }
 }
 
@@ -155,6 +157,8 @@ export function grokToolName(update: Record<string, unknown>): string {
 }
 
 export function grokToolIsReadOnly(update: Record<string, unknown>, toolName: string): boolean {
+  // grok labels its fetch read_only; it still goes to the posture.
+  if (toolName === 'WebFetch') return false
   const meta = asRecord(asRecord(update._meta)['x.ai/tool'])
   if (meta.read_only === true) return true
   return READ_ONLY_TOOLS.has(toolName)

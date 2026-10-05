@@ -1,4 +1,4 @@
-// Standing instructions and model aliases for the cross-engine bridge
+// One-line standing instructions and model aliases for the cross-engine bridge
 // (docs/guide/bridge.md). One helper feeds all three engines: the Claude
 // runtimes get it through the per-turn systemPromptAddendum
 // (`--append-system-prompt`), Grok through the same addendum prefixed on the
@@ -6,7 +6,10 @@
 // child through `developerInstructions` on the forwarded thread/start
 // (codex-mux). `ANYENGINE_BRIDGE_INSTRUCTIONS=0` turns the injection off.
 
-import { isCodexOpenAiModel } from './util.mjs'
+import { grokModelOptions } from './grok-models.mjs'
+import { asRecord } from './rpc-shape.mjs'
+import type { JsonRpcRequest } from './types.mjs'
+import { claudeModelOptions, codexProxyModelOptions, isCodexOpenAiModel } from './util.mjs'
 
 export type BridgeProvider = 'openai' | 'anthropic' | 'xai'
 
@@ -17,16 +20,11 @@ export interface BridgeCatalogModel {
   isDefault?: boolean
 }
 
-export const BRIDGE_INSTRUCTIONS_HEADING = '# Other engines available'
-const MAX_IDS_PER_PROVIDER = 6
-
-const PROVIDER_LABEL: Record<BridgeProvider, string> = {
-  anthropic: 'Claude',
-  xai: 'Grok',
-  openai: 'GPT',
-}
-const PROVIDER_ORDER: BridgeProvider[] = ['anthropic', 'xai', 'openai']
-
+// One standing line for claimed children and the bridge fallback (spec 3).
+export const BRIDGE_LINE =
+  'For sub-agents or sessions on another engine (Claude, GPT), use the anyengine tools spawn_subagents (parallel, one task and model per agent) or spawn_session.'
+export const BRIDGE_LINE_GPT =
+  "For Claude sub-agents use the anyengine spawn_subagents tool (one task and model per agent); Codex's own spawn_agent cannot start Claude in this session."
 // Words that name a whole engine rather than one model.
 const FAMILY_WORDS: Record<string, BridgeProvider> = {
   claude: 'anthropic',
@@ -68,46 +66,44 @@ export function providerFor(model: string): BridgeProvider {
   return 'anthropic'
 }
 
-// The addendum every engine receives. Generated from the live catalog so the
-// model sees real ids next to the names people use.
-export function bridgeInstructions(catalog: BridgeCatalogModel[]): string {
-  const lines = [
-    BRIDGE_INSTRUCTIONS_HEADING,
-    'You run inside the Codex desktop through the anyengine adapter. The `anyengine` MCP tools start sessions and parallel sub-agents on the other engines from this thread:',
-  ]
-  for (const provider of PROVIDER_ORDER) {
-    const entries = catalog.filter((model) => model.provider === provider)
-    const label = PROVIDER_LABEL[provider]
-    if (entries.length === 0) {
-      if (provider === 'openai')
-        lines.push(`- ${label}: not attached right now (native Codex child down); say so if asked.`)
-      continue
-    }
-    const shown = entries
-      .slice(0, MAX_IDS_PER_PROVIDER)
-      .map((model) => `${model.displayName} (\`${model.id}\`)`)
-    const more = entries.length - shown.length
-    lines.push(
-      `- ${label}: ${shown.join(', ')}${more > 0 ? `, and ${more} more (list_models)` : ''}`,
-    )
-  }
-  lines.push(
-    'When the user names one of these engines or models, or says spawn, delegate, hand off, ask X, or run in parallel, do it right away with anyengine: no confirmation, and do not mention tool names in your reply. Informal names work as `model` ("claude opus", "grok", "gpt"); the bridge maps them to catalog ids. Use spawn_subagents for several tasks or anything parallel (one task per agent, model per task) and spawn_session for a standalone conversation; send_to_session continues one. Relay each reply verbatim, labelled with its model, then answer the user.',
-  )
-  return lines.join('\n')
+export function bridgeInstructions(_catalog: BridgeCatalogModel[]): string {
+  return BRIDGE_LINE
 }
 
-// Appends the addendum to an existing system-prompt / developer-instructions
-// text; idempotent so a resend (thread/resume, per-turn overrides) never
-// stacks two copies.
+// Idempotent across resumes and per-turn overrides.
 export function appendBridgeInstructions(
   existing: string | null | undefined,
-  catalog: BridgeCatalogModel[],
+  _catalog: BridgeCatalogModel[],
+  line: string = BRIDGE_LINE,
 ): string {
   const base = (existing ?? '').trim()
-  if (base.includes(BRIDGE_INSTRUCTIONS_HEADING)) return base
-  const addendum = bridgeInstructions(catalog)
-  return base ? `${base}\n\n${addendum}` : addendum
+  if (base.includes(line)) return base
+  return base ? `${base}\n\n${line}` : line
+}
+
+export function bridgeInstructionParams(params: unknown, line: string | null): unknown {
+  if (!line) return params
+  const record = asRecord(params)
+  const existing =
+    typeof record.developerInstructions === 'string' ? record.developerInstructions : null
+  return { ...record, developerInstructions: appendBridgeInstructions(existing, [], line) }
+}
+
+export function localModelOptions(defaultModel: string) {
+  return [...claudeModelOptions(), ...codexProxyModelOptions(), ...grokModelOptions()].map(
+    (option) => ({
+      id: option.id,
+      displayName: option.displayName,
+      isDefault: option.id === defaultModel || option.isDefault === true,
+    }),
+  )
+}
+
+export function bridgeInstructionRequest(
+  request: JsonRpcRequest,
+  line: string | null,
+): JsonRpcRequest {
+  return { ...request, params: bridgeInstructionParams(request.params, line) }
 }
 
 // ---- alias resolution ----------------------------------------------------

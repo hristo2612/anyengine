@@ -1,85 +1,110 @@
-# Deployment
+# Installation and recovery
 
-The deployment target is a remote SSH host with a `codex` shim earlier in the
-login-shell `PATH`.
+The supported local macOS setup is `npm run setup` from a clean source checkout.
+See [Getting started](getting-started.md) for prerequisites and first use.
 
-## Install the shim
+The installed runtime lives under `~/.anyengine/lib/<version>/`. Each version
+contains compiled code and production dependencies; cleaning a checkout cannot
+remove the dependencies of a running app. `lib/current` selects the active build,
+and the Bash launcher pins Node from `runtime.env`.
 
-Install `scripts/codex-shim` as `codex` on the remote host:
+## Update from a checkout
 
-```bash
-mkdir -p ~/bin
-cp scripts/codex-shim ~/bin/codex && chmod +x ~/bin/codex
-```
-
-Then have the login shell export the adapter pointers. Put these in `~/.zshenv`
-so non-interactive SSH sees them too:
+Finish active app work, obtain the intended source revision, and run setup again:
 
 ```bash
-export PATH="$HOME/bin:$PATH"
-export ANTHROPIC_API_KEY="<your-anthropic-api-key>" # or sign in with `claude /login`
-export ANYENGINE_ADAPTER="/opt/anyengine/dist/src/adapter.mjs"
-export ANYENGINE_NODE="/absolute/path/to/node" # optional
-export CODEX_REAL="/usr/local/bin/codex.real"     # optional native-Codex fallback
+npm run setup
 ```
 
-Keep credentials in the host environment or a secret manager. Do not commit
-real API keys, OAuth/session state, `.env` files, copied shell snippets with
-resolved secrets, or private infrastructure URLs.
+Setup stages a verified build before activation. The existing `on` command owns
+backups, app restart, postflight checks and automatic rollback. A clean Git tree
+is required so the installed version can be reproduced. Do not delete unrelated
+uncommitted files just to satisfy that check; use a clean checkout instead.
 
-Codex App keeps using its native SSH flow: it probes `codex --version`, starts
-`codex app-server --listen unix://`, then connects via `codex app-server proxy`.
-The shim routes only those app-server calls to the adapter.
+A fresh v1 install uses the full layer recovery path. Subsequent direct-v1
+updates retain their immediate prior layer checkpoints. Installations upgraded
+through M1/M2 also retain their existing milestone-specific recovery.
 
-::: tip Custom Anthropic endpoints
-If your organization uses a supported custom Anthropic endpoint, configure
-`ANTHROPIC_BASE_URL` in the host environment. Treat the endpoint value as
-deployment configuration and avoid committing private URLs.
-:::
-
-## Bootstrapping a fresh host (no sudo / Homebrew)
-
-A clean machine usually needs only four user-space tools:
+## Stage without enabling
 
 ```bash
-# 1. Node 24 (stable node:sqlite) — pick your platform tarball from nodejs.org/dist.
-curl -fsSL https://nodejs.org/dist/v24.11.0/node-v24.11.0-darwin-arm64.tar.xz | tar -xJ -C ~/.local
-
-# 2. Claude Code CLI under a user prefix.
-mkdir -p ~/.local/npm-global
-~/.local/node-v24.11.0-darwin-arm64/bin/npm config set prefix ~/.local/npm-global
-~/.local/npm-global/bin/npm install -g @anthropic-ai/claude-code
-~/.local/npm-global/bin/claude /login        # interactive: claude.ai OAuth
-
-# 3. Adapter checkout + build.
-git clone <your anyengine remote> ~/anyengine && cd ~/anyengine
-npm install && npm run build
-
-# 4. Persist PATH + adapter pointers for non-interactive SSH.
-cat >>~/.zshenv <<'EOF'
-export PATH="$HOME/.local/npm-global/bin:$HOME/.local/node-v24.11.0-darwin-arm64/bin:$HOME/.local/bin:$PATH"
-export ANYENGINE_ADAPTER="$HOME/anyengine/dist/src/adapter.mjs"
-export ANYENGINE_NODE="$HOME/.local/node-v24.11.0-darwin-arm64/bin/node"
-EOF
-cp scripts/codex-shim ~/.local/bin/codex && chmod +x ~/.local/bin/codex
-
-npm run doctor       # all checks should be ok
-npm run smoke:real   # round-trips a real Claude turn
+npm run setup -- --stage-only
 ```
 
-Codex App's Remote connection then hits the shim first and is routed into the
-adapter. Disconnecting reclaims the daemon so the adapter exits.
+This installs dependencies, builds and verifies the library without moving
+`lib/current`, editing shell or Claude settings, loading jobs, or restarting the
+app. It prints the exact command to activate the staged version later.
 
-## Daemon lifecycle
+For maintainers who already built the source:
 
-The daemon owns the Unix socket while a client is connected. When the last
-client disconnects it shuts down after an idle grace period (deferred if a turn
-is still active; reconnecting during that window reattaches notifications). Tune
-with `ANYENGINE_IDLE_EXIT_MS` (default `15000`; `0` keeps it running).
+```bash
+node scripts/install-lib.mjs --no-activate
+```
 
-## Quick remote probe
+`install-lib` preserves libraries referenced by running adapters and recovery
+records. Its `--activate VERSION` option only moves the verified library pointer;
+use `on --lib VERSION` for the full managed activation and live checks.
+
+## Shell and configuration
+
+Setup supports zsh (`~/.zshrc`) and bash (`~/.bash_profile`). On fresh installs, the
+managed shell block puts `~/.anyengine/bin` on PATH and sets the app's Codex entry only when
+ChatGPT.app imports its shell environment. Ordinary terminal Codex keeps its
+normal entry. Off restores the owned changes while preserving unrelated edits;
+conflicting edits are reported for resolution.
+
+Older installs preserve their existing shell block to keep retained recovery
+working. Use the absolute launcher or `export PATH="$HOME/.anyengine/bin:$PATH"`
+in a terminal.
+
+Advanced installations can set `ANYENGINE_ROOT` before setup. The generated
+launcher, jobs, state and CLI PATH use that root. Do not hand-copy adapters or
+point a live launcher into a source checkout.
+
+Current settings live in `~/.anyengine/config.json`. Use `anyengine config` for
+inspection and edits. `runtime.env` contains bootstrap paths and legacy backend
+overrides. See [Configuration](configuration.md) and [Control commands](control.md).
+
+## Recover a failed activation
+
+Run `anyengine status` and preserve the exact recovery command and evidence
+printed by the installer. Automatic rollback attempts to restore a working
+baseline after failed activation. Inspection or restore conflicts keep the
+recovery records for a safe retry.
+
+```bash
+anyengine off
+```
+
+For an installation with retained milestone history, the narrower commands are:
+
+```bash
+anyengine rollback m3
+anyengine rollback m2
+```
+
+Those commands require an actual retained baseline; a fresh full-v1 install has
+no historical M1/M2 installation to downgrade to. Its full Off path remains
+available. If the public CLI is unavailable, use the absolute system-Bash
+recovery command retained in `RECOVER.txt`. Do not remove recovery records or
+libraries while recovery is pending.
+
+## Remote connections
+
+The adapter still supports the app's SSH Remote flow through `codex app-server`
+and `app-server proxy`. The local setup command requires macOS and a local app;
+it is not a general Linux or headless remote-host installer.
+
+An advanced remote deployment needs its own installed library, official vendor
+clients, login-shell paths and authentication on that host. macOS Keychain auth
+can fail under an SSH session; local acceptance does not establish that path.
+Use a read-only version probe to check routing:
 
 ```bash
 ssh host 'command -v codex'
 ssh host 'codex --version'
 ```
+
+Remote protocol examples are in [Using ChatGPT.app](gui.md) and
+[Configuration](configuration.md). Do not script the interactive Codex TUI; it
+can present a self-update prompt.

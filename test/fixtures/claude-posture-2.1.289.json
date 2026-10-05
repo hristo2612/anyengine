@@ -1,0 +1,176 @@
+{
+  "claudeVersion": "2.1.289",
+  "isolation": {
+    "fakeCredentials": true,
+    "loopbackOnly": true,
+    "realHomeReadWriteDenied": true,
+    "keychainFilesAndMachDenied": true,
+    "cleanup": "all owned groups joined"
+  },
+  "agentTemplate": {
+    "fields": ["name", "description", "model"],
+    "bodyBlank": true,
+    "source": "generated-agent-file"
+  },
+  "modes": {
+    "default": {
+      "parentPermissionMode": "default",
+      "childPermissionMode": "default",
+      "agentLoaded": true,
+      "childModelObserved": true,
+      "readRoundTrip": true,
+      "outsideRead": {
+        "advertised": true,
+        "errorResult": true,
+        "permissionDenied": true,
+        "markerUnchanged": true,
+        "source": "native-debug+owned-hook+error-result"
+      },
+      "write": {
+        "advertised": true,
+        "errorResult": true,
+        "permissionDenied": true,
+        "markerUnchanged": true,
+        "source": "native-debug+owned-hook+error-result"
+      },
+      "command": {
+        "advertised": true,
+        "errorResult": true,
+        "permissionDenied": true,
+        "markerUnchanged": true,
+        "source": "native-debug+owned-hook+error-result"
+      },
+      "requests": 6,
+      "exitCode": 0,
+      "deadline": false,
+      "diagnostic": {
+        "unknownOption": false,
+        "accessDenied": false,
+        "stderrBytes": 99,
+        "startupSummary": "[claude-code:unrecognized_model] {\"model\":\"gpt-6.1-sol\",\"query_source\":\"agent:custom:gpt-6.1-sol\"}"
+      },
+      "exitSignal": null,
+      "cleanup": "joined",
+      "agentPermissionDenied": false,
+      "agentDenialSource": null
+    },
+    "plan": {
+      "parentPermissionMode": "plan",
+      "childPermissionMode": null,
+      "agentLoaded": false,
+      "childModelObserved": false,
+      "readRoundTrip": false,
+      "outsideRead": {
+        "source": null,
+        "advertised": false,
+        "errorResult": false,
+        "permissionDenied": false,
+        "markerUnchanged": true
+      },
+      "write": {
+        "source": null,
+        "advertised": false,
+        "errorResult": false,
+        "permissionDenied": false,
+        "markerUnchanged": true
+      },
+      "command": {
+        "source": null,
+        "advertised": false,
+        "errorResult": false,
+        "permissionDenied": false,
+        "markerUnchanged": true
+      },
+      "requests": 12,
+      "exitCode": 0,
+      "deadline": false,
+      "diagnostic": {
+        "unknownOption": false,
+        "accessDenied": false,
+        "stderrBytes": 447,
+        "startupSummary": "We're changing auto mode to no longer charge for classifier requests in Claude Code. However, this session isn't eligible because your requests go through 127.0.0.1:<PORT>, which isn't compatible with this update. Nothing breaks: auto mode keeps working, and its classifier requests are billed as before. To fix it and access the new version of auto mode, ask your gateway to implement: https://code.claude.com/docs/en/auto-mode-classifier-billing"
+      },
+      "exitSignal": null,
+      "cleanup": "joined",
+      "agentPermissionDenied": true,
+      "agentDenialSource": "permission-denied-hook"
+    },
+    "dontAsk": {
+      "parentPermissionMode": "dontAsk",
+      "childPermissionMode": "dontAsk",
+      "agentLoaded": true,
+      "childModelObserved": true,
+      "readRoundTrip": true,
+      "outsideRead": {
+        "source": "native-debug+owned-hook+error-result",
+        "advertised": true,
+        "errorResult": true,
+        "permissionDenied": true,
+        "markerUnchanged": true
+      },
+      "write": {
+        "source": "native-debug+owned-hook+error-result",
+        "advertised": true,
+        "errorResult": true,
+        "permissionDenied": true,
+        "markerUnchanged": true
+      },
+      "command": {
+        "source": "native-debug+owned-hook+error-result",
+        "advertised": true,
+        "errorResult": true,
+        "permissionDenied": true,
+        "markerUnchanged": true
+      },
+      "requests": 6,
+      "exitCode": 0,
+      "deadline": false,
+      "diagnostic": {
+        "unknownOption": false,
+        "accessDenied": false,
+        "stderrBytes": 99,
+        "startupSummary": "[claude-code:unrecognized_model] {\"model\":\"gpt-6.1-sol\",\"query_source\":\"agent:custom:gpt-6.1-sol\"}"
+      },
+      "exitSignal": null,
+      "cleanup": "joined",
+      "agentPermissionDenied": false,
+      "agentDenialSource": null
+    }
+  },
+  "unexercisedModes": ["acceptEdits", "auto", "bypassPermissions", "manual"],
+  "picker": {
+    "menuObserved": false,
+    "gptRowObserved": false,
+    "builtInRowsObserved": false,
+    "composerOnly": false,
+    "status": "open",
+    "labels": ["▝▜██████▀  Sonnet 5.5 · API Usage Billing"],
+    "exitCode": 0,
+    "exitSignal": 9,
+    "deadline": false,
+    "stoppedByCapture": true,
+    "cleanup": "joined"
+  },
+  "opens": [
+    {
+      "contract": "agentInheritance:plan",
+      "reason": "The native plan parent denied the owned Agent launch; no GPT child or child tool attempt occurred."
+    },
+    {
+      "contract": "permission:plan:outsideRead",
+      "reason": "The native plan parent denied the owned Agent launch; no GPT child or child tool attempt occurred."
+    },
+    {
+      "contract": "permission:plan:write",
+      "reason": "The native plan parent denied the owned Agent launch; no GPT child or child tool attempt occurred."
+    },
+    {
+      "contract": "permission:plan:command",
+      "reason": "The native plan parent denied the owned Agent launch; no GPT child or child tool attempt occurred."
+    },
+    {
+      "contract": "pickerMenu",
+      "reason": "A bounded actual picker menu with both GPT custom and built-in rows was not observed; composer text is not proof."
+    }
+  ]
+}

@@ -7,6 +7,249 @@ versioning or publishing metadata.
 
 ## Unreleased
 
+### Setup and guides
+
+- `npm run setup` builds and stages a verified library, then uses the existing
+  activation checks and automatic rollback. `--stage-only` stops before activation.
+- Fresh managed shell blocks expose `anyengine` in new zsh/bash terminals. Fresh
+  v1 installs use full recovery; direct-v1 updates retain the prior controls and
+  Claude settings alongside the runtime. Existing milestone recovery remains.
+- README and first-use, app, configuration and recovery guides describe the
+  current cross-engine behavior and local-only release status.
+
+### M3: accounts and limits
+
+- **Locally accepted.** Sequential Home/C rotation preserves app context.
+  Desktop and translated GPT work share the admission gate, limits lists every
+  registered account, and M3-only recovery preserves accepted M2. Full Off
+  restores Home and cleans the shared cache. Automatic rotation and replay
+  remain opt-in. [Acceptance](docs/evidence/m3-accounts-limits.md).
+- Bridge children are announced after turn admission, preventing a refused
+  start from retaining work leases. Restart recovery uses retained M2 before
+  broader removal. Scheduled smoke keeps its nightly and update triggers;
+  mandatory app startup verification handles installation.
+
+### M2: Claude Code face and broker
+
+- **Locally accepted.** Claude Code lists GPT, runs translated tool work and GPT
+  children, and preserves Claude subscription responses. Official Codex owns
+  token refresh. [Acceptance](docs/evidence/m2-acceptance.md).
+
+### M1: Codex router
+
+- **Locally accepted.** Native and bridge seven-child app tests, with three
+  actual Opus children and exact returned results, passed. The picker,
+  GPT → Opus context switch and full Off/cache cleanup/reinstall passed.
+  Historical TUI and legacy M0 observations remain explicit in the
+  [acceptance record](docs/evidence/m1-acceptance.md).
+
+- **Compatibility follows ChatGPT.app 26.930.21537.** Pins and CI now use
+  `0.159.0-alpha.12.1`, with zero-spend wire/spawn recordings for that exact
+  version and the 0.159.0 recordings retained. Generated schemas and captured
+  contracts are unchanged. Fixture tests follow the current pin, and plugin
+  cache selection respects prerelease precedence. Verification and updated
+  plan expectations: [Task 14b evidence](docs/evidence/m1-task14b-codex-adoption.md).
+
+- **Tests clean up after themselves.** The hermetic runner points TMPDIR
+  into its throwaway root and fails a run that leaves anything there or
+  writes `anyengine-*` entries into the real temp directory; the four suites
+  that left nine directories and six sockets behind on every run now remove
+  them.
+- **A slow git no longer turns turn diffs off.** The adapter asks git once
+  per workspace whether it is a work tree, and kept any failure, a 3 s
+  timeout included, as "no repository" until it restarted. Only git's own
+  answers are kept now, in whatever language git gives them. A timeout, a
+  signal or a git that cannot start is no answer: git is asked again at the
+  next diff (after every tool result, at turn end, and for the app's
+  `gitDiffToRemote`).
+- **Claude's shell fails closed.** When this Mac's codex (which sandboxes
+  shell commands) is not running, or the thread asks before every command, a
+  Claude thread in a bounded mode gets no shell instead of an approval card
+  for a command that would run outside every sandbox. File tools stay, under
+  the relay's path checks. Grok's own shell, which runs outside every
+  sandbox too, is declined without a card by the same rule, including in
+  Grok children a Claude thread spawns.
+- **A failed Claude tool call completes.** Claude Code reports a call that
+  failed (an `exec` error, a failing command) through `PostToolUseFailure`;
+  the PTY runtime now listens for it, so the call's item ends as failed with
+  the error instead of staying in progress.
+
+### M0: adapter safe
+
+- **The advertised codex version follows the app.** The shim asks the bundled
+  codex for its version at every launch; the fallback pin, the CI schema
+  generator and the docs move to `0.159.0` (ChatGPT.app 26.928; the schema is
+  byte-identical to the npm `@openai/codex@0.159.0` CI installs), and
+  `node scripts/sync-codex-compat.mjs` moves them together next time, asking
+  the codex the layout rule finds.
+  `npm run doctor` fails while an explicit `ANYENGINE_COMPAT_VERSION`, which
+  the shim would advertise instead, differs from the bundled codex.
+- **The bundled codex is found wherever the app keeps it.** ChatGPT.app
+  26.928 moved its codex into `Contents/Resources/codex-cli/`; the first live
+  flip pinned the old path, and the adapter ran with no GPT engine, silently
+  (`docs/evidence/m0-flip.md`). One rule (`src/bundled-codex.mts`, copied into
+  the shim and checked against it by a test) now picks `ANYENGINE_REAL_CODEX`
+  while it names an executable file, else the app's own codex in each layout
+  it has shipped. A named codex that is gone is skipped, with a line in the app
+  log and a debug event, and `npm run doctor` fails on it, and on an expected
+  codex child with nothing to run.
+- **Every command the shim runs uses the app's codex.** Not only app-server:
+  `--version` and app-server in the shim's native mode, the control socket
+  and every other command. `CODEX_REAL`, or the first other `codex` on PATH,
+  runs only when the app's is missing, with a stderr line and a
+  `shim.nonBundledCodex` debug event.
+- **A flip no longer installs an app update by accident.**
+  `scripts/preflip-check.mjs` refuses while Sparkle has an update staged for
+  the next quit (cache and installer job named from the app's bundle id), says
+  "cannot tell" about a cache or home it cannot read, and the flip procedure
+  stops if the app comes back as another version.
+- **An unknown collaboration mode is plan.** A mode a later app sends that
+  this build does not know reads as the tightest, as unknown sandbox,
+  approval and reviewer values already did, and is reported once.
+- **Tests can no longer touch a real home.** `npm test` runs every suite with
+  HOME, CODEX_HOME, CLAUDE_CONFIG_DIR and the debug log inside one throwaway
+  directory and a PATH with no engine CLIs on it, and a guard suite fails any
+  run that is not set up that way. Suites that spawn children reap them in
+  `after()`, and wait for each to exit, the daemons the shim disowns
+  included: a child still writing its coverage file used to fail the run.
+  Websocket tests read every frame (a `once(ws, 'message')` loop dropped
+  frames that shared a chunk and hung to the 180 s timeout) and start the
+  proxy only once the daemon listens.
+- **A broken adapter no longer takes the app down, and no longer hides.** The
+  shim runs `adapter.mjs selfcheck` first; if the adapter cannot load (the
+  2026-09-15 outage was a pruned `node_modules`), it execs the app's own
+  bundled codex and records why in the app log, the debug log and
+  `~/.anyengine/shim-fallback.json`, which `npm run doctor` reports. The
+  selfcheck exits as soon as it has answered, and neither it nor the bundled
+  codex's `--version` probe reads the app's stdin, so a probe cannot hang a
+  launch.
+- **The live adapter runs from an installed lib.** `npm run install:lib`
+  builds from a committed tree into `~/.anyengine/lib/<version>/`, verifies it
+  (file hashes plus a deep selfcheck) and only then moves
+  `~/.anyengine/lib/current`, which is where the shim looks by default. A
+  cleanup job pruning `node_modules` in idle projects can no longer break it,
+  and `npm run doctor` fails if the live adapter is a checkout.
+- **GPT threads get the bridge again on ChatGPT.app 26.911.** The app now
+  passes its own `-c` after `app-server`, which makes codex ignore every
+  `-c` before it, including the adapter's `mcp_servers.anyengine`. The
+  override now follows the app's subcommand flags when there are any.
+- **The app's thread list is no longer empty.** `thread/list` with
+  `modelProviders: []` now lists every provider, as the schema says, instead
+  of none.
+- **One posture type, one decision function.** `src/posture.mts` holds the
+  canonical posture in Codex's model (sandbox with roots and network, approval
+  policy with granular flags and reviewer, plan, trust), converts in and out
+  of Codex requests, Codex child starts, Claude permission modes and Claude
+  launches, and decides every effect. A property test walks all 3080
+  enumerable parent postures and fails if any converter gives a child more
+  than its parent.
+- **A new posture value from Codex fails CI instead of falling through.** CI
+  generates the pinned codex's schema and checks that every approval,
+  sandbox, reviewer, network and collaboration-mode value, and every sandbox
+  policy field, is one the posture map converts.
+- **A missing or unknown posture is no longer full access.** Thread start,
+  a GPT-to-Claude switch and bridge sub-agents used to default to `never` +
+  `danger-full-access`; custom permission profiles fell through to the same.
+  The default is now read-only, asking before anything leaves it; a custom
+  profile is read-only. Granular approval policies, writable roots and
+  network access are stored with the thread instead of being dropped, bridge
+  children get the caller's full posture, and `thread/settings/update`
+  applies the posture fields it used to ignore.
+- **A posture set on one engine holds on the other, and bridge children stay
+  inside their caller.** A thread that moves between Claude and GPT keeps the
+  posture and profile the app set on either side: its bridge children and its
+  next turn on the other engine take them, and the GPT child gets roots and
+  network on its turns. A `cwd` passed to `spawn_session` or
+  `spawn_subagents` by a caller that can write must be its own cwd or one of
+  its writable roots, matched by real path (a subdirectory could later be
+  swapped for a link to anywhere), and `parentThreadId` must name the calling
+  thread (with no caller known it only links the children, which get the
+  default posture). `thread/settings/update` now reports the permission
+  profile it applies.
+- **Claude under a Codex parent stays inside the parent's sandbox.** The
+  PreToolUse relay decides every call from the thread's posture: writes
+  inside the writable roots run, writes outside them (symlinks resolved) ask
+  or, under `never`, are refused; `never` no longer means "run everything".
+  Claude's own configuration (`.claude/`, `.mcp.json`) counts as outside:
+  its hooks and MCP servers would run unsandboxed in the next Claude child.
+  Conversation-only built-ins (`ScheduleWakeup`, the task list,
+  `EnterPlanMode`, `StructuredOutput`, `CronList`) run under any posture,
+  though the interactive launch turns `EnterPlanMode` off: `ExitPlanMode`
+  is a dialog no hook can answer, so a plan mode Claude entered on its own
+  could never be left.
+  With a native codex child running, Claude's Bash is switched off and shell
+  commands run through the new bridge `exec` tool in that child's own
+  sandbox. The server decides by posture before drawing any approval card,
+  for every runtime.
+- **Claude config written during a session does not reach the next Claude.**
+  The app fingerprints the project's Claude config (settings, local settings
+  at the cwd, the git root and a worktree's main checkout, `.mcp.json` up the
+  tree) when it starts or first
+  resumes a thread, and every bridge child inherits that baseline instead of
+  taking its own. A Claude launch whose config no longer matches, under a
+  bounded or untrusted posture, runs with `--setting-sources user
+  --strict-mcp-config` and says so in the thread; the original bytes match
+  again.
+- **The relay's own hooks file is out of the sandbox's reach.** Each Claude
+  spawn's `--settings` (the PreToolUse relay) and `--mcp-config` moved from
+  `$TMPDIR/anyengine-pty-<pid>`, which workspace-write can write, to
+  `~/.anyengine/pty/<pid>` (0700), and the relay treats `.anyengine` at a
+  writable root as read-only.
+- **A bridge child keeps its caller's project trust.** `spawn_session` (and
+  `spawn_subagents` to GPT) started the child through a Codex `thread/start`,
+  which has no trust field, so the child of a thread that does not trust the
+  project came out trusting it. The adapter now records the caller's trust
+  for the child on every route, and Claude refuses the workspace trust dialog
+  there.
+- **A thread continues only the sessions it started.** `send_to_session`
+  runs a turn under the target's own posture, and it used to accept any
+  known thread id, so a read-only thread could run turns on a full-access
+  one. The adapter now remembers which thread started each bridge child and
+  refuses a send from any other thread, and from a caller it cannot
+  identify, unless the caller is unrestricted.
+- **`never` no longer switches off every runtime's approvals.** Grok's
+  `--always-approve`, `claude -p`'s `--dangerously-skip-permissions`, the SDK
+  runtime's auto-allow and the `codex exec` fallback's bypass flag now apply
+  only to an unrestricted posture (full access, nothing that asks). The
+  fallback no longer bypasses the sandbox for an unknown sandbox or on
+  `exec resume`, and `on-failure` maps to on-request, not accept-edits.
+- **No allow rule, label or fallback gets around the posture.** The SDK
+  runtime's PreToolUse hook refuses what the posture refuses and asks the App
+  about what it would ask about, whatever an allow rule in the settings says
+  (`ANYENGINE_ALLOWED_TOOLS` still pre-approves an ask, never a refusal);
+  `claude -p` drops refused pre-approvals, denies the tools the posture
+  refuses outright and pins its permission mode, so a settings `defaultMode`
+  cannot loosen it.
+  Both leave an untrusted project's Claude config out, since neither has a
+  trust dialog to refuse. A fetch grok labels read-only goes to the posture.
+  The `codex exec` fallback, which cannot ask, refuses a turn that asks before
+  every command or plans, and resumes in the thread's cwd.
+- **Plain `codex` TUIs no longer land on a childless adapter.** A daemon
+  without a native codex child refuses the app-server control socket that
+  TUIs auto-attach to, and the shim serves that socket with the bundled codex
+  unless `ANYENGINE_REMOTE_NATIVE_CODEX=1` gives the twin a child.
+- **A daemon no longer deletes a live socket.** A unix daemon removed
+  whatever held its socket path unless its own pidfile named a live process,
+  and a real codex daemon writes none. It now connects first, as codex does:
+  if something answers it says so and exits 0, it removes only a socket that
+  refuses the connection, and a path that is not a socket is left for the
+  bind to report. A failed bind now exits 1 instead of spinning.
+- **A live flip has a tested rollback.** `scripts/flip-backup.mjs` backs up
+  the shell rc, the shim and `runtime.env` and writes a `ROLLBACK.sh` that can
+  be exercised with `--copy-only` before anything changes;
+  `scripts/preflip-check.mjs` refuses an app restart while a turn may be in
+  flight.
+- **A GPT sub-agent opens from its parent.** `spawn_subagents` starts a gpt-*
+  task as a plain thread on the codex child, which never links it: the app
+  showed it in the sidebar and would not open it from the parent, while a
+  Claude sibling opened fine. The adapter now records the parent (with depth,
+  nickname and role) on the child thread's row and presents the thread the way
+  a local sub-agent is presented, with `parentThreadId` and a
+  `subAgent.thread_spawn` source, in `thread/started`, `thread/read`,
+  `thread/resume` and `thread/list` answers. It is listed under its parent,
+  kept out of the sidebar, and still linked after a restart
+  (`src/upstream-subagents.mts`).
+
 ### Hardening
 
 - **The hardening pass shipped and was deployed.** The three stacked PRs were

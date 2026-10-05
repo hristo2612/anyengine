@@ -1,0 +1,114 @@
+{
+  "task": "M1 Task 2e: Claude composer readiness under the operator's real configuration (faint prompt-suggestion placeholder; fullscreen TUI)",
+  "branch": "m1/t02e",
+  "base": "a637681",
+  "claudeVersion": "2.1.287",
+  "rootCause": {
+    "observed": "Real config, real claude 2.1.287, empty composer drew `❯ Try \"refactor <filepath>\"` in faint (SGR 2) with the cursor as an inverse cell on the first letter; composerReady read it as typed text, so waitForComposer timed out after 30 s with 'composer is not safely ready'.",
+    "gate": "Claude's example-prompt placeholder shows when promptSuggestionEnabled (server-side flag tengu_chomp_inflection for the operator's account; CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION overrides). Isolated configs never had it.",
+    "fullscreen": "Not the cause. With CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 (always set by the PTY) `\"tui\": \"fullscreen\"` draws the default inline layout; on the alternate screen it pins the same rule/❯/rule/footer frame to the bottom rows under an effort line.",
+    "zeroSpendRepro": "scripts/probe-claude-composer.mjs manual with PROBE_TUI=fullscreen PROBE_PROMPT_SUGGESTIONS=1 on a637681: 'anyengine: Claude Code composer is not safely ready; prompt was not submitted.'"
+  },
+  "commits": ["1534819", "8ac2106", "019bdb2", "873a0d9"],
+  "zeroSpendSubmissions": {
+    "runs": 28,
+    "submitted": 28,
+    "variants": ["default", "default-plain", "fullscreen", "fullscreen-alt"],
+    "scenarios": [
+      "acceptEdits",
+      "auto",
+      "broken-mcp",
+      "collapsed",
+      "manual",
+      "plan",
+      "trust-submit",
+      "wrapped"
+    ],
+    "paidRequests": 0,
+    "settingsUnchanged": true
+  },
+  "captures": {
+    "fixture": "test/fixtures/claude-composer-tui-2.1.287.json",
+    "variants": ["default", "fullscreen", "fullscreen-alt"],
+    "screensPerVariant": 16,
+    "note": "2 of 30 first-batch captures (3 parallel cold starts) saw the isolated auto-mode offer ignore input for 20 s; both passed on rerun."
+  },
+  "mutations": [
+    {
+      "name": "read composer input from shown rows",
+      "killed": true,
+      "failed": 18
+    },
+    {
+      "name": "drop the inverse-cursor-on-faint rule",
+      "killed": true,
+      "failed": 3
+    },
+    {
+      "name": "remove CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false",
+      "killed": true,
+      "failed": 1
+    },
+    {
+      "name": "read dialogs from faint-blanked rows",
+      "killed": true,
+      "failed": 1
+    }
+  ],
+  "gates": {
+    "check": "pass",
+    "typecheck": "pass",
+    "tests": [
+      {
+        "run": 1,
+        "passed": 630,
+        "failed": 0,
+        "seconds": 46.4
+      },
+      {
+        "run": 2,
+        "passed": 630,
+        "failed": 0,
+        "seconds": 46.7
+      },
+      {
+        "run": 3,
+        "passed": 630,
+        "failed": 0,
+        "seconds": 46.6
+      }
+    ],
+    "coverageLines": "86.14-86.15%"
+  },
+  "realProof": {
+    "path": "worktree scripts/codex-shim app-server -> dist adapter (anyengine runtime) over stdio; operator's real ~/.claude settings (tui fullscreen, theme dark, effort high, model sonnet, superpowers plugin, allow rules, skipDangerousModePermissionPrompt)",
+    "turns": [
+      {
+        "mode": "account default (Claude recorded permissionMode auto)",
+        "status": "completed",
+        "reply": "PONG",
+        "seconds": 2.3
+      },
+      {
+        "mode": "plan (collaborationMode plan, PTY respawned with --resume)",
+        "status": "completed",
+        "reply": "PONG",
+        "seconds": 2.3
+      },
+      {
+        "mode": "manual (ANYENGINE_PTY_ARGS=--permission-mode default)",
+        "status": "completed",
+        "reply": "PONG",
+        "seconds": 3.2
+      }
+    ],
+    "directPlaceholderTurn": {
+      "note": "production PtyScreen -> waitForComposer -> pasteAndSubmit on the real account with prompt suggestions left on",
+      "idleShown": "❯ Try \"how do I log an error?\"",
+      "idleTyped": "❯",
+      "readySeconds": 0.77,
+      "reply": "PONG"
+    },
+    "settingsJsonUnchanged": true
+  }
+}

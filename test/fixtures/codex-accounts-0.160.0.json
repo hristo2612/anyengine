@@ -1,0 +1,738 @@
+{
+  "codexVersion": "0.160.0",
+  "protocol": [
+    "initialize",
+    "initialized",
+    "thread/start",
+    "thread/inject_items",
+    "getAuthStatus",
+    "thread/resume",
+    "config/value/write"
+  ],
+  "bootstrap": {
+    "ephemeral": false,
+    "turnStartCalls": 0,
+    "persistedBy": "thread/inject_items",
+    "shellSnapshotDirectoryObserved": true
+  },
+  "overlay": {
+    "threadVisibleInSecondChild": true,
+    "threadStartSucceeded": true,
+    "authSymlinkPreserved": true,
+    "configSymlinkPreserved": true,
+    "authInodePreserved": true,
+    "configAlwaysShared": true,
+    "canonicalConfigInodePreserved": false,
+    "databaseMains": [
+      "goals_1.sqlite",
+      "logs_2.sqlite",
+      "memories_1.sqlite",
+      "queue_1.sqlite",
+      "state_5.sqlite",
+      "thread_history_1.sqlite"
+    ],
+    "allMainInodesShared": true,
+    "allExistingSidecarsShared": true,
+    "canonicalOnlySidecarsAllowed": true,
+    "detachedEntries": [],
+    "collisions": [],
+    "quietBoundaryReconciled": true
+  },
+  "authRefresh": {
+    "calls": [
+      {
+        "request": {
+          "includeToken": true,
+          "refreshToken": true
+        },
+        "keys": ["authMethod", "authToken", "requiresOpenaiAuth"],
+        "authMethod": "chatgpt",
+        "authTokenType": "string",
+        "requiresOpenaiAuth": true,
+        "returnsReplacementBearer": true,
+        "canonicalChainUpdated": true,
+        "symlinkPreserved": true,
+        "canonicalInodePreserved": true
+      },
+      {
+        "request": {
+          "includeToken": true,
+          "refreshToken": true
+        },
+        "keys": ["authMethod", "authToken", "requiresOpenaiAuth"],
+        "authMethod": "chatgpt",
+        "authTokenType": "string",
+        "requiresOpenaiAuth": true,
+        "returnsReplacementBearer": true,
+        "canonicalChainUpdated": true,
+        "symlinkPreserved": true,
+        "canonicalInodePreserved": true
+      }
+    ],
+    "refreshRequests": [
+      {
+        "initialFakeRefresh": true,
+        "previousRotatedFakeRefresh": false
+      },
+      {
+        "initialFakeRefresh": false,
+        "previousRotatedFakeRefresh": true
+      }
+    ]
+  },
+  "configWrite": {
+    "status": "ok",
+    "versionPresent": true,
+    "canonicalConfigUpdated": true
+  },
+  "modelsCacheExercised": true,
+  "zeroModelEndpointRequests": true,
+  "cleanup": {
+    "directChildrenJoined": true,
+    "processGroupsJoined": true,
+    "fakeHomesRemoved": true
+  },
+  "schema": {
+    "ConfigValueWriteParams": {
+      "type": "object",
+      "required": ["keyPath", "mergeStrategy", "value"],
+      "properties": {
+        "expectedVersion": {
+          "type": ["string", "null"]
+        },
+        "filePath": {
+          "type": ["string", "null"]
+        },
+        "keyPath": {
+          "type": "string"
+        },
+        "mergeStrategy": {
+          "$ref": "#/definitions/MergeStrategy"
+        },
+        "value": true
+      }
+    },
+    "GetAccountParams": {
+      "type": "object",
+      "properties": {
+        "refreshToken": {
+          "type": "boolean"
+        }
+      }
+    },
+    "GetAccountRateLimitsParams": {
+      "type": "object",
+      "properties": {
+        "excludeResetCreditDetails": {
+          "type": "boolean"
+        },
+        "supportsLunaReserve": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ThreadInjectItemsParams": {
+      "type": "object",
+      "required": ["items", "threadId"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": true
+        },
+        "threadId": {
+          "type": "string"
+        }
+      }
+    },
+    "ThreadInjectItemsMethod": {
+      "type": "object",
+      "required": ["id", "method", "params"],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "type": "string",
+          "enum": ["thread/inject_items"]
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadInjectItemsParams"
+        }
+      }
+    },
+    "AccountRateLimitsUpdatedNotification": {
+      "type": "object",
+      "required": ["rateLimits"],
+      "properties": {
+        "rateLimits": {
+          "$ref": "#/definitions/RateLimitSnapshot"
+        }
+      }
+    },
+    "AccountUpdatedNotification": {
+      "type": "object",
+      "properties": {
+        "authMode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AuthMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planType": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PlanType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "AuthMode": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["apikey"]
+        },
+        {
+          "type": "string",
+          "enum": ["chatgpt"]
+        },
+        {
+          "type": "string",
+          "enum": ["chatgptAuthTokens"]
+        },
+        {
+          "type": "string",
+          "enum": ["headers"]
+        },
+        {
+          "type": "string",
+          "enum": ["agentIdentity"]
+        },
+        {
+          "type": "string",
+          "enum": ["personalAccessToken"]
+        },
+        {
+          "type": "string",
+          "enum": ["bedrockApiKey"]
+        },
+        {
+          "type": "string",
+          "enum": ["bedrockAccessKeys"]
+        }
+      ]
+    },
+    "CodexErrorInfo": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "contextWindowExceeded",
+            "sessionBudgetExceeded",
+            "usageLimitExceeded",
+            "rateLimitExceeded",
+            "flexUnavailable",
+            "serverOverloaded",
+            "cyberPolicy",
+            "misalignmentPolicyViolation",
+            "tooManyDenials",
+            "internalServerError",
+            "unauthorized",
+            "badRequest",
+            "threadRollbackFailed",
+            "sandboxError",
+            "other"
+          ]
+        },
+        {
+          "type": "object",
+          "required": ["httpConnectionFailed"],
+          "additionalProperties": false,
+          "properties": {
+            "httpConnectionFailed": {
+              "type": "object",
+              "properties": {
+                "httpStatusCode": {
+                  "type": ["integer", "null"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["responseStreamConnectionFailed"],
+          "additionalProperties": false,
+          "properties": {
+            "responseStreamConnectionFailed": {
+              "type": "object",
+              "properties": {
+                "httpStatusCode": {
+                  "type": ["integer", "null"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["responseStreamDisconnected"],
+          "additionalProperties": false,
+          "properties": {
+            "responseStreamDisconnected": {
+              "type": "object",
+              "properties": {
+                "httpStatusCode": {
+                  "type": ["integer", "null"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["responseTooManyFailedAttempts"],
+          "additionalProperties": false,
+          "properties": {
+            "responseTooManyFailedAttempts": {
+              "type": "object",
+              "properties": {
+                "httpStatusCode": {
+                  "type": ["integer", "null"]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["activeTurnNotSteerable"],
+          "additionalProperties": false,
+          "properties": {
+            "activeTurnNotSteerable": {
+              "type": "object",
+              "required": ["turnKind"],
+              "properties": {
+                "turnKind": {
+                  "$ref": "#/definitions/NonSteerableTurnKind"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "CreditsSnapshot": {
+      "type": "object",
+      "required": ["hasCredits", "unlimited"],
+      "properties": {
+        "balance": {
+          "type": ["string", "null"]
+        },
+        "hasCredits": {
+          "type": "boolean"
+        },
+        "unlimited": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ErrorNotification": {
+      "type": "object",
+      "required": ["error", "threadId", "turnId", "willRetry"],
+      "properties": {
+        "error": {
+          "$ref": "#/definitions/TurnError"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        },
+        "willRetry": {
+          "type": "boolean"
+        }
+      }
+    },
+    "PlanType": {
+      "type": "string",
+      "enum": [
+        "free",
+        "go",
+        "plus",
+        "pro",
+        "prolite",
+        "promax",
+        "team",
+        "self_serve_business_prolite",
+        "self_serve_business_usage_based",
+        "business",
+        "ent26",
+        "enterprise_cbp_automation",
+        "enterprise_cbp_usage_based",
+        "enterprise",
+        "edu",
+        "edu_plus",
+        "edu_pro",
+        "unknown"
+      ]
+    },
+    "RateLimitReachedType": {
+      "type": "string",
+      "enum": [
+        "rate_limit_reached",
+        "workspace_owner_credits_depleted",
+        "workspace_member_credits_depleted",
+        "workspace_owner_usage_limit_reached",
+        "workspace_member_usage_limit_reached"
+      ]
+    },
+    "RateLimitSnapshot": {
+      "type": "object",
+      "properties": {
+        "credits": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CreditsSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "individualLimit": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SpendControlLimitSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limitId": {
+          "type": ["string", "null"]
+        },
+        "limitName": {
+          "type": ["string", "null"]
+        },
+        "normalModelSlug": {
+          "type": ["string", "null"]
+        },
+        "planType": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PlanType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "primary": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RateLimitWindow"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rateLimitReachedType": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RateLimitReachedType"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "secondary": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RateLimitWindow"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spendControlReached": {
+          "type": ["boolean", "null"]
+        }
+      }
+    },
+    "RateLimitWindow": {
+      "type": "object",
+      "required": ["usedPercent"],
+      "properties": {
+        "resetsAt": {
+          "type": ["integer", "null"]
+        },
+        "usedPercent": {
+          "type": "integer"
+        },
+        "windowDurationMins": {
+          "type": ["integer", "null"]
+        }
+      }
+    },
+    "SpendControlLimitSnapshot": {
+      "type": "object",
+      "required": ["limit", "remainingPercent", "resetsAt", "used"],
+      "properties": {
+        "limit": {
+          "type": "string"
+        },
+        "remainingPercent": {
+          "type": "integer"
+        },
+        "resetsAt": {
+          "type": "integer"
+        },
+        "used": {
+          "type": "string"
+        }
+      }
+    },
+    "TurnError": {
+      "type": "object",
+      "required": ["message"],
+      "properties": {
+        "additionalDetails": {
+          "type": ["string", "null"]
+        },
+        "codexErrorInfo": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CodexErrorInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "misalignment": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MisalignmentErrorDetails"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Account": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["apiKey"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["email", "planType", "type"],
+          "properties": {
+            "email": {
+              "type": ["string", "null"]
+            },
+            "planType": {
+              "$ref": "#/definitions/PlanType"
+            },
+            "type": {
+              "type": "string",
+              "enum": ["chatgpt"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["amazonBedrock"]
+            },
+            "usesCodexManagedCredentials": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "ConfigWriteResponse": {
+      "type": "object",
+      "required": ["filePath", "status", "version"],
+      "properties": {
+        "filePath": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AbsolutePathBuf"
+            }
+          ]
+        },
+        "overriddenMetadata": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/OverriddenMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/definitions/WriteStatus"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "GetAccountRateLimitsResponse": {
+      "type": "object",
+      "required": ["rateLimits"],
+      "properties": {
+        "accountId": {
+          "type": ["string", "null"]
+        },
+        "ordinaryUsageAllowed": {
+          "type": ["boolean", "null"]
+        },
+        "rateLimitResetCredits": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RateLimitResetCreditsSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rateLimitUpsell": {},
+        "rateLimits": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RateLimitSnapshot"
+            }
+          ]
+        },
+        "rateLimitsByLimitId": {
+          "type": ["object", "null"],
+          "additionalProperties": {
+            "$ref": "#/definitions/RateLimitSnapshot"
+          }
+        }
+      }
+    },
+    "GetAccountResponse": {
+      "type": "object",
+      "required": ["requiresOpenaiAuth"],
+      "properties": {
+        "account": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Account"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requiresOpenaiAuth": {
+          "type": "boolean"
+        },
+        "workspaceRouting": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/WorkspaceRouting"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "RateLimitResetCredit": {
+      "properties": {
+        "description": {
+          "description": "Backend-provided display description for this credit, or `null` when unavailable.",
+          "type": ["string", "null"]
+        },
+        "expiresAt": {
+          "description": "Unix timestamp in seconds when the credit expires, or `null` if it does not expire.",
+          "format": "int64",
+          "type": ["integer", "null"]
+        },
+        "grantedAt": {
+          "description": "Unix timestamp in seconds when the credit was granted.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "id": {
+          "description": "Opaque backend identifier for this reset credit.",
+          "type": "string"
+        },
+        "resetType": {
+          "$ref": "#/definitions/RateLimitResetType"
+        },
+        "status": {
+          "$ref": "#/definitions/RateLimitResetCreditStatus"
+        },
+        "title": {
+          "description": "Backend-provided display title for this credit, or `null` when unavailable.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["grantedAt", "id", "resetType", "status"],
+      "type": "object"
+    },
+    "RateLimitResetCreditsSummary": {
+      "properties": {
+        "availableCount": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "credits": {
+          "description": "Detail rows for available reset credits, when the backend provides them.\n\n`null` means only `availableCount` is known, while an empty array means details were fetched and no available credits were returned. The backend may cap this list, so its length can be less than `availableCount`.",
+          "items": {
+            "$ref": "#/definitions/RateLimitResetCredit"
+          },
+          "type": ["array", "null"]
+        }
+      },
+      "required": ["availableCount"],
+      "type": "object"
+    },
+    "RateLimitResetType": {
+      "enum": ["codexRateLimits", "unknown"],
+      "type": "string"
+    },
+    "RateLimitResetCreditStatus": {
+      "enum": ["available", "redeeming", "redeemed", "unknown"],
+      "type": "string"
+    }
+  }
+}

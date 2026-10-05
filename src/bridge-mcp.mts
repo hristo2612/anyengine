@@ -42,7 +42,11 @@ export const BRIDGE_TOOLS = [
       properties: {
         model: { type: 'string', description: MODEL_HINT },
         prompt: { type: 'string', description: 'The first user message of the new session.' },
-        cwd: { type: 'string', description: "Working directory (default: the calling thread's)." },
+        cwd: {
+          type: 'string',
+          description:
+            "Working directory (default: the calling thread's); when that thread can write, its own cwd or one of its writable roots.",
+        },
         title: { type: 'string', description: 'Optional sidebar name for the new session.' },
         wait: {
           type: 'boolean',
@@ -77,10 +81,15 @@ export const BRIDGE_TOOLS = [
             additionalProperties: false,
           },
         },
-        cwd: { type: 'string', description: 'Working directory for all tasks.' },
+        cwd: {
+          type: 'string',
+          description:
+            'Working directory for all tasks; when the calling thread can write, its own cwd or one of its writable roots.',
+        },
         parentThreadId: {
           type: 'string',
-          description: 'Only when the bridge cannot infer the calling thread.',
+          description:
+            'Only when the bridge cannot infer the calling thread, and only that thread.',
         },
         timeoutMs: TIMEOUT_PROP,
       },
@@ -90,7 +99,7 @@ export const BRIDGE_TOOLS = [
   {
     name: 'send_to_session',
     description:
-      'Continue a conversation you (or the user) already started on another engine: send a follow-up message to an existing session by thread id and, by default, wait for its reply.',
+      'Continue a conversation you started on another engine (spawn_session, spawn_subagents, or a child of one of them): send a follow-up message to that session by thread id and, by default, wait for its reply. Sessions you did not start are refused unless this thread has full access.',
     inputSchema: {
       type: 'object',
       required: ['threadId', 'prompt'],
@@ -114,6 +123,26 @@ export const BRIDGE_TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'exec',
+    description:
+      "Run a shell command inside this thread's sandbox (its writable directories and network setting, as the app set them) and return the exit code, stdout and stderr. Commands start in the thread's working directory; `cd` first to run elsewhere.",
+    inputSchema: {
+      type: 'object',
+      required: ['command'],
+      properties: {
+        command: { type: 'string', description: 'The command line, run with bash -lc.' },
+        timeoutMs: {
+          type: 'integer',
+          description: 'Kill the command after this many milliseconds (default 120000).',
+        },
+      },
+      additionalProperties: false,
+    },
+    // Claude Code defers MCP tools behind tool search; a Claude thread whose
+    // shell is this tool then believes it has none. Always loaded instead.
+    _meta: { 'anthropic/alwaysLoad': true },
+  },
 ] as const
 
 const TOOL_TO_METHOD: Record<string, string> = {
@@ -122,6 +151,14 @@ const TOOL_TO_METHOD: Record<string, string> = {
   spawn_subagents: 'bridge/spawnSubagents',
   send_to_session: 'bridge/send',
   wait_session: 'bridge/wait',
+  exec: 'bridge/exec',
+}
+
+// `exec` belongs to threads the adapter runs (Claude, Grok): their bridge
+// process carries the thread id. A GPT thread's bridge carries none and keeps
+// its own sandboxed shell, so it never sees the tool.
+export function toolsFor(threadId: string | null) {
+  return threadId ? BRIDGE_TOOLS : BRIDGE_TOOLS.filter((tool) => tool.name !== 'exec')
 }
 
 // ---- control client ------------------------------------------------------
@@ -129,7 +166,7 @@ const TOOL_TO_METHOD: Record<string, string> = {
 export class BridgeClient {
   private readonly socketPath: string
   private readonly token: string
-  private readonly threadId: string | null
+  readonly threadId: string | null
   private ws: WebSocket | null = null
   private opening: Promise<WebSocket> | null = null
   private nextId = 0
@@ -274,7 +311,6 @@ async function handleMcpMessage(
           protocolVersion: PROTOCOL_VERSIONS.has(requested) ? requested : LATEST_PROTOCOL,
           capabilities: { tools: {} },
           serverInfo: { name: 'anyengine', version: '0.1.0' },
-          instructions: `Cross-engine bridge: start conversations or parallel sub-agents on the other AI engines (Claude, Grok, GPT) from this thread. When the user names an engine or says spawn / delegate / hand off / ask X, call these tools right away without asking for confirmation. spawn_subagents for parallel work, spawn_session for a standalone conversation. ${MODEL_ALIAS_TABLE}`,
         }
         break
       }
@@ -282,7 +318,7 @@ async function handleMcpMessage(
         result = {}
         break
       case 'tools/list':
-        result = { tools: BRIDGE_TOOLS }
+        result = { tools: toolsFor(client.threadId) }
         break
       case 'resources/list':
         result = { resources: [] }
@@ -351,6 +387,11 @@ export function renderResult(tool: string, result: Json): string {
           return `${head}\n${body}`
         })
         .join('\n\n')
+    }
+    case 'exec': {
+      const lines = [`exit ${result.exitCode ?? '?'}`, String(result.stdout ?? '')]
+      if (result.stderr) lines.push(`[stderr]\n${result.stderr}`)
+      return lines.join('\n').trimEnd()
     }
     default: {
       const head = `thread=${result.threadId ?? '-'} turn=${result.turnId ?? '-'} status=${result.status ?? '?'}`

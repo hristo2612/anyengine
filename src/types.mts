@@ -1,3 +1,4 @@
+import type { Posture } from './posture.mjs'
 import type { RuntimeBackendType } from './runtime-config.mjs'
 
 export type JsonRpcId = string | number | null
@@ -100,6 +101,10 @@ export interface ThreadRecord {
   // Keep it alongside the normalized policies so the profile survives resume
   // and the settings UI can round-trip its selection.
   permissionProfileId?: string | null
+  // The canonical posture (src/posture.mts); `approvalPolicy` and
+  // `sandboxMode` above are its legacy projection. Absent or null on rows
+  // written before it was stored: read it through threadPosture().
+  posture?: Posture | null
   // Codex App marks transient title-generation / consolidation threads as
   // ephemeral — these should not appear in the user-facing thread list.
   ephemeral: boolean
@@ -297,6 +302,8 @@ export interface FileUpdateChange {
 }
 
 export interface RuntimeTurnContext {
+  // Adapter-injected model text, not an operator turn.
+  modelAuthored?: boolean
   threadId: string
   turnId: string
   // normal = user-visible chat/review turn; summary = Codex App's structured
@@ -320,6 +327,10 @@ export interface RuntimeTurnContext {
   // skip per-tool approvals instead of asking for every Claude tool call.
   approvalPolicy: string | null
   sandboxMode: string | null
+  // The thread's posture for this turn. Runtimes read it through
+  // contextPosture() (src/posture.mts), which falls back to the two strings
+  // above and adds `planMode`.
+  posture?: Posture
   // Pre-assembled system prompt addendum (baseInstructions + developerInstructions
   // + personality cue). Sidecar appends it to Claude's default system prompt.
   systemPromptAddendum: string | null
@@ -437,6 +448,8 @@ export interface RuntimeHandlers {
 }
 
 export interface ClaudeRuntime {
+  // Release an idle warm process; the next turn resumes cold.
+  release?(threadId: string): Promise<void>
   runTurn(context: RuntimeTurnContext, handlers: RuntimeHandlers): Promise<void>
   steer(threadId: string, prompt: string): Promise<void>
   interrupt(threadId: string): Promise<void>

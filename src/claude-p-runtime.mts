@@ -2,6 +2,9 @@ import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { claudeEnvironment } from './claude-environment.mjs'
+import { contextPosture, isUnrestricted } from './posture.mjs'
+import { claudeLaunchFor, headlessIsolation, relayDecision } from './posture-claude.mjs'
 import type { ClaudeRuntime, RuntimeHandlers, RuntimeTurnContext } from './types.mjs'
 
 export interface ClaudePRuntimeOptions {
@@ -13,7 +16,7 @@ export interface ClaudePRuntimeOptions {
   stopTimeoutRetries?: number
 }
 
-const READ_ONLY_TOOLS = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite', 'Task']
+const READ_ONLY_TOOLS = ['Read', 'Glob', 'Grep', 'WebSearch', 'TodoWrite', 'Task']
 
 export class ClaudePTranscriptRuntime implements ClaudeRuntime {
   private active = new Map<string, ChildProcess>()
@@ -38,8 +41,11 @@ export class ClaudePTranscriptRuntime implements ClaudeRuntime {
         })
       }
 
-      const args = this.argsForContext(context, inputFile)
-      const result = await this.runProcessWithRetry(context.threadId, args, context.cwd, handlers)
+      const isolation = headlessIsolation(context)
+      if (isolation)
+        await handlers.onEvent({ type: 'notice', level: 'warning', message: isolation })
+      const args = this.argsForContext(context, inputFile, isolation)
+      const result = await this.runProcessWithRetry(context, args, handlers)
       const parsed = parseClaudePJson(result.stdout)
       const text = parsed?.result ?? result.stdout.trim()
       const sessionId = parsed?.sessionId
@@ -86,7 +92,11 @@ export class ClaudePTranscriptRuntime implements ClaudeRuntime {
     this.active.clear()
   }
 
-  private argsForContext(context: RuntimeTurnContext, inputFile: string): string[] {
+  private argsForContext(
+    context: RuntimeTurnContext,
+    inputFile: string,
+    isolation = headlessIsolation(context),
+  ): string[] {
     const args = [
       ...this.options.extraArgs,
       '--output-format',
@@ -105,29 +115,34 @@ export class ClaudePTranscriptRuntime implements ClaudeRuntime {
     if (resume && !context.forkSession) args.push('--resume', resume)
     const allowedTools = allowedToolsForContext(context)
     if (allowedTools) args.push('--allowedTools', allowedTools)
-    if (
-      this.options.skipPermissions ||
-      context.approvalPolicy === 'never' ||
-      context.sandboxMode === 'danger-full-access'
-    ) {
-      args.push('--dangerously-skip-permissions')
+    const refused = refusedTools(context)
+    if (refused.length > 0) args.push('--disallowedTools', refused.join(','))
+    // Only an unrestricted posture drops Claude's own prompts (spec 5.6, fix 4);
+    // ANYENGINE_CLAUDE_P_SKIP_PERMISSIONS is the operator's explicit opt-in.
+    const posture = contextPosture(context)
+    const skip = this.options.skipPermissions || isUnrestricted(posture)
+    if (skip) args.push('--dangerously-skip-permissions')
+    args.push('--permission-mode', claudePPermissionMode(posture.plan, skip))
+    // The PTY runtime's rule for project Claude config (src/posture-claude.mts):
+    // claude-p takes --setting-sources and hands --strict-mcp-config to claude.
+    if (isolation) {
+      args.push('--setting-sources', 'user', '--strict-mcp-config')
     }
     args.push('--timeout', String(Math.max(1, Math.ceil(this.options.timeoutMs / 1000))))
     return args
   }
 
   private runProcess(
-    threadId: string,
+    context: RuntimeTurnContext,
     args: string[],
-    cwd: string,
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     const child = spawn(this.options.command, args, {
-      cwd,
-      env: { ...process.env },
+      cwd: context.cwd,
+      env: claudeEnvironment(claudeLaunchFor(context).shell),
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: process.platform !== 'win32',
     })
-    this.active.set(threadId, child)
+    this.active.set(context.threadId, child)
     let stdout = ''
     let stderr = ''
     child.stdout?.setEncoding('utf8')
@@ -153,13 +168,13 @@ export class ClaudePTranscriptRuntime implements ClaudeRuntime {
       child.once('error', (error) => {
         clearTimeout(timeout)
         if (killTimer) clearTimeout(killTimer)
-        this.active.delete(threadId)
+        this.active.delete(context.threadId)
         reject(error)
       })
       child.once('close', (code) => {
         clearTimeout(timeout)
         if (killTimer) clearTimeout(killTimer)
-        this.active.delete(threadId)
+        this.active.delete(context.threadId)
         if (timedOut) {
           reject(new Error(`claude-p timed out after ${this.options.timeoutMs}ms`))
           return
@@ -170,9 +185,8 @@ export class ClaudePTranscriptRuntime implements ClaudeRuntime {
   }
 
   private async runProcessWithRetry(
-    threadId: string,
+    context: RuntimeTurnContext,
     args: string[],
-    cwd: string,
     handlers: RuntimeHandlers,
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     const attempts = 1 + Math.max(0, this.options.stopTimeoutRetries ?? 0)
@@ -180,7 +194,7 @@ export class ClaudePTranscriptRuntime implements ClaudeRuntime {
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       let result: { stdout: string; stderr: string; exitCode: number }
       try {
-        result = await this.runProcess(threadId, args, cwd)
+        result = await this.runProcess(context, args)
       } catch (error) {
         if (isClaudePTimeoutError(error) && attempt < attempts) {
           await handlers.onEvent({
@@ -301,11 +315,54 @@ function parseClaudePJson(stdout: string): ParsedClaudePResult | null {
   }
 }
 
+// A pre-approval covers every call of a tool, so one the posture refuses in
+// any call (a write judged at its widest, `Bash(git *)` as Bash) is dropped:
+// claude-p takes no hook of ours to refuse that call later.
 function allowedToolsForContext(context: RuntimeTurnContext): string | null {
-  if (context.sandboxMode === 'read-only') return READ_ONLY_TOOLS.join(',')
-  return context.allowedTools && context.allowedTools.length > 0
-    ? context.allowedTools.join(',')
-    : null
+  const posture = contextPosture(context)
+  if (posture.plan || posture.fileSystem.kind === 'read-only') {
+    return READ_ONLY_TOOLS.filter(
+      (tool) => relayDecision(context, tool, {}).verdict !== 'deny',
+    ).join(',')
+  }
+  const kept = (context.allowedTools ?? []).filter(
+    (tool) => relayDecision(context, tool.replace(/\(.*$/s, ''), {}).verdict !== 'deny',
+  )
+  return kept.length > 0 ? kept.join(',') : null
+}
+
+// Tools the posture refuses in every call (a write even inside the cwd):
+// denied outright, which beats an allow rule in the user's settings.
+const PROBED_TOOLS = [
+  'Bash',
+  'BashOutput',
+  'KillShell',
+  'Monitor',
+  'WebFetch',
+  'Write',
+  'Edit',
+  'MultiEdit',
+  'NotebookEdit',
+]
+
+function refusedTools(context: RuntimeTurnContext): string[] {
+  const probe = { file_path: join(context.cwd, 'anyengine-probe') }
+  return [
+    ...new Set([
+      ...PROBED_TOOLS.filter((tool) => relayDecision(context, tool, probe).verdict === 'deny'),
+      ...claudeLaunchFor(context).disallowedTools,
+    ]),
+  ]
+}
+
+// Pinned on every call, so no `defaultMode` in the settings (acceptEdits, say)
+// applies. Nothing answers a prompt under claude-p, so what would ask is
+// refused (`dontAsk`, deny < ask); allow rules still apply, and only the
+// skip-permissions cases bypass. Names from `claude --help` 2.1.284, all in
+// claude-p's own list.
+function claudePPermissionMode(plan: boolean, skip: boolean): string {
+  if (plan) return 'plan'
+  return skip ? 'bypassPermissions' : 'dontAsk'
 }
 
 function claudePResumeId(value: string | null): string | null {

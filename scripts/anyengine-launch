@@ -1,0 +1,38 @@
+#!/bin/bash
+# Launchd and the operator share this launcher. Resolve the installed version
+# before exec so process inspection pins that lib against pruning.
+set -euo pipefail
+ROOT="${ANYENGINE_ROOT:-$HOME/.anyengine}"
+# Installed launchers bind to their own root, including from a fresh terminal.
+LAUNCH_DIR="$(cd "$(/usr/bin/dirname "$0")" && pwd -P)"
+if [ -z "${ANYENGINE_ROOT:-}" ] && [ "${LAUNCH_DIR##*/}" = bin ] && [ -d "$LAUNCH_DIR/../lib" ]; then
+  ROOT="$(cd "$LAUNCH_DIR/.." && pwd -P)"
+fi
+RUNTIME_ENV="${ANYENGINE_RUNTIME_ENV:-$ROOT/runtime.env}"
+if [ -f "$RUNTIME_ENV" ]; then
+  # shellcheck source=/dev/null
+  . "$RUNTIME_ENV"
+fi
+export ANYENGINE_ROOT="$ROOT"
+if ! LIB="$(cd "$ROOT/lib/current" 2>/dev/null && pwd -P)"; then
+  echo "anyengine: no installed lib at $ROOT/lib/current. Preserve recovery evidence and consult $ROOT/RECOVER.txt; if available, $ROOT/bin/anyengine-off provides Node-free recovery." >&2
+  exit 78
+fi
+LOG="${ANYENGINE_LAUNCHD_LOG:-}"
+# A symlinked logs directory can lead to foreign files even with a plain leaf.
+if [ -n "$LOG" ] && [ "${LOG%/*}" = "$ROOT/logs" ] &&
+  [ -d "$ROOT/logs" ] && [ ! -L "$ROOT/logs" ] &&
+  [ -f "$LOG" ] && [ ! -L "$LOG" ]; then
+  case "$LOG" in *.log) ;; *) echo "anyengine: unsupported launchd log $LOG" >&2; exit 78 ;; esac
+  size="$(/usr/bin/wc -c < "$LOG" | /usr/bin/tr -d ' ')"
+  if [ "$size" -gt 204800 ]; then
+    # Keep the inode launchd holds open; use an exclusive private scratch file.
+    LOG_TAIL="$(/usr/bin/mktemp "$LOG.tail.XXXXXX")"
+    trap '/bin/rm -f "$LOG_TAIL"' EXIT
+    /usr/bin/tail -c 204800 "$LOG" > "$LOG_TAIL"
+    /bin/cat "$LOG_TAIL" > "$LOG"
+    /bin/rm -f "$LOG_TAIL"
+    trap - EXIT
+  fi
+fi
+exec "${ANYENGINE_NODE:-node}" "$LIB/dist/src/adapter.mjs" "$@"

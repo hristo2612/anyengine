@@ -1,0 +1,55 @@
+{
+  "definitions": {
+    "AskForApproval": {
+      "oneOf": [
+        { "enum": ["untrusted", "on-request", "never"], "type": "string" },
+        {
+          "type": "object",
+          "required": ["granular"],
+          "properties": {
+            "granular": {
+              "type": "object",
+              "properties": {
+                "mcp_elicitations": { "type": "boolean" },
+                "request_permissions": { "type": "boolean" },
+                "rules": { "type": "boolean" },
+                "sandbox_approval": { "type": "boolean" },
+                "skill_approval": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "SandboxMode": {
+      "enum": ["read-only", "workspace-write", "danger-full-access"],
+      "type": "string"
+    },
+    "SandboxPolicy": {
+      "oneOf": [
+        { "properties": { "type": { "enum": ["dangerFullAccess"] } } },
+        {
+          "properties": { "networkAccess": { "type": "boolean" }, "type": { "enum": ["readOnly"] } }
+        },
+        {
+          "properties": {
+            "networkAccess": { "$ref": "#/definitions/NetworkAccess" },
+            "type": { "enum": ["externalSandbox"] }
+          }
+        },
+        {
+          "properties": {
+            "excludeSlashTmp": { "type": "boolean" },
+            "excludeTmpdirEnvVar": { "type": "boolean" },
+            "networkAccess": { "type": "boolean" },
+            "type": { "enum": ["workspaceWrite"] },
+            "writableRoots": { "type": "array" }
+          }
+        }
+      ]
+    },
+    "ApprovalsReviewer": { "enum": ["user", "auto_review", "guardian_subagent"], "type": "string" },
+    "NetworkAccess": { "enum": ["restricted", "enabled"], "type": "string" },
+    "ModeKind": { "enum": ["plan", "default"], "type": "string" }
+  }
+}

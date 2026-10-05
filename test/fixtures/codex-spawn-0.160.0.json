@@ -1,0 +1,1255 @@
+{
+  "codexVersion": "0.160.0",
+  "login": "chatgpt",
+  "threads": "persisted",
+  "orderInvariant": "The parent's collabAgentToolCall spawnAgent item/started precedes its item/completed, which names the child in receiverThreadIds (the link). The link reaches the client before the child's first model request, by about 70 ms or more in every run so far; the capture fails if it does not. Notifications on the child's own thread (thread/status/changed, mcpServer/startupStatus/updated, even turn/started) may reach the client before the link, by up to about 10 ms on persisted threads. No thread/started names a child. Notification lists here are in canonical order: the parent's own as observed, each child's own right after its link.",
+  "modelListIds": [
+    "gpt-spawn-probe",
+    "opus"
+  ],
+  "multiAgentToolsOffered": true,
+  "multiAgentTools": [
+    "multi_agent_v1__close_agent",
+    "multi_agent_v1__resume_agent",
+    "multi_agent_v1__send_input",
+    "multi_agent_v1__spawn_agent",
+    "multi_agent_v1__wait_agent"
+  ],
+  "spawnModelOverrides": [
+    "gpt-spawn-probe",
+    "opus"
+  ],
+  "spawnVia": "exec:tools.multi_agent_v1__spawn_agent",
+  "notifications": [
+    {
+      "method": "turn/started",
+      "threadId": "PARENT",
+      "turnId": "TURN_PARENT"
+    },
+    {
+      "method": "item/started",
+      "threadId": "PARENT",
+      "turnId": "TURN_PARENT",
+      "item": {
+        "type": "collabAgentToolCall",
+        "id": "SPAWN_1",
+        "tool": "spawnAgent",
+        "status": "inProgress",
+        "senderThreadId": "PARENT",
+        "receiverThreadIds": [],
+        "model": "opus",
+        "reasoningEffort": "low",
+        "prompt": "Reply with exactly the word PONG"
+      }
+    },
+    {
+      "method": "item/completed",
+      "threadId": "PARENT",
+      "turnId": "TURN_PARENT",
+      "item": {
+        "type": "collabAgentToolCall",
+        "id": "SPAWN_1",
+        "tool": "spawnAgent",
+        "status": "completed",
+        "senderThreadId": "PARENT",
+        "receiverThreadIds": [
+          "CHILD"
+        ],
+        "model": "opus",
+        "reasoningEffort": "low",
+        "prompt": "Reply with exactly the word PONG"
+      }
+    },
+    {
+      "method": "turn/started",
+      "threadId": "CHILD",
+      "turnId": "TURN_CHILD"
+    }
+  ],
+  "childThreadStarted": false,
+  "linkBeforeFirstModelRequest": true,
+  "childThread": {
+    "parentThreadId": "PARENT",
+    "model": "opus",
+    "ephemeral": false,
+    "agentNickname": "NICKNAME",
+    "source": {
+      "subAgent": {
+        "thread_spawn": {
+          "parent_thread_id": "PARENT",
+          "depth": 1,
+          "agent_path": null,
+          "agent_nickname": "NICKNAME",
+          "agent_role": null
+        }
+      }
+    }
+  },
+  "childRequest": {
+    "transport": "http",
+    "websocketFirst": true,
+    "headerNames": [
+      "accept",
+      "authorization",
+      "chatgpt-account-id",
+      "content-encoding",
+      "content-length",
+      "content-type",
+      "host",
+      "originator",
+      "session-id",
+      "thread-id",
+      "user-agent",
+      "version",
+      "x-client-request-id",
+      "x-codex-beta-features",
+      "x-codex-parent-thread-id",
+      "x-codex-routing-hint",
+      "x-codex-turn-metadata",
+      "x-codex-window-id",
+      "x-openai-subagent"
+    ],
+    "threadIdHeader": "CHILD",
+    "sessionIdHeader": "PARENT",
+    "parentThreadIdHeader": "PARENT",
+    "subagentHeader": "collab_spawn",
+    "routingHintHeader": "model=opus",
+    "idHeaders": {
+      "session-id": "PARENT",
+      "thread-id": "CHILD",
+      "x-client-request-id": "CHILD",
+      "x-codex-parent-thread-id": "PARENT",
+      "x-codex-window-id": "CHILD:0"
+    },
+    "turnMetadataKeys": [
+      "agent_name",
+      "analytics_enabled",
+      "auto_review_enabled",
+      "context_window_id",
+      "installation_id",
+      "model",
+      "node_repl_auto_review_required",
+      "node_repl_disabled",
+      "parent_thread_id",
+      "parent_turn_id",
+      "reasoning_effort",
+      "request_kind",
+      "root_turn_id",
+      "sandbox",
+      "sandbox_mode",
+      "session_id",
+      "subagent_kind",
+      "thread_id",
+      "thread_source",
+      "turn_id",
+      "turn_started_at_unix_ms",
+      "window_id",
+      "window_number"
+    ],
+    "turnMetadata": {
+      "thread_id": "CHILD",
+      "session_id": "PARENT",
+      "turn_id": "TURN_CHILD",
+      "agent_name": "/root",
+      "request_kind": "turn",
+      "parent_thread_id": "PARENT",
+      "parent_turn_id": "TURN_PARENT",
+      "root_turn_id": "TURN_PARENT",
+      "subagent_kind": "thread_spawn",
+      "thread_source": "subagent",
+      "model": "opus"
+    },
+    "contentEncoding": "zstd",
+    "body": {
+      "keys": [
+        "client_metadata",
+        "include",
+        "input",
+        "model",
+        "parallel_tool_calls",
+        "prompt_cache_key",
+        "reasoning",
+        "store",
+        "stream",
+        "tool_choice",
+        "tools"
+      ],
+      "model": "opus",
+      "generate": null,
+      "promptCacheKey": "PARENT",
+      "clientMetadataKeys": [
+        "guardian_credits_requested",
+        "mcp_attribution",
+        "parent_turn_id",
+        "root_turn_id",
+        "session_id",
+        "thread_id",
+        "turn_id",
+        "x-codex-installation-id",
+        "x-codex-parent-thread-id",
+        "x-codex-turn-metadata",
+        "x-codex-window-id",
+        "x-openai-subagent"
+      ],
+      "clientMetadata": {
+        "thread_id": "CHILD",
+        "session_id": "PARENT",
+        "turn_id": "TURN_CHILD",
+        "parent_turn_id": "TURN_PARENT",
+        "root_turn_id": "TURN_PARENT",
+        "x-codex-parent-thread-id": "PARENT",
+        "x-openai-subagent": "collab_spawn"
+      },
+      "turnMetadata": {
+        "thread_id": "CHILD",
+        "session_id": "PARENT",
+        "turn_id": "TURN_CHILD",
+        "agent_name": "/root",
+        "request_kind": "turn",
+        "parent_thread_id": "PARENT",
+        "parent_turn_id": "TURN_PARENT",
+        "root_turn_id": "TURN_PARENT",
+        "subagent_kind": "thread_spawn",
+        "thread_source": "subagent",
+        "model": "opus"
+      },
+      "inputTypes": [
+        "message:developer",
+        "message:user",
+        "message:user"
+      ],
+      "toolNames": [
+        "custom:exec",
+        "function:wait",
+        "function:request_user_input",
+        "web_search:web_search"
+      ],
+      "lastUserText": "Reply with exactly the word PONG"
+    }
+  },
+  "websocket": {
+    "threads": "persisted",
+    "spawned": 2,
+    "childThreadStarted": false,
+    "links": [
+      {
+        "child": "CHILD_1",
+        "notifications": [
+          {
+            "method": "item/started",
+            "threadId": "PARENT",
+            "turnId": "TURN_PARENT",
+            "item": {
+              "type": "collabAgentToolCall",
+              "id": "SPAWN_1",
+              "tool": "spawnAgent",
+              "status": "inProgress",
+              "senderThreadId": "PARENT",
+              "receiverThreadIds": [],
+              "model": "opus",
+              "reasoningEffort": "low",
+              "prompt": "Reply with exactly the word PONG"
+            }
+          },
+          {
+            "method": "item/completed",
+            "threadId": "PARENT",
+            "turnId": "TURN_PARENT",
+            "item": {
+              "type": "collabAgentToolCall",
+              "id": "SPAWN_1",
+              "tool": "spawnAgent",
+              "status": "completed",
+              "senderThreadId": "PARENT",
+              "receiverThreadIds": [
+                "CHILD_1"
+              ],
+              "model": "opus",
+              "reasoningEffort": "low",
+              "prompt": "Reply with exactly the word PONG"
+            }
+          },
+          {
+            "method": "turn/started",
+            "threadId": "CHILD_1",
+            "turnId": "TURN_CHILD_1"
+          }
+        ],
+        "linkBeforeFirstModelRequest": true
+      },
+      {
+        "child": "CHILD_2",
+        "notifications": [
+          {
+            "method": "item/started",
+            "threadId": "PARENT",
+            "turnId": "TURN_PARENT",
+            "item": {
+              "type": "collabAgentToolCall",
+              "id": "SPAWN_2",
+              "tool": "spawnAgent",
+              "status": "inProgress",
+              "senderThreadId": "PARENT",
+              "receiverThreadIds": [],
+              "model": "opus",
+              "reasoningEffort": "low",
+              "prompt": "Reply with exactly the word PONG"
+            }
+          },
+          {
+            "method": "item/completed",
+            "threadId": "PARENT",
+            "turnId": "TURN_PARENT",
+            "item": {
+              "type": "collabAgentToolCall",
+              "id": "SPAWN_2",
+              "tool": "spawnAgent",
+              "status": "completed",
+              "senderThreadId": "PARENT",
+              "receiverThreadIds": [
+                "CHILD_2"
+              ],
+              "model": "opus",
+              "reasoningEffort": "low",
+              "prompt": "Reply with exactly the word PONG"
+            }
+          },
+          {
+            "method": "turn/started",
+            "threadId": "CHILD_2",
+            "turnId": "TURN_CHILD_2"
+          }
+        ],
+        "linkBeforeFirstModelRequest": true
+      }
+    ],
+    "childThreads": [
+      {
+        "parentThreadId": "PARENT",
+        "model": "opus",
+        "ephemeral": false,
+        "agentNickname": "NICKNAME",
+        "source": {
+          "subAgent": {
+            "thread_spawn": {
+              "parent_thread_id": "PARENT",
+              "depth": 1,
+              "agent_path": null,
+              "agent_nickname": "NICKNAME",
+              "agent_role": null
+            }
+          }
+        }
+      },
+      {
+        "parentThreadId": "PARENT",
+        "model": "opus",
+        "ephemeral": false,
+        "agentNickname": "NICKNAME",
+        "source": {
+          "subAgent": {
+            "thread_spawn": {
+              "parent_thread_id": "PARENT",
+              "depth": 1,
+              "agent_path": null,
+              "agent_nickname": "NICKNAME",
+              "agent_role": null
+            }
+          }
+        }
+      }
+    ],
+    "sockets": [
+      {
+        "child": "CHILD_1",
+        "headerNames": [
+          "authorization",
+          "chatgpt-account-id",
+          "connection",
+          "host",
+          "openai-beta",
+          "originator",
+          "sec-websocket-extensions",
+          "sec-websocket-key",
+          "sec-websocket-version",
+          "session-id",
+          "thread-id",
+          "upgrade",
+          "user-agent",
+          "version",
+          "x-client-request-id",
+          "x-codex-beta-features",
+          "x-codex-parent-thread-id",
+          "x-codex-routing-hint",
+          "x-codex-turn-metadata",
+          "x-codex-window-id",
+          "x-openai-subagent"
+        ],
+        "threadIdHeader": "CHILD_1",
+        "sessionIdHeader": "PARENT",
+        "parentThreadIdHeader": "PARENT",
+        "subagentHeader": "collab_spawn",
+        "routingHintHeader": "model=opus",
+        "idHeaders": {
+          "session-id": "PARENT",
+          "thread-id": "CHILD_1",
+          "x-client-request-id": "CHILD_1",
+          "x-codex-parent-thread-id": "PARENT",
+          "x-codex-window-id": "CHILD_1:0"
+        },
+        "turnMetadataKeys": [
+          "agent_name",
+          "analytics_enabled",
+          "auto_review_enabled",
+          "context_window_id",
+          "installation_id",
+          "model",
+          "node_repl_auto_review_required",
+          "node_repl_disabled",
+          "parent_thread_id",
+          "reasoning_effort",
+          "request_kind",
+          "sandbox",
+          "sandbox_mode",
+          "session_id",
+          "subagent_kind",
+          "thread_id",
+          "thread_source",
+          "turn_id",
+          "window_id",
+          "window_number"
+        ],
+        "turnMetadata": {
+          "thread_id": "CHILD_1",
+          "session_id": "PARENT",
+          "turn_id": "empty",
+          "agent_name": "/root",
+          "request_kind": "prewarm",
+          "parent_thread_id": "PARENT",
+          "subagent_kind": "thread_spawn",
+          "thread_source": "subagent",
+          "model": "opus"
+        },
+        "frames": [
+          {
+            "type": "response.create",
+            "keys": [
+              "client_metadata",
+              "generate",
+              "include",
+              "input",
+              "model",
+              "parallel_tool_calls",
+              "prompt_cache_key",
+              "reasoning",
+              "store",
+              "stream",
+              "tool_choice",
+              "tools",
+              "type"
+            ],
+            "model": "opus",
+            "generate": false,
+            "promptCacheKey": "PARENT",
+            "clientMetadataKeys": [
+              "guardian_credits_requested",
+              "mcp_attribution",
+              "session_id",
+              "thread_id",
+              "turn_id",
+              "x-codex-installation-id",
+              "x-codex-parent-thread-id",
+              "x-codex-turn-metadata",
+              "x-codex-window-id",
+              "x-codex-ws-stream-request-start-ms",
+              "x-openai-subagent"
+            ],
+            "clientMetadata": {
+              "thread_id": "CHILD_1",
+              "session_id": "PARENT",
+              "turn_id": "empty",
+              "x-codex-parent-thread-id": "PARENT",
+              "x-openai-subagent": "collab_spawn"
+            },
+            "turnMetadata": {
+              "thread_id": "CHILD_1",
+              "session_id": "PARENT",
+              "turn_id": "empty",
+              "agent_name": "/root",
+              "request_kind": "prewarm",
+              "parent_thread_id": "PARENT",
+              "subagent_kind": "thread_spawn",
+              "thread_source": "subagent",
+              "model": "opus"
+            },
+            "inputTypes": [],
+            "toolNames": [
+              "custom:exec",
+              "function:wait",
+              "function:request_user_input",
+              "web_search:web_search"
+            ],
+            "lastUserText": null
+          },
+          {
+            "type": "response.create",
+            "keys": [
+              "client_metadata",
+              "include",
+              "input",
+              "model",
+              "parallel_tool_calls",
+              "previous_response_id",
+              "prompt_cache_key",
+              "reasoning",
+              "store",
+              "stream",
+              "tool_choice",
+              "tools",
+              "type"
+            ],
+            "model": "opus",
+            "generate": null,
+            "promptCacheKey": "PARENT",
+            "clientMetadataKeys": [
+              "guardian_credits_requested",
+              "mcp_attribution",
+              "parent_turn_id",
+              "root_turn_id",
+              "session_id",
+              "thread_id",
+              "turn_id",
+              "x-codex-installation-id",
+              "x-codex-parent-thread-id",
+              "x-codex-turn-metadata",
+              "x-codex-window-id",
+              "x-codex-ws-stream-request-start-ms",
+              "x-openai-subagent"
+            ],
+            "clientMetadata": {
+              "thread_id": "CHILD_1",
+              "session_id": "PARENT",
+              "turn_id": "TURN_CHILD_1",
+              "parent_turn_id": "TURN_PARENT",
+              "root_turn_id": "TURN_PARENT",
+              "x-codex-parent-thread-id": "PARENT",
+              "x-openai-subagent": "collab_spawn"
+            },
+            "turnMetadata": {
+              "thread_id": "CHILD_1",
+              "session_id": "PARENT",
+              "turn_id": "TURN_CHILD_1",
+              "agent_name": "/root",
+              "request_kind": "turn",
+              "parent_thread_id": "PARENT",
+              "parent_turn_id": "TURN_PARENT",
+              "root_turn_id": "TURN_PARENT",
+              "subagent_kind": "thread_spawn",
+              "thread_source": "subagent",
+              "model": "opus"
+            },
+            "inputTypes": [
+              "message:developer",
+              "message:user",
+              "message:user"
+            ],
+            "toolNames": [
+              "custom:exec",
+              "function:wait",
+              "function:request_user_input",
+              "web_search:web_search"
+            ],
+            "lastUserText": "Reply with exactly the word PONG"
+          }
+        ]
+      },
+      {
+        "child": "CHILD_2",
+        "headerNames": [
+          "authorization",
+          "chatgpt-account-id",
+          "connection",
+          "host",
+          "openai-beta",
+          "originator",
+          "sec-websocket-extensions",
+          "sec-websocket-key",
+          "sec-websocket-version",
+          "session-id",
+          "thread-id",
+          "upgrade",
+          "user-agent",
+          "version",
+          "x-client-request-id",
+          "x-codex-beta-features",
+          "x-codex-parent-thread-id",
+          "x-codex-routing-hint",
+          "x-codex-turn-metadata",
+          "x-codex-window-id",
+          "x-openai-subagent"
+        ],
+        "threadIdHeader": "CHILD_2",
+        "sessionIdHeader": "PARENT",
+        "parentThreadIdHeader": "PARENT",
+        "subagentHeader": "collab_spawn",
+        "routingHintHeader": "model=opus",
+        "idHeaders": {
+          "session-id": "PARENT",
+          "thread-id": "CHILD_2",
+          "x-client-request-id": "CHILD_2",
+          "x-codex-parent-thread-id": "PARENT",
+          "x-codex-window-id": "CHILD_2:0"
+        },
+        "turnMetadataKeys": [
+          "agent_name",
+          "analytics_enabled",
+          "auto_review_enabled",
+          "context_window_id",
+          "installation_id",
+          "model",
+          "node_repl_auto_review_required",
+          "node_repl_disabled",
+          "parent_thread_id",
+          "reasoning_effort",
+          "request_kind",
+          "sandbox",
+          "sandbox_mode",
+          "session_id",
+          "subagent_kind",
+          "thread_id",
+          "thread_source",
+          "turn_id",
+          "window_id",
+          "window_number"
+        ],
+        "turnMetadata": {
+          "thread_id": "CHILD_2",
+          "session_id": "PARENT",
+          "turn_id": "empty",
+          "agent_name": "/root",
+          "request_kind": "prewarm",
+          "parent_thread_id": "PARENT",
+          "subagent_kind": "thread_spawn",
+          "thread_source": "subagent",
+          "model": "opus"
+        },
+        "frames": [
+          {
+            "type": "response.create",
+            "keys": [
+              "client_metadata",
+              "generate",
+              "include",
+              "input",
+              "model",
+              "parallel_tool_calls",
+              "prompt_cache_key",
+              "reasoning",
+              "store",
+              "stream",
+              "tool_choice",
+              "tools",
+              "type"
+            ],
+            "model": "opus",
+            "generate": false,
+            "promptCacheKey": "PARENT",
+            "clientMetadataKeys": [
+              "guardian_credits_requested",
+              "mcp_attribution",
+              "session_id",
+              "thread_id",
+              "turn_id",
+              "x-codex-installation-id",
+              "x-codex-parent-thread-id",
+              "x-codex-turn-metadata",
+              "x-codex-window-id",
+              "x-codex-ws-stream-request-start-ms",
+              "x-openai-subagent"
+            ],
+            "clientMetadata": {
+              "thread_id": "CHILD_2",
+              "session_id": "PARENT",
+              "turn_id": "empty",
+              "x-codex-parent-thread-id": "PARENT",
+              "x-openai-subagent": "collab_spawn"
+            },
+            "turnMetadata": {
+              "thread_id": "CHILD_2",
+              "session_id": "PARENT",
+              "turn_id": "empty",
+              "agent_name": "/root",
+              "request_kind": "prewarm",
+              "parent_thread_id": "PARENT",
+              "subagent_kind": "thread_spawn",
+              "thread_source": "subagent",
+              "model": "opus"
+            },
+            "inputTypes": [],
+            "toolNames": [
+              "custom:exec",
+              "function:wait",
+              "function:request_user_input",
+              "web_search:web_search"
+            ],
+            "lastUserText": null
+          },
+          {
+            "type": "response.create",
+            "keys": [
+              "client_metadata",
+              "include",
+              "input",
+              "model",
+              "parallel_tool_calls",
+              "previous_response_id",
+              "prompt_cache_key",
+              "reasoning",
+              "store",
+              "stream",
+              "tool_choice",
+              "tools",
+              "type"
+            ],
+            "model": "opus",
+            "generate": null,
+            "promptCacheKey": "PARENT",
+            "clientMetadataKeys": [
+              "guardian_credits_requested",
+              "mcp_attribution",
+              "parent_turn_id",
+              "root_turn_id",
+              "session_id",
+              "thread_id",
+              "turn_id",
+              "x-codex-installation-id",
+              "x-codex-parent-thread-id",
+              "x-codex-turn-metadata",
+              "x-codex-window-id",
+              "x-codex-ws-stream-request-start-ms",
+              "x-openai-subagent"
+            ],
+            "clientMetadata": {
+              "thread_id": "CHILD_2",
+              "session_id": "PARENT",
+              "turn_id": "TURN_CHILD_2",
+              "parent_turn_id": "TURN_PARENT",
+              "root_turn_id": "TURN_PARENT",
+              "x-codex-parent-thread-id": "PARENT",
+              "x-openai-subagent": "collab_spawn"
+            },
+            "turnMetadata": {
+              "thread_id": "CHILD_2",
+              "session_id": "PARENT",
+              "turn_id": "TURN_CHILD_2",
+              "agent_name": "/root",
+              "request_kind": "turn",
+              "parent_thread_id": "PARENT",
+              "parent_turn_id": "TURN_PARENT",
+              "root_turn_id": "TURN_PARENT",
+              "subagent_kind": "thread_spawn",
+              "thread_source": "subagent",
+              "model": "opus"
+            },
+            "inputTypes": [
+              "message:developer",
+              "message:user",
+              "message:user"
+            ],
+            "toolNames": [
+              "custom:exec",
+              "function:wait",
+              "function:request_user_input",
+              "web_search:web_search"
+            ],
+            "lastUserText": "Reply with exactly the word PONG"
+          }
+        ]
+      }
+    ]
+  },
+  "ephemeral": {
+    "threads": "ephemeral",
+    "notifications": [
+      {
+        "method": "turn/started",
+        "threadId": "PARENT",
+        "turnId": "TURN_PARENT"
+      },
+      {
+        "method": "item/started",
+        "threadId": "PARENT",
+        "turnId": "TURN_PARENT",
+        "item": {
+          "type": "collabAgentToolCall",
+          "id": "SPAWN_1",
+          "tool": "spawnAgent",
+          "status": "inProgress",
+          "senderThreadId": "PARENT",
+          "receiverThreadIds": [],
+          "model": "opus",
+          "reasoningEffort": "low",
+          "prompt": "Reply with exactly the word PONG"
+        }
+      },
+      {
+        "method": "item/completed",
+        "threadId": "PARENT",
+        "turnId": "TURN_PARENT",
+        "item": {
+          "type": "collabAgentToolCall",
+          "id": "SPAWN_1",
+          "tool": "spawnAgent",
+          "status": "completed",
+          "senderThreadId": "PARENT",
+          "receiverThreadIds": [
+            "CHILD"
+          ],
+          "model": "opus",
+          "reasoningEffort": "low",
+          "prompt": "Reply with exactly the word PONG"
+        }
+      },
+      {
+        "method": "turn/started",
+        "threadId": "CHILD",
+        "turnId": "TURN_CHILD"
+      }
+    ],
+    "childThreadStarted": false,
+    "linkBeforeFirstModelRequest": true
+  },
+  "shapes": {
+    "inheritModel": {
+      "spawnArgs": {
+        "reasoning_effort": "low",
+        "message": "Reply with exactly the word PONG"
+      },
+      "notifications": [
+        {
+          "method": "item/started",
+          "threadId": "PARENT",
+          "turnId": "TURN_PARENT",
+          "item": {
+            "type": "collabAgentToolCall",
+            "id": "SPAWN_1",
+            "tool": "spawnAgent",
+            "status": "inProgress",
+            "senderThreadId": "PARENT",
+            "receiverThreadIds": [],
+            "model": "",
+            "reasoningEffort": "low",
+            "prompt": "Reply with exactly the word PONG"
+          }
+        },
+        {
+          "method": "item/completed",
+          "threadId": "PARENT",
+          "turnId": "TURN_PARENT",
+          "item": {
+            "type": "collabAgentToolCall",
+            "id": "SPAWN_1",
+            "tool": "spawnAgent",
+            "status": "completed",
+            "senderThreadId": "PARENT",
+            "receiverThreadIds": [
+              "CHILD_INHERIT"
+            ],
+            "model": "gpt-spawn-probe",
+            "reasoningEffort": "low",
+            "prompt": "Reply with exactly the word PONG"
+          }
+        },
+        {
+          "method": "turn/started",
+          "threadId": "CHILD_INHERIT",
+          "turnId": "TURN_CHILD_INHERIT"
+        }
+      ],
+      "linkBeforeFirstModelRequest": true,
+      "childRequest": {
+        "model": "gpt-spawn-probe",
+        "reasoningEffort": "low",
+        "turn": "TURN_CHILD_INHERIT",
+        "subagentHeader": "collab_spawn",
+        "parentThreadIdHeader": "PARENT",
+        "routingHintHeader": "model=gpt-spawn-probe",
+        "clientMetadataParent": "PARENT",
+        "inputTypes": [
+          "additional_tools:developer",
+          "message:developer",
+          "message:user",
+          "message:user"
+        ],
+        "userTexts": [
+          "<environment_context>",
+          "Reply with exactly the word PONG"
+        ]
+      }
+    },
+    "forkContext": {
+      "spawnArgs": {
+        "model": "opus",
+        "reasoning_effort": "low",
+        "message": "Reply with exactly the word PING",
+        "fork_context": true
+      },
+      "notifications": [
+        {
+          "method": "item/started",
+          "threadId": "PARENT",
+          "turnId": "TURN_PARENT_2",
+          "item": {
+            "type": "collabAgentToolCall",
+            "id": "SPAWN_2",
+            "tool": "spawnAgent",
+            "status": "inProgress",
+            "senderThreadId": "PARENT",
+            "receiverThreadIds": [],
+            "model": "opus",
+            "reasoningEffort": "low",
+            "prompt": "Reply with exactly the word PING"
+          }
+        },
+        {
+          "method": "item/completed",
+          "threadId": "PARENT",
+          "turnId": "TURN_PARENT_2",
+          "item": {
+            "type": "collabAgentToolCall",
+            "id": "SPAWN_2",
+            "tool": "spawnAgent",
+            "status": "completed",
+            "senderThreadId": "PARENT",
+            "receiverThreadIds": [
+              "CHILD_FORK"
+            ],
+            "model": "opus",
+            "reasoningEffort": "low",
+            "prompt": "Reply with exactly the word PING"
+          }
+        },
+        {
+          "method": "turn/started",
+          "threadId": "CHILD_FORK",
+          "turnId": "TURN_CHILD_FORK"
+        }
+      ],
+      "linkBeforeFirstModelRequest": true,
+      "childRequest": {
+        "model": "opus",
+        "reasoningEffort": "low",
+        "turn": "TURN_CHILD_FORK",
+        "subagentHeader": "collab_spawn",
+        "parentThreadIdHeader": "PARENT",
+        "routingHintHeader": "model=opus",
+        "clientMetadataParent": "PARENT",
+        "inputTypes": [
+          "message:developer",
+          "message:user",
+          "message:user",
+          "message:user",
+          "message:user",
+          "message:user"
+        ],
+        "userTexts": [
+          "<environment_context>",
+          "Step 1: spawn_agent",
+          "<subagent_notification>\n{\"agent_path\":\"CHILD_INHERIT\",\"status\":{\"completed\":\"PONG\"}}\n</subagent_notification>",
+          "Step 2: spawn_agent",
+          "Reply with exactly the word PING"
+        ]
+      }
+    },
+    "followUps": {
+      "steps": [
+        {
+          "call": "spawn_agent",
+          "parentItems": [
+            {
+              "method": "item/started",
+              "threadId": "PARENT",
+              "turnId": "TURN_PARENT",
+              "item": {
+                "type": "collabAgentToolCall",
+                "id": "SPAWN_1",
+                "tool": "spawnAgent",
+                "status": "inProgress",
+                "senderThreadId": "PARENT",
+                "receiverThreadIds": [],
+                "model": "opus",
+                "reasoningEffort": "low",
+                "prompt": "Reply with exactly the word PONG"
+              }
+            },
+            {
+              "method": "item/completed",
+              "threadId": "PARENT",
+              "turnId": "TURN_PARENT",
+              "item": {
+                "type": "collabAgentToolCall",
+                "id": "SPAWN_1",
+                "tool": "spawnAgent",
+                "status": "completed",
+                "senderThreadId": "PARENT",
+                "receiverThreadIds": [
+                  "CHILD"
+                ],
+                "model": "opus",
+                "reasoningEffort": "low",
+                "prompt": "Reply with exactly the word PONG"
+              }
+            }
+          ],
+          "childTurnsStarted": 1,
+          "childUnloaded": false,
+          "childWarnings": []
+        },
+        {
+          "call": "send_input",
+          "parentItems": [
+            {
+              "method": "item/started",
+              "threadId": "PARENT",
+              "turnId": "TURN_PARENT_2",
+              "item": {
+                "type": "collabAgentToolCall",
+                "id": "SENDINPUT_1",
+                "tool": "sendInput",
+                "status": "inProgress",
+                "senderThreadId": "PARENT",
+                "receiverThreadIds": [
+                  "CHILD"
+                ],
+                "model": null,
+                "reasoningEffort": null,
+                "prompt": "Reply with exactly the word PING"
+              }
+            },
+            {
+              "method": "item/completed",
+              "threadId": "PARENT",
+              "turnId": "TURN_PARENT_2",
+              "item": {
+                "type": "collabAgentToolCall",
+                "id": "SENDINPUT_1",
+                "tool": "sendInput",
+                "status": "completed",
+                "senderThreadId": "PARENT",
+                "receiverThreadIds": [
+                  "CHILD"
+                ],
+                "model": null,
+                "reasoningEffort": null,
+                "prompt": "Reply with exactly the word PING"
+              }
+            }
+          ],
+          "childTurnsStarted": 1,
+          "childUnloaded": false,
+          "childWarnings": []
+        },
+        {
+          "call": "close_agent",
+          "parentItems": [
+            {
+              "method": "item/started",
+              "threadId": "PARENT",
+              "turnId": "TURN_PARENT_3",
+              "item": {
+                "type": "collabAgentToolCall",
+                "id": "CLOSEAGENT_1",
+                "tool": "closeAgent",
+                "status": "inProgress",
+                "senderThreadId": "PARENT",
+                "receiverThreadIds": [
+                  "CHILD"
+                ],
+                "model": null,
+                "reasoningEffort": null,
+                "prompt": null
+              }
+            },
+            {
+              "method": "item/completed",
+              "threadId": "PARENT",
+              "turnId": "TURN_PARENT_3",
+              "item": {
+                "type": "collabAgentToolCall",
+                "id": "CLOSEAGENT_1",
+                "tool": "closeAgent",
+                "status": "completed",
+                "senderThreadId": "PARENT",
+                "receiverThreadIds": [
+                  "CHILD"
+                ],
+                "model": null,
+                "reasoningEffort": null,
+                "prompt": null
+              }
+            }
+          ],
+          "childTurnsStarted": 0,
+          "childUnloaded": true,
+          "childWarnings": []
+        },
+        {
+          "call": "resume_agent",
+          "parentItems": [
+            {
+              "method": "item/started",
+              "threadId": "PARENT",
+              "turnId": "TURN_PARENT_4",
+              "item": {
+                "type": "collabAgentToolCall",
+                "id": "RESUMEAGENT_1",
+                "tool": "resumeAgent",
+                "status": "inProgress",
+                "senderThreadId": "PARENT",
+                "receiverThreadIds": [
+                  "CHILD"
+                ],
+                "model": null,
+                "reasoningEffort": null,
+                "prompt": null
+              }
+            },
+            {
+              "method": "item/completed",
+              "threadId": "PARENT",
+              "turnId": "TURN_PARENT_4",
+              "item": {
+                "type": "collabAgentToolCall",
+                "id": "RESUMEAGENT_1",
+                "tool": "resumeAgent",
+                "status": "completed",
+                "senderThreadId": "PARENT",
+                "receiverThreadIds": [
+                  "CHILD"
+                ],
+                "model": null,
+                "reasoningEffort": null,
+                "prompt": null
+              }
+            }
+          ],
+          "childTurnsStarted": 0,
+          "childUnloaded": false,
+          "childWarnings": [
+            "This session was recorded with model `opus` but is resuming with `gpt-spawn-probe`. Consider switching back to `opus` as it may affect Codex performance."
+          ]
+        },
+        {
+          "call": "send_input",
+          "parentItems": [
+            {
+              "method": "item/started",
+              "threadId": "PARENT",
+              "turnId": "TURN_PARENT_5",
+              "item": {
+                "type": "collabAgentToolCall",
+                "id": "SENDINPUT_2",
+                "tool": "sendInput",
+                "status": "inProgress",
+                "senderThreadId": "PARENT",
+                "receiverThreadIds": [
+                  "CHILD"
+                ],
+                "model": null,
+                "reasoningEffort": null,
+                "prompt": "Reply with exactly the word PANG"
+              }
+            },
+            {
+              "method": "item/completed",
+              "threadId": "PARENT",
+              "turnId": "TURN_PARENT_5",
+              "item": {
+                "type": "collabAgentToolCall",
+                "id": "SENDINPUT_2",
+                "tool": "sendInput",
+                "status": "completed",
+                "senderThreadId": "PARENT",
+                "receiverThreadIds": [
+                  "CHILD"
+                ],
+                "model": null,
+                "reasoningEffort": null,
+                "prompt": "Reply with exactly the word PANG"
+              }
+            }
+          ],
+          "childTurnsStarted": 1,
+          "childUnloaded": false,
+          "childWarnings": []
+        }
+      ],
+      "childRequests": [
+        {
+          "model": "opus",
+          "reasoningEffort": "low",
+          "turn": "TURN_CHILD",
+          "subagentHeader": "collab_spawn",
+          "parentThreadIdHeader": "PARENT",
+          "routingHintHeader": "model=opus",
+          "clientMetadataParent": "PARENT",
+          "inputTypes": [
+            "message:developer",
+            "message:user",
+            "message:user"
+          ],
+          "userTexts": [
+            "<environment_context>",
+            "Reply with exactly the word PONG"
+          ]
+        },
+        {
+          "model": "opus",
+          "reasoningEffort": "low",
+          "turn": "TURN_CHILD_2",
+          "subagentHeader": "collab_spawn",
+          "parentThreadIdHeader": "PARENT",
+          "routingHintHeader": "model=opus",
+          "clientMetadataParent": "PARENT",
+          "inputTypes": [
+            "message:developer",
+            "message:user",
+            "message:user",
+            "message:assistant",
+            "message:user"
+          ],
+          "userTexts": [
+            "<environment_context>",
+            "Reply with exactly the word PONG",
+            "Reply with exactly the word PING"
+          ]
+        },
+        {
+          "model": "gpt-spawn-probe",
+          "reasoningEffort": "low",
+          "turn": "TURN_CHILD_3",
+          "subagentHeader": "collab_spawn",
+          "parentThreadIdHeader": "PARENT",
+          "routingHintHeader": "model=gpt-spawn-probe",
+          "clientMetadataParent": "PARENT",
+          "inputTypes": [
+            "additional_tools:developer",
+            "message:developer",
+            "message:user",
+            "message:user",
+            "message:assistant",
+            "message:user",
+            "message:assistant",
+            "message:user"
+          ],
+          "userTexts": [
+            "<environment_context>",
+            "Reply with exactly the word PONG",
+            "Reply with exactly the word PING",
+            "Reply with exactly the word PANG"
+          ]
+        }
+      ]
+    }
+  }
+}

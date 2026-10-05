@@ -321,29 +321,6 @@ export function isSubagentToolName(name: string | null | undefined): boolean {
   )
 }
 
-export function normalizeApprovalPolicy(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const v = value.trim()
-  // Codex AskForApproval enum: untrusted | on-failure | on-request | never.
-  // (We previously had "unless-trusted" which never appeared in the wire enum.)
-  if (v === 'untrusted' || v === 'on-failure' || v === 'on-request' || v === 'never') return v
-  // Some early App builds shipped the longer form; normalize forward.
-  if (v === 'unless-trusted') return 'untrusted'
-  return null
-}
-
-export function normalizeSandboxMode(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const v = value.trim()
-  return v === 'read-only' || v === 'workspace-write' || v === 'danger-full-access' ? v : null
-}
-
-export interface PermissionProfilePolicy {
-  id: string
-  approvalPolicy: string | null
-  sandboxMode: string | null
-}
-
 export function normalizePermissionProfileId(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const id = value.trim()
@@ -367,24 +344,6 @@ export function hasLegacyPermissionParams(params: Record<string, unknown>): bool
   )
 }
 
-export function permissionProfilePolicy(value: unknown): PermissionProfilePolicy | null {
-  const id = normalizePermissionProfileId(value)
-  if (!id) return null
-  switch (id) {
-    case ':read-only':
-      return { id, approvalPolicy: 'on-request', sandboxMode: 'read-only' }
-    case ':workspace':
-      return { id, approvalPolicy: 'on-request', sandboxMode: 'workspace-write' }
-    case ':danger-full-access':
-      return { id, approvalPolicy: 'never', sandboxMode: 'danger-full-access' }
-    default:
-      // Custom profiles are still reported to the App, but their policy is
-      // resolved by the caller's explicit approval/sandbox fields when those
-      // are available. Never silently grant a broader policy for an unknown id.
-      return { id, approvalPolicy: null, sandboxMode: null }
-  }
-}
-
 export function threadPermissionProfileId(
   permissionProfileId: string | null | undefined,
   approvalPolicy: string | null,
@@ -395,20 +354,6 @@ export function threadPermissionProfileId(
   if (sandboxMode === 'read-only') return ':read-only'
   if (sandboxMode === 'danger-full-access') return ':danger-full-access'
   if (sandboxMode === 'workspace-write' && approvalPolicy === 'on-request') return ':workspace'
-  return null
-}
-
-// turn/start uses `sandboxPolicy: SandboxPolicy` (a struct) instead of the
-// thread/start `sandbox: SandboxMode` string. Translate the struct's `type`
-// back to the internal canonical mode string the sidecar understands.
-export function sandboxFromTurnParams(params: Record<string, unknown>): string | null {
-  if (typeof params.sandbox === 'string') return normalizeSandboxMode(params.sandbox)
-  const policy = params.sandboxPolicy
-  if (!policy || typeof policy !== 'object' || Array.isArray(policy)) return null
-  const type = (policy as Record<string, unknown>).type
-  if (type === 'dangerFullAccess') return 'danger-full-access'
-  if (type === 'readOnly') return 'read-only'
-  if (type === 'workspaceWrite' || type === 'externalSandbox') return 'workspace-write'
   return null
 }
 
@@ -517,22 +462,6 @@ export function personalityPromptCue(personality: string | null): string | null 
     case null:
     default:
       return null
-  }
-}
-
-// Codex App's thread envelope expects a sandbox object whose `type` matches the
-// chosen tier. Returning the right shape lets the App render the correct badge
-// (Read-only / Workspace / Full access) and stops it from over-prompting.
-export function sandboxEnvelope(mode: string | null, cwd: string): unknown {
-  if (mode === 'read-only') return { type: 'readOnly', networkAccess: false }
-  if (mode === 'danger-full-access') return { type: 'dangerFullAccess' }
-  // Default: workspace-write (or null/legacy).
-  return {
-    type: 'workspaceWrite',
-    writableRoots: [cwd],
-    networkAccess: true,
-    excludeTmpdirEnvVar: false,
-    excludeSlashTmp: false,
   }
 }
 
@@ -879,11 +808,9 @@ export function isNotAGitRepo(error: unknown): boolean {
   return /not a git repository/i.test(message)
 }
 
-// Cheap upfront check — if cwd isn't in a git work-tree, skip the expensive
-// `git diff` spawn entirely. Without this guard a non-git workspace (App
-// Remote pointing at $HOME or any arbitrary dir) was spamming debug.jsonl
-// with multi-KB "not a git repository" failures on every turn cycle, since
-// gitDiff runs from runRuntimeTurn after each tool result.
+// Cheap upfront check: outside a git work tree, skip `git diff`, which filled
+// debug.jsonl with "not a git repository" on every tool result of a non-git
+// workspace (App Remote at $HOME). Only git's own answers are cached.
 const gitRepoCache = new Map<string, boolean>()
 export async function isGitWorkTree(cwd: string): Promise<boolean> {
   if (gitRepoCache.has(cwd)) return gitRepoCache.get(cwd) as boolean
@@ -895,8 +822,10 @@ export async function isGitWorkTree(cwd: string): Promise<boolean> {
       maxBuffer: 1024,
     })
     inside = stdout.trim() === 'true'
-  } catch {
-    inside = false
+  } catch (error) {
+    // An exit code is git's answer, in any language; a timeout, signal or no spawn is not.
+    const failure = error as { code?: unknown; signal?: unknown; killed?: unknown }
+    if (typeof failure.code !== 'number' || failure.signal || failure.killed) return false
   }
   gitRepoCache.set(cwd, inside)
   return inside

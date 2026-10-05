@@ -1,0 +1,13 @@
+{
+  "version": "2.1.287 (Claude Code)",
+  "slashRefused": true,
+  "readCallRefused": true,
+  "offeredTools": [],
+  "hostileSettingsIgnored": true,
+  "userSettingsUnchanged": true,
+  "sentRead": true,
+  "hostileSeen": false,
+  "requests": 2,
+  "realOAuthVerified": false,
+  "externalNetwork": "denied by sandbox-exec"
+}

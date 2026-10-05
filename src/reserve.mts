@@ -1,3 +1,4 @@
+import { asRecord } from './rpc-shape.mjs'
 import { debugLog } from './util.mjs'
 
 // Auto-reserve: keep the desktop's model picker usable while the account's
@@ -165,8 +166,31 @@ function reachedTypeOf(snapshot: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
+// Cached legacy picker filter while the OpenAI account limit is reached.
+const RATE_LIMIT_CACHE_MS = 30_000
+export class ReserveModelsProbe {
+  private readonly read: () => Promise<unknown>
+  private cache: { at: number; reached: boolean } | null = null
+  constructor(read: () => Promise<unknown>) {
+    this.read = read
+  }
+  async hidden(): Promise<boolean> {
+    if ((process.env.ANYENGINE_HIDE_RATE_LIMIT_UPSELL ?? '').trim() !== '1') return false
+    const now = Date.now()
+    if (this.cache && now - this.cache.at < RATE_LIMIT_CACHE_MS) return this.cache.reached
+    let reached = false
+    try {
+      const result = asRecord(await this.read())
+      const limits = asRecord(result.rateLimits)
+      reached =
+        limits.rateLimitReachedType != null || asRecord(result.rateLimitUpsell).banner_type != null
+    } catch (error) {
+      debugLog('codex.mux.rateLimitProbeFailed', {
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
+    this.cache = { at: now, reached }
+    debugLog('codex.mux.reserveModels', { hidden: reached })
+    return reached
+  }
 }

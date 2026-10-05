@@ -1,5 +1,6 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { contextPosture, isUnrestricted } from './posture.mjs'
 import type { ClaudeRuntime, RuntimeHandlers, RuntimeTurnContext } from './types.mjs'
 import { sleep } from './util.mjs'
 
@@ -21,10 +22,9 @@ export class MockRuntime implements ClaudeRuntime {
         toolName: 'Bash',
         input: { command: 'echo mock approval', description: 'mock approval command' },
       })
-      // Mirror the real sidecar: when the Codex App pinned approvalPolicy=never
-      // or Full access, skip the permission round-trip and run the tool.
-      const autoApprove =
-        context.approvalPolicy === 'never' || context.sandboxMode === 'danger-full-access'
+      // Like the real runtimes: only an unrestricted posture skips the round
+      // trip; anything else goes to the server, which decides by posture.
+      const autoApprove = isUnrestricted(contextPosture(context))
       const decision = autoApprove
         ? { decision: 'accept' as const }
         : await handlers.onPermissionRequest({

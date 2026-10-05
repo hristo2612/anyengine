@@ -1,5 +1,9 @@
 import { createRequire } from 'node:module'
-import type { Terminal as HeadlessTerminal } from '@xterm/headless'
+import { dialogRows, type ScreenRows } from './anyengine-composer.mjs'
+
+export { claudeDialog, composerReady, type ScreenRows } from './anyengine-composer.mjs'
+
+import type { Terminal as HeadlessTerminal, IBufferCell, IBufferLine } from '@xterm/headless'
 
 // @xterm/headless publishes CommonJS at its Node `main`; a named ESM import
 // would fail at runtime, so resolve the constructor through require.
@@ -9,6 +13,17 @@ const { Terminal } = require('@xterm/headless') as {
 }
 
 const SCREEN_SCROLLBACK_LINES = 500
+
+// What the PTY's environment sets so that the screen reads the way this module
+// parses it. The main screen keeps scrollback, and with it Claude draws the
+// default layout even under `"tui": "fullscreen"`. Prompt suggestions, which
+// a server-side flag turns on for some accounts, draw faint text into the
+// empty composer and cost a model request after every turn the app never shows.
+export const PTY_SCREEN_ENV = {
+  TERM: 'xterm-256color',
+  CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: '1',
+  CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: 'false',
+} as const
 
 // Headless terminal emulator fed with the raw PTY output so the runtime can
 // read the TUI the way a human sees it (needed for dialogs no hook covers).
@@ -51,9 +66,47 @@ export class PtyScreen {
     })
   }
 
+  // The same rows, read once, with faint cells blanked in `typed` (see
+  // ScreenRows): the composer's input is what is not faint.
+  rows(): Promise<ScreenRows> {
+    return this.pending.then(() => {
+      const buffer = this.terminal.buffer.active
+      const cells = [buffer.getNullCell(), buffer.getNullCell()] as const
+      const lines: string[] = []
+      const typed: string[] = []
+      for (let offset = 0; offset < this.terminal.rows; offset += 1) {
+        const line = buffer.getLine(buffer.baseY + offset)
+        lines.push(line?.translateToString(true) ?? '')
+        typed.push(line ? withoutFaint(line, cells) : '')
+      }
+      return { lines, typed }
+    })
+  }
+
   dispose(): void {
     this.terminal.dispose()
   }
+}
+
+// Claude draws its cursor as one inverse cell. On an empty composer it sits on
+// the placeholder's first letter (`[inverse]T[faint]ry "…"`), so an inverse
+// cell directly followed by a faint one belongs to the faint text.
+function withoutFaint(
+  line: IBufferLine,
+  [cell, next]: readonly [IBufferCell, IBufferCell],
+): string {
+  let text = ''
+  for (let x = 0; x < line.length; x += 1) {
+    const current = line.getCell(x, cell)
+    const width = current?.getWidth() ?? 0
+    // A wide character's second cell has width 0 and no text of its own.
+    if (!current || width === 0) continue
+    const faint =
+      current.isDim() !== 0 ||
+      (current.isInverse() !== 0 && (line.getCell(x + width, next)?.isDim() ?? 0) !== 0)
+    text += faint ? ' '.repeat(width) : current.getChars() || ' '
+  }
+  return text.trimEnd()
 }
 
 // ---------------------------------------------------------------------------
@@ -166,11 +219,7 @@ export function keystrokesToSelect(from: number, to: number): string[] {
 //
 // The bypass-permissions consent ("Yes, I accept") has the same shape.
 
-const STARTUP_AFFIRMATIVES = [
-  /^Yes, I trust this folder\b/i,
-  /^Yes, I accept\b/i,
-  /^Yes, proceed\b/i,
-]
+const STARTUP_AFFIRMATIVES = [/^Yes, I trust this folder\b/i, /^Yes, I accept\b/i]
 
 export interface StartupPromptAnswer {
   label: string
@@ -178,9 +227,21 @@ export interface StartupPromptAnswer {
 }
 
 export function parseStartupPrompt(viewport: readonly string[]): StartupPromptAnswer | null {
+  viewport = dialogRows(viewport)
   for (let row = 0; row < viewport.length; row += 1) {
     const text = (viewport[row] ?? '').replace(/^\s*❯?\s*/, '')
-    if (!STARTUP_AFFIRMATIVES.some((pattern) => pattern.test(text))) continue
+    const declineAuto =
+      /^No, keep (?:manual mode|plan mode|accept edits)$/.test(text) &&
+      viewport.some((line) =>
+        /^Make auto mode your default permission mode\?\s*$/.test(line.trim()),
+      )
+    const knownConsent = viewport.some((line) =>
+      /bypass(?:ing)? permissions|dangerously-skip-permissions/i.test(line),
+    )
+    const acceptKnown =
+      STARTUP_AFFIRMATIVES.some((pattern) => pattern.test(text)) &&
+      (!/^Yes, I accept/i.test(text) || knownConsent)
+    if (!declineAuto && !acceptKnown) continue
     // Find the cursor among the option rows immediately around the affirmative.
     let cursorRow = -1
     for (
@@ -197,16 +258,6 @@ export function parseStartupPrompt(viewport: readonly string[]): StartupPromptAn
     return { label: text.trim(), keystrokes: keystrokesToSelect(cursorRow, row) }
   }
   return null
-}
-
-// The composer is ready when the empty prompt line is visible and no dialog
-// owns the screen. Claude Code's shortcut hint doubles as a version-stable
-// readiness marker.
-export function composerReady(viewport: readonly string[]): boolean {
-  return (
-    viewport.some((line) => /^\s*❯\s*$/.test(line)) ||
-    viewport.some((line) => /\? for shortcuts/.test(line))
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +281,12 @@ export interface SubmitConfirmation {
   attempts?: number
 }
 
+export interface PasteGuard {
+  beforeWrite: (phase: 'paste' | 'submit') => Promise<void>
+  onError: (error: Error) => void
+  onSubmitted?: () => void
+}
+
 const SUBMIT_CONFIRM_INTERVAL_MS = 1500
 const SUBMIT_CONFIRM_ATTEMPTS = 12
 
@@ -240,36 +297,55 @@ export function pasteAndSubmit(
   proc: { write(data: string): void },
   text: string,
   confirm?: SubmitConfirmation,
+  guard?: PasteGuard,
 ): () => void {
-  proc.write(`\x1b[200~${neutralizeForPaste(text)}\x1b[201~`)
+  let cancelled = false
+  let writing = false
   let retryTimer: NodeJS.Timeout | undefined
-  const submitTimer = setTimeout(() => {
-    proc.write('\r')
-    if (!confirm) return
-    const maxAttempts = confirm.attempts ?? SUBMIT_CONFIRM_ATTEMPTS
-    let attempt = 0
-    retryTimer = setInterval(() => {
-      if (confirm.submitted()) {
-        if (retryTimer) clearInterval(retryTimer)
-        retryTimer = undefined
-        return
-      }
-      if (confirm.busy?.()) return
-      if (attempt >= maxAttempts) {
-        if (retryTimer) clearInterval(retryTimer)
-        retryTimer = undefined
-        confirm.onUnconfirmed?.(attempt)
-        return
-      }
-      attempt += 1
-      confirm.onRetry?.(attempt)
-      proc.write('\r')
-    }, confirm.intervalMs ?? SUBMIT_CONFIRM_INTERVAL_MS)
-    retryTimer.unref?.()
-  }, 150)
-  return () => {
+  let submitTimer: NodeJS.Timeout | undefined
+  const cancel = () => {
+    cancelled = true
     clearTimeout(submitTimer)
-    if (retryTimer) clearInterval(retryTimer)
-    retryTimer = undefined
+    clearInterval(retryTimer)
   }
+  const write = async (phase: 'paste' | 'submit') => {
+    if (cancelled || writing) return
+    writing = true
+    try {
+      await guard?.beforeWrite(phase)
+      if (!cancelled)
+        proc.write(phase === 'paste' ? `\x1b[200~${neutralizeForPaste(text)}\x1b[201~` : '\r')
+    } catch (error) {
+      cancel()
+      guard?.onError(error instanceof Error ? error : new Error(String(error)))
+    } finally {
+      writing = false
+    }
+  }
+  void write('paste').then(() => {
+    if (cancelled) return
+    submitTimer = setTimeout(() => {
+      void write('submit').then(() => {
+        if (cancelled) return
+        guard?.onSubmitted?.()
+        if (!confirm) return
+        const maxAttempts = confirm.attempts ?? SUBMIT_CONFIRM_ATTEMPTS
+        let attempt = 0
+        retryTimer = setInterval(() => {
+          if (confirm.submitted()) return cancel()
+          if (confirm.busy?.() || writing) return
+          if (attempt >= maxAttempts) {
+            cancel()
+            confirm.onUnconfirmed?.(attempt)
+            return
+          }
+          attempt += 1
+          confirm.onRetry?.(attempt)
+          void write('submit')
+        }, confirm.intervalMs ?? SUBMIT_CONFIRM_INTERVAL_MS)
+        retryTimer.unref?.()
+      })
+    }, 150)
+  })
+  return cancel
 }

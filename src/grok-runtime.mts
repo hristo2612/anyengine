@@ -12,10 +12,10 @@
 //
 // Approvals: grok asks the client through `session/request_permission` for
 // every tool its own permission rules don't pre-allow. Read-only tools are
-// answered here; everything else is forwarded to the App as a native
-// command / file-change approval, unless the thread runs with Full access
-// (`approvalPolicy=never` / `sandbox=danger-full-access`), in which case the
-// process is spawned with `--always-approve` and grok never asks.
+// answered here; everything else goes to the server, which decides by the
+// thread's posture and asks the App only what the posture would ask about.
+// Only an unrestricted posture (not `never` alone) spawns the process with
+// `--always-approve`, so grok never asks.
 //
 // Technique ported from a prior grok engine of ours (headless stream + ACP
 // transcript shapes); self-contained here, no external runtime dependency.

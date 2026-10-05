@@ -36,11 +36,27 @@ if [ -f "$RUNTIME_ENV" ]; then
   anyengine_adopt_legacy_env
 fi
 
-ADAPTER="${ANYENGINE_ADAPTER:-/opt/anyengine/dist/src/adapter.mjs}"
+# The installed lib (npm run install:lib), outside every project directory.
+ADAPTER="${ANYENGINE_ADAPTER:-$HOME/.anyengine/lib/current/dist/src/adapter.mjs}"
+# Resolve the `current` link once, here: the adapter's argv then names the
+# version directory Node actually loads from, which is what install-lib's prune
+# looks for before it removes an old version. A path that does not resolve is
+# left as given, so adapter_ready fails it and the fallback runs.
+if ADAPTER_DIR="$(cd "$(dirname "$ADAPTER")" 2>/dev/null && pwd -P)"; then
+  ADAPTER="$ADAPTER_DIR/$(basename "$ADAPTER")"
+fi
 NODE_BIN="${ANYENGINE_NODE:-node}"
-COMPAT_VERSION="${ANYENGINE_COMPAT_VERSION:-${CODEX_SHIM_COMPAT_VERSION:-0.142.3}}"
+SCHEMA_HELPER="$(dirname "$ADAPTER")/../../scripts/lib/startup-schema.mjs"
+[ -f "$SCHEMA_HELPER" ] || SCHEMA_HELPER="$(dirname "${BASH_SOURCE[0]}")/lib/startup-schema.mjs"
+STARTUP_ROOT="${ANYENGINE_ROOT:-$HOME/.anyengine}"
+# Moved together with src/util.mts and CI by scripts/sync-codex-compat.mjs.
+DEFAULT_COMPAT_VERSION="0.160.0"
 VERSION_SUFFIX="${ANYENGINE_VERSION_SUFFIX-anyengine}"
 MODE="${ANYENGINE_ROUTE:-${ANYENGINE_RUNTIME_TYPE:-agent-sdk-sidecar}}"
+# The desktop's own codex. A fallback runs this, never whatever codex PATH
+# finds first: a fallback onto another version is how 2026-09-15 went unseen.
+# ANYENGINE_CHATGPT_APP moves the app (tests point it at a fake bundle).
+CHATGPT_APP="${ANYENGINE_CHATGPT_APP:-/Applications/ChatGPT.app}"
 
 resolve_real_codex() {
   if [ -n "${CODEX_REAL:-}" ] && [ -x "$CODEX_REAL" ]; then
@@ -57,9 +73,155 @@ resolve_real_codex() {
   return 1
 }
 
+is_executable_file() { [ -f "$1" ] && [ -x "$1" ]; }
+
+# The bash copy of src/bundled-codex.mts, which explains the layouts and their
+# order; test/bundled-codex.test.mts runs both over every layout, so change
+# them together. ANYENGINE_REAL_CODEX wins while it names an executable file;
+# one that does not (an app update moved the codex it named) is skipped for
+# the app's own codex, and a caller that execs the result says so
+# (note_stale_real_codex).
+resolve_bundled_codex() {
+  local layout
+  if [ -n "${ANYENGINE_REAL_CODEX:-}" ] && is_executable_file "$ANYENGINE_REAL_CODEX"; then
+    printf '%s\n' "$ANYENGINE_REAL_CODEX"; return 0
+  fi
+  for layout in \
+    Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex \
+    Contents/Resources/codex-cli/bin/codex \
+    Contents/Resources/codex; do
+    if is_executable_file "$CHATGPT_APP/$layout"; then
+      printf '%s\n' "$CHATGPT_APP/$layout"; return 0
+    fi
+  done
+  return 1
+}
+
+# The version to advertise: an explicit ANYENGINE_COMPAT_VERSION, else what
+# the bundled codex says it is (current after every app update), else the pin.
+compat_version() {
+  local explicit="${ANYENGINE_COMPAT_VERSION:-${CODEX_SHIM_COMPAT_VERSION:-}}" bin out
+  if [ -n "$explicit" ]; then printf '%s\n' "$explicit"; return 0; fi
+  if [ "${ANYENGINE_MOCK:-0}" != "1" ] && bin="$(resolve_bundled_codex)" && out="$("$NODE_BIN" "$SCHEMA_HELPER" --version "$bin" 2>/dev/null </dev/null)"; then
+    out="${out#codex-cli }"
+    out="${out%% *}"
+    if [ -n "$out" ]; then printf '%s\n' "$out"; return 0; fi
+  fi
+  printf '%s\n' "$DEFAULT_COMPAT_VERSION"
+}
+
 is_native_codex_mode() {
   case "$MODE" in codex|native-codex|real-codex|native|real) return 0;; esac
   return 1
+}
+
+# `selfcheck` exits 0 only once every static import of the adapter resolved:
+# a pruned node_modules or a half-written install fails here, before the app
+# is handed a process that dies with ERR_MODULE_NOT_FOUND and shows
+# `(code=1, signal=null)`. Probes get no stdin: the app's pipe stays open, and
+# a probe waiting on it would hang every launch.
+adapter_ready() {
+  [ -f "$ADAPTER" ] || return 1
+  "$NODE_BIN" "$ADAPTER" selfcheck >/dev/null 2>&1 </dev/null
+}
+
+json_escape() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
+
+# Appends one event line to the adapter's debug log, best effort.
+debug_event() {
+  local log
+  case "${ANYENGINE_DEBUG_LOG:-}" in 0|false) return 0 ;; esac
+  log="${ANYENGINE_DEBUG_LOG:-${ANYENGINE_HOME:-${CODEX_HOME:-$HOME/.codex}/anyengine}/debug.jsonl}"
+  { mkdir -p "$(dirname "$log")" && printf '%s\n' "$1" >>"$log"; } 2>/dev/null || true
+}
+
+# Diagnostic only: categories and selected code identities, never argv/env.
+shim_dispatch() {
+  case "${ANYENGINE_DEBUG_LOG:-}" in 0|false) return 0 ;; esac
+  {
+    local route="$1" executable="$2" command="other" mode="adapter" shell_kind="other" adapter="null"
+    case "$SUBCMD" in '') command="empty" ;; app-server) command="app-server" ;; esac
+    is_native_codex_mode && mode="native"
+    [ -z "${BASH_VERSION:-}" ] || shell_kind="bash"
+    case "$route" in adapter-stdio|adapter-unix) adapter="\"$(json_escape "$ADAPTER")\"" ;; esac
+    debug_event "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"pid\":$$,\"event\":\"shim.dispatch\",\"route\":\"${route}\",\"command\":\"${command}\",\"mode\":\"${mode}\",\"shellKind\":\"${shell_kind}\",\"executable\":\"$(json_escape "$executable")\",\"adapter\":${adapter}}"
+  } 2>/dev/null || true
+}
+
+# Before the shim execs a codex itself (a fallback, the control socket), a
+# skipped ANYENGINE_REAL_CODEX is said out loud, as the adapter does when it
+# runs: an app log line and a `shim.staleRealCodex` debug event. `npm run
+# doctor` fails while runtime.env still names it.
+note_stale_real_codex() {
+  local using="$1"
+  if [ -z "${ANYENGINE_REAL_CODEX:-}" ] || is_executable_file "$ANYENGINE_REAL_CODEX"; then
+    return 0
+  fi
+  echo "codex shim: ANYENGINE_REAL_CODEX=${ANYENGINE_REAL_CODEX} is not an executable file (an app update moves the bundled codex); ${using:+running ${using} instead; }remove it from runtime.env" >&2
+  debug_event "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"pid\":$$,\"event\":\"shim.staleRealCodex\",\"configured\":\"$(json_escape "$ANYENGINE_REAL_CODEX")\",\"codex\":\"$(json_escape "$using")\"}"
+}
+
+# A codex the app did not ship (CODEX_REAL, else the first other codex on
+# PATH) is never run silently: an npm-global codex 0.154.0 sat ahead on the
+# app's PATH while the app shipped 0.159.0. A line on stderr and a
+# `shim.nonBundledCodex` debug event.
+note_non_bundled_codex() {
+  echo "codex shim: no codex in ${CHATGPT_APP}; running ${1}, which the app did not ship" >&2
+  debug_event "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"pid\":$$,\"event\":\"shim.nonBundledCodex\",\"codex\":\"$(json_escape "$1")\",\"subcommand\":\"$(json_escape "$SUBCMD")\"}"
+}
+
+# The codex the shim runs itself, outside the adapter fallback (native mode,
+# the control socket, every command but --version and app-server): the app's
+# own by the rule above, else REAL_CODEX, loudly.
+codex_to_run() {
+  local found
+  found="$(resolve_bundled_codex || true)"
+  note_stale_real_codex "$found"
+  if [ -n "$found" ]; then printf '%s\n' "$found"; return 0; fi
+  [ -n "$REAL_CODEX" ] || return 1
+  note_non_bundled_codex "$REAL_CODEX"
+  printf '%s\n' "$REAL_CODEX"
+}
+
+# Loud on purpose: a line in the app's log (stderr), a `shim.fallback` event
+# in the adapter's debug log, and ~/.anyengine/shim-fallback.json, which stays
+# until `npm run install:lib` succeeds, so `npm run doctor` reports it after
+# the app has restarted. Every write is best effort: the fallback must never
+# fail because a log could not be written.
+announce_fallback() {
+  local why="$1" target="$2" kind="$3" line
+  echo "codex shim: FALLBACK to the ${kind} codex at ${target}: ${why}" >&2
+  line="{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"pid\":$$,\"event\":\"shim.fallback\",\"kind\":\"${kind}\",\"reason\":\"$(json_escape "$why")\",\"codex\":\"$(json_escape "$target")\",\"adapter\":\"$(json_escape "$ADAPTER")\"}"
+  { mkdir -p "$STARTUP_ROOT" && "$NODE_BIN" "$SCHEMA_HELPER" --record-fallback "$STARTUP_ROOT" "$line"; } 2>/dev/null || true
+  debug_event "$line"
+}
+
+# $1 is the reason; the rest is the caller's original argv, so the bundled
+# codex sees the desktop's `-c` flags exactly as the adapter would have.
+fallback_to_bundled() {
+  local why="$1" target kind="bundled"
+  shift
+  for arg in "$@"; do
+    case "$arg" in ws://*|wss://*|--listen=ws://*|--listen=wss://*) echo "codex shim: direct-cli-required: $why" >&2; exit 78;; esac
+  done
+  target="$(resolve_bundled_codex || true)"
+  note_stale_real_codex "$target"
+  if [ -z "$target" ] && [ -n "$REAL_CODEX" ]; then
+    target="$REAL_CODEX"
+    kind="non-bundled CODEX_REAL"
+  fi
+  if [ -z "$target" ]; then
+    why="${why}; no bundled codex to fall back to (set ANYENGINE_REAL_CODEX)"
+    # Nothing can be run at all: this is exactly the outage the shim exists
+    # to surface, so it still gets a marker and a debug event, even with no
+    # codex left to name (kind "none", codex "").
+    announce_fallback "$why" "" "none"
+    return 1
+  fi
+  announce_fallback "$why" "$target" "$kind"
+  exec "$target" "$@"
 }
 
 REAL_CODEX="$(resolve_real_codex || true)"
@@ -79,17 +241,52 @@ while [ "${#REST[@]}" -gt 0 ]; do
 done
 SUBCMD="${REST[0]:-}"
 
+# The `unix://...` argument of an app-server launch, if there is one.
+unix_listen_arg() {
+  local a
+  for a in "${REST[@]}"; do
+    case "$a" in unix://*) printf '%s\n' "$a"; return 0 ;; esac
+  done
+  return 1
+}
+
 case "$SUBCMD" in
   --version|-V|version)
-    if is_native_codex_mode && [ -n "$REAL_CODEX" ]; then exec "$REAL_CODEX" "$@"; fi
-    echo "${CODEX_SHIM_VERSION:-codex-cli ${COMPAT_VERSION}${VERSION_SUFFIX:+ (${VERSION_SUFFIX})}}"
+    if is_native_codex_mode && CODEX_BIN="$(codex_to_run)"; then exec "$NODE_BIN" "$SCHEMA_HELPER" --version "$CODEX_BIN"; fi
+    echo "${CODEX_SHIM_VERSION:-codex-cli $(compat_version)${VERSION_SUFFIX:+ (${VERSION_SUFFIX})}}"
     exit 0 ;;
   app-server)
     if is_native_codex_mode; then
-      if [ -n "$REAL_CODEX" ]; then exec "$REAL_CODEX" "$@"; fi
+      if CODEX_BIN="$(codex_to_run)"; then
+        shim_dispatch native-mode "$CODEX_BIN"
+        exec "$CODEX_BIN" "$@"
+      fi
       echo "codex shim is in native Codex mode, but no real codex binary was found; set CODEX_REAL" >&2
       exit 127
     fi
+    # The JSON block identifies the selected executable; the two-line drift
+    # file is a status summary and never cross-binary verification authority.
+    if [ -e "$STARTUP_ROOT/state/update-watch.json" ]; then
+      selected="$(resolve_bundled_codex || true)"
+      [ -n "$selected" ] || selected="$REAL_CODEX"
+      # Only stdout carries routing evidence; successful helpers may warn on stderr.
+      if ! reason="$("$NODE_BIN" "$SCHEMA_HELPER" --fallback-reason "$STARTUP_ROOT" "$selected" </dev/null)"; then
+        reason="update evidence unavailable: $reason"
+      fi
+      if [ -n "$reason" ]; then
+        fallback_to_bundled "$reason" "$@" || exit 1
+      fi
+    fi
+    if ! adapter_ready; then
+      fallback_to_bundled "adapter cannot start (selfcheck failed for ${ADAPTER})" "$@" || true
+      # Nothing could be run. A unix:// bootstrap still exits 0 so the app's
+      # SSH step reports the missing socket instead of a failed command.
+      if unix_listen_arg >/dev/null; then exit 0; fi
+      exit 1
+    fi
+    # The adapter reports the same version the app's own codex would.
+    ANYENGINE_COMPAT_VERSION="$(compat_version)"
+    export ANYENGINE_COMPAT_VERSION
     # Leading -c globals are passed through: the adapter records them and
     # replays the identical argv when it spawns the real app-server child
     # (native-codex passthrough, docs/guide/backends.md).
@@ -98,28 +295,80 @@ case "$SUBCMD" in
     # Real codex daemonises here and returns; the App's bootstrap subshell waits
     # for this command, so we must return too: background the adapter (stdout/
     # stderr already point at the App's log), wait for its socket, exit 0.
-    for a in "${REST[@]}"; do
-      case "$a" in
-        unix://*)
-          SOCK="${CODEX_HOME:-$HOME/.codex}/app-server-control/app-server-control.sock"
-          [ "$a" != "unix://" ] && SOCK="${a#unix://}"
-          # The SSH/Remote twin serves Claude + Grok only; the desktop LOCAL host
-          # (stdio) owns the native GPT passthrough. Keeps the twin free of the
-          # account rate-limit state that hides the App model picker.
-          ANYENGINE_NATIVE_CODEX="${ANYENGINE_REMOTE_NATIVE_CODEX:-0}" \
-          "$NODE_BIN" "$ADAPTER" ${GLOBAL_OPTS[@]+"${GLOBAL_OPTS[@]}"} "${REST[@]}" </dev/null &
-          disown 2>/dev/null || true
-          for _ in $(seq 1 100); do [ -S "$SOCK" ] && exit 0; sleep 0.1; done
-          # Still exit 0 so the App's bootstrap does not treat this as a failed
-          # SSH command, but say so: a silent 0 here is indistinguishable from a
-          # healthy start when the adapter died on launch.
-          echo "codex shim: adapter did not create $SOCK within 10s" >&2
-          exit 0 ;;
-      esac
-    done
+    if LISTEN="$(unix_listen_arg)"; then
+      SOCK="${CODEX_HOME:-$HOME/.codex}/app-server-control/app-server-control.sock"
+      [ "$LISTEN" != "unix://" ] && SOCK="${LISTEN#unix://}"
+      CONTROL_SOCK="${CODEX_HOME:-$HOME/.codex}/app-server-control/app-server-control.sock"
+      if [ "$SOCK" = "$CONTROL_SOCK" ] && [ "${ANYENGINE_REMOTE_NATIVE_CODEX:-0}" != "1" ]; then
+        # Plain `codex` TUIs attach to this socket, so only a daemon with a
+        # native codex child may own it (src/adapter.mts refuses otherwise);
+        # the bundled codex serves it. A configuration, not a failure: no marker.
+        TWIN_CODEX="$(codex_to_run || true)"
+        if [ -n "$TWIN_CODEX" ]; then
+          echo "codex shim: the control socket needs a native codex child; serving it with $TWIN_CODEX (ANYENGINE_REMOTE_NATIVE_CODEX=1 keeps the adapter)" >&2
+          shim_dispatch control-socket "$TWIN_CODEX"
+          exec "$TWIN_CODEX" "$@"
+        fi
+      fi
+      # The SSH/Remote twin serves Claude + Grok only; the desktop LOCAL host
+      # (stdio) owns the native GPT passthrough.
+      # A private new directory and child IPC prove THIS launch's delegation,
+      # even when the public fallback diagnostic cannot be written.
+      launch_count=0
+      for retained in "${TMPDIR:-/tmp}"/anyengine-startup.*; do
+        [ -d "$retained" ] || continue
+        launch_count=$((launch_count + 1))
+      done
+      if [ "$launch_count" -ge 32 ]; then echo "codex shim: retained launch evidence limit; inspect prior cleanup before retry" >&2; exit 1; fi
+      launch_dir="$(mktemp -d "${TMPDIR:-/tmp}/anyengine-startup.XXXXXX")" || exit 1
+      encoded_adapter="$(printf '%s' "$ADAPTER" | base64 | tr -d '\n')"
+      shim_dispatch adapter-unix "$NODE_BIN"
+      ANYENGINE_NATIVE_CODEX="${ANYENGINE_REMOTE_NATIVE_CODEX:-0}" \
+        "$NODE_BIN" "$SCHEMA_HELPER" --launch "$launch_dir/result.json" "$encoded_adapter" ${GLOBAL_OPTS[@]+"${GLOBAL_OPTS[@]}"} "${REST[@]}" </dev/null &
+      adapter_pid=$!
+      # Shared with STARTUP_WAIT_MS: 30 s admission plus 5 s launcher margin.
+      for _ in $(seq 1 350); do
+        [ ! -S "$SOCK" ] || { rm -rf "$launch_dir"; exit 0; }
+        if ! kill -0 "$adapter_pid" 2>/dev/null; then
+          # Our own attempt exited without binding. It may have deferred to
+          # an already-running daemon on purpose (ensureSingleUnixDaemon,
+          # src/adapter.mts, exits 0 without touching the pidfile when one is
+          # already live): the pidfile then still names THAT daemon, alive
+          # and not us. Keep waiting for its socket instead of mistaking a
+          # benign "already running" exit for a dead adapter.
+          owner="$(cat "$SOCK.pid" 2>/dev/null || true)"
+          if [ -n "$owner" ] && [ "$owner" != "$adapter_pid" ] && kill -0 "$owner" 2>/dev/null; then
+            sleep 0.1
+            continue
+          fi
+          break
+        fi
+        sleep 0.1
+      done
+      [ ! -S "$SOCK" ] || { rm -rf "$launch_dir"; exit 0; }
+      if kill -0 "$adapter_pid" 2>/dev/null; then
+        kill -TERM "$adapter_pid" 2>/dev/null || true
+      fi
+      adapter_status=0
+      wait "$adapter_pid" || adapter_status=$?
+      delegated=0
+      "$NODE_BIN" "$SCHEMA_HELPER" --launch-result "$launch_dir/result.json" "$adapter_pid" >/dev/null 2>&1 </dev/null || delegated=$?
+      if [ "$delegated" = 2 ]; then echo "codex shim: launch cleanup remains unknown; retained $launch_dir" >&2; exit 1; fi
+      rm -rf "$launch_dir"
+      if [ "$delegated" = 0 ]; then exit "$adapter_status"; fi
+      fallback_to_bundled "adapter did not create $SOCK" "$@" || exit 0
+    fi
+    shim_dispatch adapter-stdio "$NODE_BIN"
     exec "$NODE_BIN" "$ADAPTER" ${GLOBAL_OPTS[@]+"${GLOBAL_OPTS[@]}"} "${REST[@]}" ;;
 esac
 
-if [ -n "$REAL_CODEX" ]; then exec "$REAL_CODEX" "$@"; fi
+if CODEX_BIN="$(codex_to_run)"; then
+  case "$SUBCMD" in ''|-*)
+    for arg in "$@"; do
+      if [ "$arg" = app-server ]; then shim_dispatch other-command "$CODEX_BIN"; break; fi
+    done ;;
+  esac
+  exec "$CODEX_BIN" "$@"
+fi
 echo "codex shim supports --version and app-server; set CODEX_REAL for fallback" >&2
 exit 127

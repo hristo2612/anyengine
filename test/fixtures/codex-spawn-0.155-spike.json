@@ -1,0 +1,92 @@
+{
+  "codexVersion": "0.155.0-alpha.2.6",
+  "source": "the AnyEngine spike (s1), logs/q2f.jsonl: a live ChatGPT login against a loopback relay; the parent spawned one child on a Claude catalog entry and one on GPT",
+  "multiAgentToolsOffered": true,
+  "spawnVia": "exec:tools.multi_agent_v1__spawn_agent",
+  "notifications": [
+    {
+      "method": "turn/started",
+      "threadId": "PARENT",
+      "turnId": "TURN_PARENT"
+    },
+    {
+      "method": "item/started",
+      "threadId": "PARENT",
+      "turnId": "TURN_PARENT",
+      "item": {
+        "type": "collabAgentToolCall",
+        "id": "SPAWN_1",
+        "tool": "spawnAgent",
+        "status": "inProgress",
+        "senderThreadId": "PARENT",
+        "receiverThreadIds": [],
+        "model": "claude-haiku-spike",
+        "reasoningEffort": "low",
+        "prompt": "Reply with the single word PONG"
+      }
+    },
+    {
+      "method": "item/completed",
+      "threadId": "PARENT",
+      "turnId": "TURN_PARENT",
+      "item": {
+        "type": "collabAgentToolCall",
+        "id": "SPAWN_1",
+        "tool": "spawnAgent",
+        "status": "completed",
+        "senderThreadId": "PARENT",
+        "receiverThreadIds": [
+          "CHILD"
+        ],
+        "model": "claude-haiku-spike",
+        "reasoningEffort": "low",
+        "prompt": "Reply with the single word PONG"
+      }
+    },
+    {
+      "method": "turn/started",
+      "threadId": "CHILD",
+      "turnId": "TURN_CHILD"
+    },
+    {
+      "method": "item/started",
+      "threadId": "PARENT",
+      "turnId": "TURN_PARENT",
+      "item": {
+        "type": "collabAgentToolCall",
+        "id": "SPAWN_2",
+        "tool": "spawnAgent",
+        "status": "inProgress",
+        "senderThreadId": "PARENT",
+        "receiverThreadIds": [],
+        "model": "gpt-5.6-luna",
+        "reasoningEffort": "low",
+        "prompt": "Reply with the single word PONG"
+      }
+    },
+    {
+      "method": "item/completed",
+      "threadId": "PARENT",
+      "turnId": "TURN_PARENT",
+      "item": {
+        "type": "collabAgentToolCall",
+        "id": "SPAWN_2",
+        "tool": "spawnAgent",
+        "status": "completed",
+        "senderThreadId": "PARENT",
+        "receiverThreadIds": [
+          "CHILD_2"
+        ],
+        "model": "gpt-5.6-luna",
+        "reasoningEffort": "low",
+        "prompt": "Reply with the single word PONG"
+      }
+    },
+    {
+      "method": "turn/started",
+      "threadId": "CHILD_2",
+      "turnId": "TURN_CHILD_2"
+    }
+  ],
+  "childThreadStarted": false
+}

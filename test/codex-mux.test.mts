@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
-import { type ChildProcess, spawn } from 'node:child_process'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import type { ChildProcess } from 'node:child_process'
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import readline from 'node:readline'
-import test from 'node:test'
+import test, { after } from 'node:test'
+import { readBrokerSources } from '../src/broker-source.mjs'
 import { SessionStore } from '../src/store.mjs'
+import { killChildren, spawn } from './helpers/children.mjs'
+
+after(() => killChildren())
 
 // The native-codex multiplexer against a FAKE `codex app-server` child
 // (test/fixtures/fake-codex-app-server.mjs). Everything here runs without
@@ -16,6 +20,8 @@ const adapter = resolve('dist/src/adapter.mjs')
 const shim = resolve('scripts/codex-shim')
 const fakeCodex = resolve('test/fixtures/fake-codex-app-server.mjs')
 
+// ChatGPT.app 26.911 passes its own subcommand-level `-c` after `app-server`;
+// 26.901 did not.
 const DESKTOP_ARGV = [
   '-c',
   'features.code_mode_host=true',
@@ -24,18 +30,31 @@ const DESKTOP_ARGV = [
   '-c',
   'mcp_servers.codex_app={command="/tmp/launch",enabled=true}',
 ]
+const LEGACY_DESKTOP_ARGV = [
+  '-c',
+  'features.code_mode_host=true',
+  'app-server',
+  '--analytics-default-enabled',
+]
 
 type Wire = Record<string, any>
 
-// The adapter inserts its own `-c mcp_servers.anyengine=...` override (the
-// cross-engine bridge, test/bridge.test.mts) after the desktop's globals;
-// everything else must be replayed verbatim.
-function assertDesktopArgvReplayed(argv: string[]): void {
+// The adapter adds its own `-c mcp_servers.anyengine=...` (the cross-engine
+// bridge, test/bridge.test.mts). codex ignores every root-level `-c` once the
+// subcommand has one, so the override follows the app's subcommand `-c` flags
+// when there are any and precedes `app-server` otherwise. Everything else is
+// replayed verbatim.
+function assertDesktopArgvReplayed(argv: string[], desktop: string[] = DESKTOP_ARGV): void {
   const index = argv.findIndex((arg) => arg.startsWith('mcp_servers.anyengine='))
-  assert.ok(index > 0 && argv[index - 1] === '-c', 'bridge override is a -c global')
-  assert.ok(index < argv.indexOf('app-server'), 'bridge override precedes app-server')
+  assert.ok(index > 0 && argv[index - 1] === '-c', 'bridge override is a -c flag')
+  const subcommand = argv.indexOf('app-server')
+  if (desktop.slice(desktop.indexOf('app-server')).includes('-c')) {
+    assert.ok(index > subcommand, 'bridge override follows the app subcommand -c')
+  } else {
+    assert.ok(index < subcommand, 'bridge override precedes app-server')
+  }
   assert.match(argv[index] ?? '', /env_vars=\["ANYENGINE_BRIDGE_SOCKET","ANYENGINE_BRIDGE_TOKEN"\]/)
-  assert.deepEqual([...argv.slice(0, index - 1), ...argv.slice(index + 1)], DESKTOP_ARGV)
+  assert.deepEqual([...argv.slice(0, index - 1), ...argv.slice(index + 1)], desktop)
 }
 
 class StdioClient {
@@ -108,7 +127,12 @@ class StdioClient {
   }
 }
 
-function launch(home: string, extraEnv: NodeJS.ProcessEnv = {}, viaShim = false): StdioClient {
+function launch(
+  home: string,
+  extraEnv: NodeJS.ProcessEnv = {},
+  viaShim = false,
+  argv: string[] = DESKTOP_ARGV,
+): StdioClient {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     ANYENGINE_MOCK: '1',
@@ -130,7 +154,7 @@ function launch(home: string, extraEnv: NodeJS.ProcessEnv = {}, viaShim = false)
   delete env.ANYENGINE_NATIVE_CODEX
   delete env.CLAUDE_CODEX_NATIVE_CODEX
   const child = viaShim
-    ? spawn(shim, DESKTOP_ARGV, {
+    ? spawn(shim, argv, {
         env: {
           ...env,
           ANYENGINE_ADAPTER: adapter,
@@ -139,12 +163,67 @@ function launch(home: string, extraEnv: NodeJS.ProcessEnv = {}, viaShim = false)
         },
         stdio: ['pipe', 'pipe', 'inherit'],
       })
-    : spawn(process.execPath, [adapter, ...DESKTOP_ARGV], {
+    : spawn(process.execPath, [adapter, ...argv], {
         env,
         stdio: ['pipe', 'pipe', 'inherit'],
       })
   return new StdioClient(child)
 }
+
+// 2026-09-30: ChatGPT.app 26.928 moved its codex. runtime.env still named the
+// 26.911 path, the adapter spawned it (ENOENT) and served the app with no GPT
+// engine at all. The stale name is now skipped for the app's own codex, and
+// said out loud.
+test('native-codex mux: a named codex that moved is skipped for the app layout, loudly', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-mux-moved-'))
+  const app = join(home, 'ChatGPT.app')
+  const layout = join(app, 'Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex')
+  await mkdir(dirname(layout), { recursive: true })
+  await writeFile(layout, `#!/bin/sh\nexec "${process.execPath}" "${fakeCodex}" "$@"\n`)
+  await chmod(layout, 0o755)
+  const moved = join(app, 'Contents/Resources/codex')
+  const root = await mkdtemp(join(process.env.HOME ?? home, 'mux-'))
+  // Not a mock run: a mock run never looks for the app.
+  const client = launch(home, {
+    ANYENGINE_MOCK: '',
+    ANYENGINE_ROOT: root,
+    CODEX_HOME: home,
+    ANYENGINE_REAL_CODEX: moved,
+    ANYENGINE_CHATGPT_APP: app,
+  })
+  try {
+    const init = await client.request(
+      'initialize',
+      { clientInfo: { name: 'codex_desktop', title: 'Codex Desktop', version: '26.928' } },
+      '__codex_initialize__',
+    )
+    assert.equal(init.result.userAgent, 'codex_app_server/0.153.4 (fake)', 'the GPT child is up')
+    const auth = await client.request('getAuthStatus', { includeToken: false }, 42)
+    assert.equal(auth.result.fake, true)
+    const account = { home, generation: 1 }
+    const deadline = Date.now() + 5000
+    while (!readBrokerSources(root, account).length && Date.now() < deadline)
+      await new Promise((done) => setTimeout(done, 20))
+    const [source] = readBrokerSources(root, account)
+    assert.ok(source, 'desktop initialize without a notification registers the ready child')
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+    await client.request('getAuthStatus', { includeToken: false })
+    assert.equal(readBrokerSources(root, account)[0]?.id, source.id)
+    const events = (await readFile(join(home, 'debug.jsonl'), 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    const stale = events.find((event) => event.event === 'codex.upstream.staleRealCodex')
+    assert.deepEqual([stale?.configured, stale?.using], [moved, layout])
+    const spawned = events.find((event) => event.event === 'codex.upstream.spawn')
+    assert.equal(spawned?.binary, layout)
+    assert.ok(!events.some((event) => event.event === 'codex.upstream.unavailable'))
+  } finally {
+    await client.close()
+    await rm(root, { recursive: true, force: true })
+    await rm(home, { recursive: true, force: true })
+  }
+})
 
 test('native-codex mux: argv replay, id rewriting both ways, approval round-trip, default route', async () => {
   const home = await mkdtemp(join(tmpdir(), 'ccx-mux-'))
@@ -275,6 +354,13 @@ test('native-codex mux: merged lists, Claude threads stay local, ownership survi
       openaiOnly.result.data.map((t: Wire) => t.id),
       ['fake-newest', 'fake-older'],
     )
+    // An empty filter means every provider (app-server schema), not none:
+    // this is the app's own first `thread/list` call.
+    const everyProvider = await client.request('thread/list', { limit: 50, modelProviders: [] })
+    assert.deepEqual(
+      everyProvider.result.data.map((t: Wire) => t.id),
+      ['fake-newest', claudeThreadId, 'fake-older'],
+    )
 
     const loaded = await client.request('thread/loaded/list', {})
     assert.ok(loaded.result.data.includes('fake-loaded'))
@@ -317,6 +403,19 @@ test('codex-shim passes the desktop -c globals through to the adapter and child'
     assert.equal(init.result.userAgent, 'codex_app_server/0.153.4 (fake)')
     const recorded = JSON.parse(await readFile(join(home, 'fake-argv.json'), 'utf8'))
     assertDesktopArgvReplayed(recorded.argv)
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('native-codex mux: with the 26.901 argv the bridge override still precedes app-server', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-mux-legacy-'))
+  const client = launch(home, {}, false, LEGACY_DESKTOP_ARGV)
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    const recorded = JSON.parse(await readFile(join(home, 'fake-argv.json'), 'utf8'))
+    assertDesktopArgvReplayed(recorded.argv, LEGACY_DESKTOP_ARGV)
   } finally {
     await client.close()
     await rm(home, { recursive: true, force: true })
@@ -529,6 +628,11 @@ test('mid-thread switch: a GPT thread answers on Claude and goes back to GPT', a
     assert.match(answer, /Claude Code adapter mock response/, 'answered by the local runtime')
     assert.match(answer, /Conversation so far, continued from another model/)
     assert.match(answer, /remember the codeword BANANA/, 'the GPT turn was carried over')
+    // The Claude side took the child's posture (its thread/start answer:
+    // on-request, workspace-write), not the old full-access default.
+    const onClaude = await client.request('thread/resume', { threadId })
+    assert.equal(onClaude.result.approvalPolicy, 'on-request')
+    assert.equal(onClaude.result.sandbox.type, 'workspaceWrite')
 
     // One thread, both halves of the history, in order.
     const read = await client.request('thread/read', { threadId, includeTurns: true })
@@ -551,6 +655,175 @@ test('mid-thread switch: a GPT thread answers on Claude and goes back to GPT', a
       ['gpt', 'claude'],
       ['claude', 'gpt'],
     ])
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+// A posture the app sends on one engine is the one the other engine starts
+// under: a tightening left behind at a switch would be a loosening.
+test('mid-thread switch: the posture crosses the switch in both directions', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-switch-posture-'))
+  const requestsFile = join(home, 'requests.jsonl')
+  const client = launch(home, { ...SWITCH_ENV, FAKE_CODEX_REQUESTS_FILE: requestsFile })
+  const untrusted = {
+    approvalPolicy: 'untrusted',
+    sandboxPolicy: { type: 'readOnly', networkAccess: false },
+  }
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+
+    // GPT -> Claude: the posture of the GPT turn, not the child's start answer.
+    const gpt = await client.request('thread/start', { cwd: home, model: 'gpt-5.6-sol' })
+    const gptId = gpt.result.thread.id
+    const turn = await client.request('turn/start', {
+      threadId: gptId,
+      model: 'gpt-5.6-sol',
+      input: [text('first')],
+      ...untrusted,
+    })
+    await client.waitFor(
+      (m) => m.method === 'turn/completed' && m.params?.turn?.id === turn.result.turn.id,
+    )
+    await runLocalTurn(client, gptId, 'sonnet', 'second')
+    const onClaude = await client.request('thread/resume', { threadId: gptId })
+    assert.equal(onClaude.result.approvalPolicy, 'untrusted')
+    assert.equal(onClaude.result.sandbox.type, 'readOnly')
+
+    // Claude -> GPT: the child thread starts under the local thread's posture.
+    const local = await client.request('thread/start', {
+      cwd: home,
+      model: 'sonnet',
+      approvalPolicy: 'untrusted',
+      sandbox: 'read-only',
+    })
+    await runLocalTurn(client, local.result.thread.id, 'sonnet', 'third')
+    await runUpstreamTurn(client, local.result.thread.id, 'gpt-5.6-sol', 'fourth')
+    const starts = (await readFile(requestsFile, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Wire)
+      .filter((r) => r.method === 'thread/start')
+    assert.equal(starts.length, 2)
+    assert.equal(starts[1]?.params.approvalPolicy, 'untrusted')
+    assert.equal(starts[1]?.params.sandbox, 'read-only')
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+function requestLog(file: string): Promise<Wire[]> {
+  return readFile(file, 'utf8').then((raw) =>
+    raw
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Wire),
+  )
+}
+
+async function completedTurn(client: StdioClient, params: Wire): Promise<Wire> {
+  const started = await client.request('turn/start', params)
+  assert.ok(started.result?.turn?.id, `turn/start rejected: ${JSON.stringify(started.error)}`)
+  return client.waitFor(
+    (m) => m.method === 'turn/completed' && m.params?.turn?.id === started.result.turn.id,
+  )
+}
+
+// A thread born on Claude keeps its row while it is on GPT: a tightening sent
+// there, and the profile it names, must be what its next Claude turn runs
+// under, after a switch back that names only the model (the desktop's
+// settings/update), even when the child answered a resume in between with
+// its own reading.
+test('mid-thread switch: a tightening made on GPT holds on the next Claude turn', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-switch-tighten-'))
+  const client = launch(home, SWITCH_ENV)
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+    const start = await client.request('thread/start', {
+      cwd: home,
+      model: 'sonnet',
+      permissions: ':workspace',
+    })
+    const threadId = start.result.thread.id
+    await runLocalTurn(client, threadId, 'sonnet', 'first')
+    await runUpstreamTurn(client, threadId, 'gpt-5.6-sol', 'second')
+    await completedTurn(client, {
+      threadId,
+      input: [text('third')],
+      permissions: ':read-only',
+      approvalPolicy: 'untrusted',
+    })
+    // The fake child answers on-request / workspace-write, as a respawned
+    // child reads its own config.
+    const childAnswer = await client.request('thread/resume', { threadId })
+    assert.equal(childAnswer.result.approvalPolicy, 'on-request')
+    await client.request('thread/settings/update', { threadId, model: 'sonnet', effort: 'low' })
+    const turn = await client.request('turn/start', { threadId, input: [text('policy check')] })
+    const delta = await client.waitFor(
+      (m) => m.method === 'item/agentMessage/delta' && m.params?.turnId === turn.result.turn.id,
+    )
+    assert.equal(delta.params.delta, 'approvalPolicy=untrusted sandboxMode=read-only')
+    const onClaude = await client.request('thread/resume', { threadId })
+    assert.deepEqual(onClaude.result.activePermissionProfile, { id: ':read-only', extends: null })
+  } finally {
+    await client.close()
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+// thread/start and thread/resume carry only the mode string, so the child
+// gets the local posture there and its roots and network on the turn.
+test('mid-thread switch: the child takes the local posture on start and on resume', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'ccx-switch-child-'))
+  const requestsFile = join(home, 'requests.jsonl')
+  const client = launch(home, { ...SWITCH_ENV, FAKE_CODEX_REQUESTS_FILE: requestsFile })
+  try {
+    await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
+    client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+    const start = await client.request('thread/start', {
+      cwd: home,
+      model: 'sonnet',
+      approvalPolicy: 'untrusted',
+      sandbox: 'workspace-write',
+    })
+    const threadId = start.result.thread.id
+    const roots = { type: 'workspaceWrite', writableRoots: ['/data'], networkAccess: true }
+    await completedTurn(client, { threadId, input: [text('one')], sandboxPolicy: roots })
+
+    // Start path: a new child thread.
+    await runUpstreamTurn(client, threadId, 'gpt-5.6-sol', 'two')
+    let log = await requestLog(requestsFile)
+    const childStart = log.find((r) => r.method === 'thread/start')
+    assert.equal(childStart?.params.approvalPolicy, 'untrusted')
+    assert.equal(childStart?.params.sandbox, 'workspace-write')
+    const firstTurn = log.find((r) => r.method === 'turn/start')
+    assert.equal(firstTurn?.params.threadId, 'fake-thread-1')
+    assert.equal(firstTurn?.params.approvalPolicy, 'untrusted')
+    assert.deepEqual(firstTurn?.params.sandboxPolicy, {
+      ...roots,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    })
+
+    // Resume path: back on Claude the thread is made read-only, then returns.
+    await completedTurn(client, {
+      threadId,
+      model: 'sonnet',
+      input: [text('three')],
+      sandboxPolicy: { type: 'readOnly', networkAccess: false },
+    })
+    await runUpstreamTurn(client, threadId, 'gpt-5.6-sol', 'four')
+    log = await requestLog(requestsFile)
+    const resumed = log.filter((r) => r.method === 'thread/resume').at(-1)
+    assert.equal(resumed?.params.threadId, 'fake-thread-1')
+    assert.equal(resumed?.params.approvalPolicy, 'untrusted')
+    assert.equal(resumed?.params.sandbox, 'read-only')
+    const nextTurn = log.filter((r) => r.method === 'turn/start').at(-1)
+    assert.deepEqual(nextTurn?.params.sandboxPolicy, { type: 'readOnly', networkAccess: false })
   } finally {
     await client.close()
     await rm(home, { recursive: true, force: true })
@@ -725,9 +998,8 @@ test('mid-thread switch: a switch waits for the turn that is already running', a
   try {
     await client.request('initialize', { clientInfo: { name: 'test', version: '0' } })
     client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
-    // `on-request` + `workspace-write` is the configuration where the mock
-    // runtime asks for an approval and holds the turn open until it is
-    // answered — a turn that is genuinely still running.
+    // The mock runtime asks the user a question and holds the turn open
+    // until it is answered: a turn that is genuinely still running.
     const start = await client.request('thread/start', {
       cwd: home,
       model: 'sonnet',
@@ -738,11 +1010,10 @@ test('mid-thread switch: a switch waits for the turn that is already running', a
     const running = client.request('turn/start', {
       threadId,
       model: 'sonnet',
-      input: [text('run a bash approval')],
+      input: [text('ask user question check')],
     })
-    const approval = await client.waitFor(
-      (m) =>
-        m.method === 'item/commandExecution/requestApproval' && m.params?.threadId === threadId,
+    const question = await client.waitFor(
+      (m) => m.method === 'item/tool/requestUserInput' && m.params?.threadId === threadId,
     )
 
     const refused = await client.request('turn/start', {
@@ -754,7 +1025,8 @@ test('mid-thread switch: a switch waits for the turn that is already running', a
     assert.match(String(refused.error.message), /still answering/)
     assert.match(String(refused.error.message), /gpt-5\.6-sol/)
 
-    client.send({ jsonrpc: '2.0', id: approval.id, result: { decision: 'accept' } })
+    const answers = { q0: { answers: ['OAuth'] } }
+    client.send({ jsonrpc: '2.0', id: question.id, result: { answers } })
     await running
     await client.waitFor((m) => m.method === 'turn/completed' && m.params?.threadId === threadId)
 

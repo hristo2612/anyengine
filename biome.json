@@ -1,7 +1,18 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
-  "files": { "ignoreUnknown": true },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!test/fixtures/codex-wire-*.json",
+      "!test/fixtures/codex-spawn-*.json",
+      "!test/fixtures/codex-auth-*.json",
+      "!test/fixtures/claude-messages-*.json",
+      "!test/fixtures/claude-posture-*.json",
+      "!test/fixtures/raine-translation-*.json"
+    ]
+  },
   "assist": {
     "enabled": true,
     "actions": { "source": { "organizeImports": "on" } }

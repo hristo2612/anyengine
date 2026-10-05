@@ -7,6 +7,7 @@
 // The two that walk the subagent ancestry take the store as their first
 // argument; the rest are pure.
 
+import { type Posture, threadPosture, toCodexTurn } from './posture.mjs'
 import {
   COMMAND_TOOLS,
   FILE_CHANGE_TOOLS,
@@ -14,7 +15,6 @@ import {
   normalizeSessionSource,
   normalizeThreadSource,
   nullIfEmpty,
-  sandboxEnvelope,
   threadPermissionProfileId,
 } from './server-helpers.mjs'
 import type { SessionStore } from './store.mjs'
@@ -120,6 +120,7 @@ export function threadEnvelope(
   thread: ThreadRecord,
   turns: TurnRecord[] = [],
 ): unknown {
+  const codex = toCodexTurn(envelopePosture(threadPosture(thread)))
   const activePermissionProfileId = threadPermissionProfileId(
     thread.permissionProfileId,
     thread.approvalPolicy,
@@ -133,9 +134,9 @@ export function threadEnvelope(
     cwd: thread.cwd,
     runtimeWorkspaceRoots: [thread.cwd],
     instructionSources: [],
-    approvalPolicy: thread.approvalPolicy ?? 'never',
-    approvalsReviewer: 'user',
-    sandbox: sandboxEnvelope(thread.sandboxMode, thread.cwd),
+    approvalPolicy: codex.approvalPolicy,
+    approvalsReviewer: codex.approvalsReviewer,
+    sandbox: envelopeSandbox(codex.sandboxPolicy as Record<string, unknown>, thread.cwd),
     permissionProfile: null,
     activePermissionProfile: activePermissionProfileId
       ? { id: activePermissionProfileId, extends: null }
@@ -147,6 +148,20 @@ export function threadEnvelope(
     reasoningEffort: thread.reasoningEffort,
     multiAgentMode: 'explicitRequestOnly',
   }
+}
+
+// The envelope shows the permission picker's state; plan is a collaboration
+// mode, not a permission, so it is left out here.
+function envelopePosture(posture: Posture): Posture {
+  return posture.plan ? { ...posture, plan: false } : posture
+}
+
+// The app draws its permission badge from this. Workspace-write lists the
+// thread's cwd among its roots, as the adapter always has.
+function envelopeSandbox(sandbox: Record<string, unknown>, cwd: string): Record<string, unknown> {
+  if (sandbox.type !== 'workspaceWrite') return sandbox
+  const roots = Array.isArray(sandbox.writableRoots) ? (sandbox.writableRoots as string[]) : []
+  return { ...sandbox, writableRoots: [cwd, ...roots] }
 }
 
 export function toThread(

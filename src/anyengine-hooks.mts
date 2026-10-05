@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { chmodSync, mkdirSync, renameSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { debugLog } from './util.mjs'
 
@@ -39,6 +40,7 @@ export const PTY_HOOK_EVENTS = [
   'UserPromptSubmit',
   'PreToolUse',
   'PostToolUse',
+  'PostToolUseFailure',
   'Stop',
   'StopFailure',
   'SubagentStop',
@@ -47,6 +49,18 @@ export const PTY_HOOK_EVENTS = [
 ] as const
 
 export type HookResponder = (threadId: string, payload: HookPayload) => Promise<unknown>
+
+// Claude Code (2.1.285) reports a call that failed (an MCP tool's error, a
+// command that exits non-zero) through PostToolUseFailure, never PostToolUse,
+// so its item would stay in progress. The runtime gets it as a PostToolUse
+// whose response is the error, read as a Bash result (stderr) or any other
+// tool's (content), so one path completes every call.
+export function asToolResultHook(payload: HookPayload): HookPayload {
+  if (payload.hook_event_name !== 'PostToolUseFailure') return payload
+  const error = typeof payload.error === 'string' && payload.error ? payload.error : 'tool failed'
+  const response = { stdout: '', stderr: error, content: error, is_error: true }
+  return { ...payload, hook_event_name: 'PostToolUse', tool_response: response }
+}
 
 export const HOOK_TOKEN_HEADER = 'x-anyengine-hook-token'
 
@@ -130,7 +144,7 @@ export class PtyHookServer {
         res.writeHead(400).end()
         return
       }
-      void this.responder(threadId, payload)
+      void this.responder(threadId, asToolResultHook(payload))
         .then((reply) => {
           if (reply == null) {
             res.writeHead(204).end()
@@ -182,6 +196,13 @@ export function buildPtySettings(options: PtySettingsOptions): Record<string, un
 
 // Per-thread settings JSON (hooks only) written 0600 under the runtime's
 // private state dir and passed to the CLI as `--settings <file>`.
+// Where each spawn's `--settings` (the relay hooks) and `--mcp-config` are
+// written. Both load whatever `--setting-sources` says, so the directory lies
+// outside every default writable root ($TMPDIR is one): created 0700 below.
+export function defaultStateDir(): string {
+  return join(homedir(), '.anyengine', 'pty', String(process.pid))
+}
+
 export function writePtySettings(dir: string, options: PtySettingsOptions): string {
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   const file = join(dir, `${safeFileName(options.fileStem)}.settings.json`)

@@ -14,6 +14,7 @@
 
 import { type ChildProcess, spawn } from 'node:child_process'
 import { createInterface, type Interface } from 'node:readline'
+import { contextPosture, isUnrestricted, type Posture } from './posture.mjs'
 import type { ClaudeRuntime, RuntimeHandlers, RuntimeTurnContext } from './types.mjs'
 import { debugLog, resolveCodexBinary } from './util.mjs'
 
@@ -46,6 +47,12 @@ export class CodexProxyRuntime implements ClaudeRuntime {
   private turns = new Map<string, PendingTurn>()
 
   async runTurn(context: RuntimeTurnContext, handlers: RuntimeHandlers): Promise<void> {
+    const refusal = execRefusal(contextPosture(context))
+    if (refusal) {
+      await handlers.onEvent({ type: 'error', message: refusal })
+      await handlers.onEvent({ type: 'completed', success: false, result: refusal })
+      throw new Error(refusal)
+    }
     const binary = resolveCodexBinary()
     if (!binary) {
       // No real codex on host — surface as a turn failure so the App shows
@@ -59,43 +66,8 @@ export class CodexProxyRuntime implements ClaudeRuntime {
     }
 
     return new Promise<void>((resolve, reject) => {
-      // `codex exec --json` emits one JSONL event per line. Flags:
-      //   --skip-git-repo-check        run anywhere, mirroring App behavior
-      //   --dangerously-bypass-...     skip codex's own approval modal — our
-      //                                adapter handles policies upstream via
-      //                                approvalPolicy/sandboxMode; codex
-      //                                would otherwise prompt on stdin and
-      //                                deadlock the JSONL stream.
-      //   -m <model>                   the model the user picked in the App
-      //   -C <cwd>                     anchor the workspace
-      //   resume <sessionId>           multi-turn continuity
       const resumeId = context.claudeSessionId
-      const args: string[] = ['exec']
-      if (resumeId) {
-        args.push('resume', resumeId, '--json', '--skip-git-repo-check')
-        if (context.sandboxMode === 'danger-full-access' || !context.sandboxMode) {
-          args.push('--dangerously-bypass-approvals-and-sandbox')
-        }
-        if (context.model) args.push('-m', context.model)
-      } else {
-        args.push('--json', '--skip-git-repo-check')
-        if (context.sandboxMode === 'danger-full-access') {
-          args.push('--dangerously-bypass-approvals-and-sandbox')
-        } else if (
-          context.sandboxMode === 'read-only' ||
-          context.sandboxMode === 'workspace-write'
-        ) {
-          args.push('-s', context.sandboxMode)
-        } else {
-          args.push('--dangerously-bypass-approvals-and-sandbox')
-        }
-        if (context.model) args.push('-m', context.model)
-        if (context.cwd) args.push('-C', context.cwd)
-        if (context.addDirs && context.addDirs.length > 0) {
-          for (const dir of context.addDirs) args.push('--add-dir', dir)
-        }
-      }
-      args.push(context.prompt)
+      const args = codexExecArgs(context)
 
       debugLog('codex-proxy.spawn', {
         binary,
@@ -104,7 +76,9 @@ export class CodexProxyRuntime implements ClaudeRuntime {
         turnId: context.turnId,
       })
 
+      // `exec resume` takes no -C: the cwd pins the root it resumes in.
       const proc = spawn(binary, args, {
+        cwd: context.cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
         env: { ...process.env },
       })
@@ -364,4 +338,64 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {}
+}
+
+// `codex exec --json` argv for one turn: --skip-git-repo-check runs anywhere,
+// -m is the model the user picked, -C and --add-dir anchor a fresh session,
+// `resume <id>` continues one, and the thread's sandbox comes from
+// execSandboxArgs. `codex exec` never prompts: an escalation the posture
+// would ask about is refused (tighter), and a posture that asks before every
+// command, or plans, is not run at all (execRefusal).
+export function codexExecArgs(context: RuntimeTurnContext): string[] {
+  const resumeId = context.claudeSessionId
+  const args = resumeId
+    ? ['exec', 'resume', resumeId, '--json', '--skip-git-repo-check']
+    : ['exec', '--json', '--skip-git-repo-check']
+  args.push(...execSandboxArgs(contextPosture(context), Boolean(resumeId)))
+  if (context.model) args.push('-m', context.model)
+  if (!resumeId) {
+    if (context.cwd) args.push('-C', context.cwd)
+    for (const dir of context.addDirs) args.push('--add-dir', dir)
+  }
+  args.push(context.prompt)
+  return args
+}
+
+// Inside its sandbox `codex exec` runs every command unattended, and it has
+// no way to ask: a thread that asks before every command (`untrusted`), or
+// that only plans, would run where its posture wants a human or nothing.
+export function execRefusal(posture: Posture): string | null {
+  if (posture.plan) {
+    return 'This thread is in plan mode, which the codex exec fallback cannot hold a turn to; the turn was not started.'
+  }
+  if (posture.approval === 'untrusted') {
+    return 'This thread asks before every command, and the codex exec fallback cannot ask; the turn was not started.'
+  }
+  return null
+}
+
+const CWD_ONLY = { writableRoots: [] as string[], excludeTmpdirEnvVar: true, excludeSlashTmp: true }
+
+// Never looser than the thread (spec 5.6, fix 5): the bypass flag only for an
+// unrestricted posture, never for an unknown one. `exec resume` takes no `-s`,
+// so there the sandbox rides in as config overrides. Every workspace-write
+// setting is passed, so ~/.codex/config.toml cannot widen it; a sandbox that
+// is not workspace-write writes to the cwd alone (toCodexExecSandboxPolicy).
+export function execSandboxArgs(posture: Posture, resume: boolean): string[] {
+  if (isUnrestricted(posture)) return ['--dangerously-bypass-approvals-and-sandbox']
+  const fs = posture.fileSystem
+  const mode = posture.plan || fs.kind === 'read-only' ? 'read-only' : 'workspace-write'
+  const args = resume ? ['-c', `sandbox_mode="${mode}"`] : ['-s', mode]
+  if (mode === 'workspace-write') {
+    const ws = fs.kind === 'workspace-write' ? fs : CWD_ONLY
+    for (const [key, value] of [
+      ['network_access', posture.network],
+      ['writable_roots', JSON.stringify(ws.writableRoots)],
+      ['exclude_tmpdir_env_var', ws.excludeTmpdirEnvVar],
+      ['exclude_slash_tmp', ws.excludeSlashTmp],
+    ]) {
+      args.push('-c', `sandbox_workspace_write.${key}=${value}`)
+    }
+  }
+  return args
 }

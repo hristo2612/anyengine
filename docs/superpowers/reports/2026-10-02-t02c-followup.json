@@ -1,0 +1,279 @@
+{
+  "task": "Task 2c review follow-up",
+  "branch": "m1/t02c",
+  "mergedRouterTip": "63f841f",
+  "mergeCommit": "70773f4",
+  "implementationCommits": [
+    "844c3d0",
+    "3082af8",
+    "b61cab2"
+  ],
+  "gates": [
+    {
+      "name": "check",
+      "command": "npm run check",
+      "started": "2026-10-02T07:21:23.313Z",
+      "exitCode": 0,
+      "durationMs": 621,
+      "loadStart": [
+        1.330078125,
+        1.7568359375,
+        2.12255859375
+      ],
+      "loadEnd": [
+        1.330078125,
+        1.7568359375,
+        2.12255859375
+      ],
+      "tests": null,
+      "pass": null,
+      "fail": 0
+    },
+    {
+      "name": "typecheck",
+      "command": "npm run typecheck",
+      "started": "2026-10-02T07:21:23.935Z",
+      "exitCode": 0,
+      "durationMs": 1382,
+      "loadStart": [
+        1.330078125,
+        1.7568359375,
+        2.12255859375
+      ],
+      "loadEnd": [
+        1.330078125,
+        1.7568359375,
+        2.12255859375
+      ],
+      "tests": null,
+      "pass": null,
+      "fail": 0
+    },
+    {
+      "name": "test-1",
+      "command": "npm test",
+      "started": "2026-10-02T07:21:25.317Z",
+      "exitCode": 0,
+      "durationMs": 42917,
+      "loadStart": [
+        1.330078125,
+        1.7568359375,
+        2.12255859375
+      ],
+      "loadEnd": [
+        3.181640625,
+        2.2421875,
+        2.28369140625
+      ],
+      "tests": 569,
+      "pass": 569,
+      "fail": 0
+    },
+    {
+      "name": "test-2",
+      "command": "npm test",
+      "started": "2026-10-02T07:22:08.235Z",
+      "exitCode": 0,
+      "durationMs": 43311,
+      "loadStart": [
+        3.181640625,
+        2.2421875,
+        2.28369140625
+      ],
+      "loadEnd": [
+        5.0546875,
+        2.970703125,
+        2.55517578125
+      ],
+      "tests": 569,
+      "pass": 569,
+      "fail": 0
+    },
+    {
+      "name": "test-3",
+      "command": "npm test",
+      "started": "2026-10-02T07:22:51.546Z",
+      "exitCode": 0,
+      "durationMs": 43216,
+      "loadStart": [
+        5.0546875,
+        2.970703125,
+        2.55517578125
+      ],
+      "loadEnd": [
+        5.53857421875,
+        3.43798828125,
+        2.74853515625
+      ],
+      "tests": 569,
+      "pass": 569,
+      "fail": 0
+    }
+  ],
+  "mutations": [
+    {
+      "mutation": "requirements-file",
+      "build": 0,
+      "test": 1,
+      "loadAverage": [
+        2.033203125,
+        2.21044921875,
+        2.369140625
+      ],
+      "assertionFailures": [
+        "AssertionError [ERR_ASSERTION]: [permissions.filesystem]"
+      ],
+      "failedTests": [
+        "\u2716 local requirement sources restrict every thread and refresh without a wire field (2.20275ms)"
+      ]
+    },
+    {
+      "mutation": "requirements-mdm",
+      "build": 0,
+      "test": 1,
+      "loadAverage": [
+        2.3505859375,
+        2.27294921875,
+        2.39013671875
+      ],
+      "assertionFailures": [
+        "AssertionError [ERR_ASSERTION]: MDM decoded requirement",
+        "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+      ],
+      "failedTests": [
+        "\u2716 local requirement sources restrict every thread and refresh without a wire field (4.65125ms)",
+        "\u2716 MDM query absence is distinguished from failures and decoded before TOML parsing (0.600417ms)"
+      ]
+    },
+    {
+      "mutation": "requirements-fail-closed",
+      "build": 0,
+      "test": 1,
+      "loadAverage": [
+        2.3505859375,
+        2.27294921875,
+        2.39013671875
+      ],
+      "assertionFailures": [
+        "AssertionError [ERR_ASSERTION]: permissions.filesystem.deny_read = [",
+        "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+      ],
+      "failedTests": [
+        "\u2716 local requirement sources restrict every thread and refresh without a wire field (3.942209ms)",
+        "\u2716 MDM query absence is distinguished from failures and decoded before TOML parsing (0.702208ms)"
+      ]
+    },
+    {
+      "mutation": "requirements-effective-posture",
+      "build": 0,
+      "test": 1,
+      "loadAverage": [
+        2.3505859375,
+        2.27294921875,
+        2.39013671875
+      ],
+      "assertionFailures": [
+        "AssertionError [ERR_ASSERTION]: [permissions.filesystem]"
+      ],
+      "failedTests": [
+        "\u2716 local requirement sources restrict every thread and refresh without a wire field (2.186875ms)"
+      ]
+    },
+    {
+      "mutation": "unknown-caller-read-guard",
+      "build": 0,
+      "test": 1,
+      "loadAverage": [
+        1.94189453125,
+        2.1337890625,
+        2.376953125
+      ],
+      "assertionFailures": [
+        "AssertionError [ERR_ASSERTION]: local: spawn_session"
+      ],
+      "failedTests": [
+        "\u2716 bridge refuses an unknown caller with ambiguous active local/upstream read restrictions (186.189416ms)"
+      ]
+    },
+    {
+      "mutation": "model-control-strip",
+      "build": 0,
+      "test": 1,
+      "loadAverage": [
+        1.94189453125,
+        2.1337890625,
+        2.376953125
+      ],
+      "assertionFailures": [
+        "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+      ],
+      "failedTests": [
+        "\u2716 model text cannot terminate bracketed paste or inject PTY controls (0.882917ms)"
+      ]
+    },
+    {
+      "mutation": "auto-decline",
+      "build": 0,
+      "test": 1,
+      "killed": true,
+      "assertionFailures": [
+        "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:",
+        "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+      ],
+      "failedTests": [
+        "\u2716 real 2.1.287 late auto-mode offer is declined and is never composer readiness (1.053167ms)",
+        "\u2716 late auto modal after paste never receives an affirmative Enter (2444.955083ms)"
+      ]
+    },
+    {
+      "mutation": "unknown-modal-readiness",
+      "build": 0,
+      "test": 1,
+      "killed": true,
+      "assertionFailures": [
+        "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+        "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+        "AssertionError [ERR_ASSERTION]: Missing expected rejection.",
+        "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /dialog owns input/. Input:"
+      ],
+      "failedTests": [
+        "\u2716 real 2.1.287 late auto-mode offer is declined and is never composer readiness (1.167833ms)",
+        "\u2716 unknown dialogs cannot reuse a stale composer or shortcuts hint (0.09725ms)",
+        "\u2716 late unknown modal after paste never receives an affirmative Enter (2047.504625ms)",
+        "\u2716 every retry Enter rechecks the current screen and stops at an unknown modal (5003.563125ms)"
+      ]
+    },
+    {
+      "mutation": "per-write-guard",
+      "build": 0,
+      "test": 1,
+      "killed": true,
+      "assertionFailures": [
+        "AssertionError [ERR_ASSERTION]: Missing expected rejection.",
+        "AssertionError [ERR_ASSERTION]: Missing expected rejection.",
+        "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /dialog owns input/. Input:"
+      ],
+      "failedTests": [
+        "\u2716 late auto modal after paste never receives an affirmative Enter (2021.717375ms)",
+        "\u2716 late unknown modal after paste never receives an affirmative Enter (2037.487708ms)",
+        "\u2716 every retry Enter rechecks the current screen and stops at an unknown modal (5003.60275ms)"
+      ]
+    },
+    {
+      "mutation": "timeout-fail-closed",
+      "build": 0,
+      "test": 1,
+      "killed": true,
+      "assertionFailures": [
+        "AssertionError [ERR_ASSERTION]: Missing expected rejection.",
+        "AssertionError [ERR_ASSERTION]: Missing expected rejection."
+      ],
+      "failedTests": [
+        "\u2716 late unknown modal after paste never receives an affirmative Enter (4064.954958ms)",
+        "\u2716 startup timeout fails closed even if hooks reported a session (251.007834ms)"
+      ]
+    }
+  ],
+  "independentReview": "Accept after fixing multiline composer matching and asynchronous steer errors. Read-only fresh session; parent performs external Claude review.",
+  "realClaude": "No new real-Claude invocation in this follow-up. Prior implementer and external reviewer zero-spend 2.1.287 proofs retained; startup screen fixture transcribes review offer."
+}

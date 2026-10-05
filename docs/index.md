@@ -3,74 +3,56 @@ layout: home
 
 hero:
   name: anyengine
-  text: Claude Code inside the Codex app
-  tagline: A production TypeScript adapter that speaks the native Codex app-server protocol, so the Codex desktop app drives Claude Code over your normal SSH Remote flow.
+  text: Your coding app, your choice of engine
+  tagline: Use GPT and Claude across ChatGPT.app and Claude Code. Switch engines in one conversation, run mixed agents, and manage your accounts locally.
   actions:
     - theme: brand
       text: Get started
       link: /guide/getting-started
     - theme: alt
-      text: Configuration
-      link: /guide/configuration
+      text: Control commands
+      link: /guide/control
     - theme: alt
       text: View on GitHub
-      link: /guide/backends
+      link: https://github.com/hristo2612/anyengine
 
 features:
-  - icon: 🔌
-    title: Native protocol, no fork
-    details: Codex App runs its usual SSH probe, bootstrap, and app-server proxy. A codex shim earlier in PATH routes only app-server calls into the adapter.
-  - icon: 🧠
-    title: Claude Code turns
-    details: Agent text and reasoning stream into the conversation; Bash becomes command approvals; Edit/Write/MultiEdit become file-change approvals with live diffs.
-  - icon: 🔁
-    title: Explicit existing backends
-    details: >-
-      Provider and loop selection is sanitized metadata that maps known
-      descriptors to existing runtime paths: Agent SDK, agent-http, agentapi,
-      claude-p, codex-proxy, and mock.
-  - icon: 📦
-    title: Zero-toolchain deploy
-    details: Ships compiled ESM .mjs, so a remote host needs only Node 24. Dev runs straight from TypeScript with tsx.
+  - icon: 🔀
+    title: Switch engines
+    details: Choose GPT or Claude in the app's model picker and carry conversation context across engine switches.
+  - icon: 🤝
+    title: Mixed agents
+    details: Let GPT and Claude delegate to each other, with results in the existing conversation and agent view.
+  - icon: 📊
+    title: Accounts and limits
+    details: Inspect usage, switch your own ChatGPT accounts, and optionally enable rotation. Rotation and replay start off.
+  - icon: ↩️
+    title: Managed installation
+    details: One setup command builds and verifies the installed runtime. Activation keeps automatic rollback, and Off restores managed settings.
 ---
 
-## What it does
+## Start from a source checkout
 
-The adapter implements the Codex `app-server` v2 protocol (stdio, WebSocket,
-Unix-socket daemon, and `app-server proxy`) and bridges each Codex request to a
-Claude Code runtime. Thread lifecycle, streaming, approvals, MCP, and remote
-filesystem/command utilities are all backed by real runtime behavior.
-
-The current release path is intentionally narrow. TypeScript remains the
-production runtime. Rust-first work is present as RFCs, an experimental protocol
-crate, fixtures, parse/reserialize tests, and a pinned fixture drift gate, but it
-does not replace the runtime, transport, store, or launcher. Provider and
-agent-loop work exposes descriptors, sanitized config projection, and explicit
-selection for known descriptors only; it does not add a new provider runtime,
-auth system, gateway, subscription model, or multi-agent orchestrator.
-
-Credentials should be supplied by the local user or organization through API
-keys, official cloud-provider credential chains, same-host local CLI auth, or an
-approved organization gateway. The project does not support personal
-subscription pooling, browser cookie/session-token reuse, credential sharing,
-private endpoints, provider bypasses, or claims of unavailable entitlements.
-Release checks include CI `check`, `cargo-test`, TypeScript tests, the pinned
-Rust fixture drift gate, docs build for docs changes, and opt-in credentialed
-smoke or acceptance checks.
+Install macOS prerequisites and sign in through the official clients, then run:
 
 ```bash
-npm install
-npm run build        # tsc -> dist/ (production artifact)
-npm run dev          # tsx src/adapter.mts — run sources directly
-npm run doctor       # environment self-check
+npm run setup
 ```
 
-Then install the [`codex` shim](/guide/deployment) on the remote host and add a
-Remote connection in the Codex App. See **[Getting started](/guide/getting-started)**.
+Open a new terminal afterward and run `anyengine status`. In ChatGPT.app's coding
+workspace, pick GPT or Claude. In a new Claude Code session, `/model` lists GPT.
+The existing Grok backend remains available when its CLI is configured.
 
-For release gates and reviewer expectations, see
-**[Release readiness](/reference/release-readiness)**.
+M1–M3 are locally accepted and available in this source checkout. A packaged
+release is pending; the package is not currently published to npm.
+See [Getting started](/guide/getting-started),
+[Installation and recovery](/guide/deployment), and
+[Local acceptance](/evidence/m3-accounts-limits).
 
-::: tip Requires Node.js 24+
-The thread store uses `node:sqlite`, which is only stable (unflagged) on Node 24.
-:::
+AnyEngine uses your existing local official clients and logins. Supply any
+API credentials through your own host environment or secret manager. Never
+commit credentials, session data or private acceptance logs.
+
+The production runtime remains TypeScript on Node.js 24+. Rust protocol work
+is experimental; see [Release readiness](/reference/release-readiness) for
+maintainer checks and remaining limits.

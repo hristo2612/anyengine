@@ -12,15 +12,12 @@ import {
   appendBridgeInstructions,
   type BridgeCatalogModel,
   bridgeInstructionsEnabled,
+  localModelOptions,
   providerFor,
 } from './bridge-instructions.mjs'
 import { listClaudeHooks, listClaudeSkills } from './claude-capabilities.mjs'
-import {
-  type MuxLocalServer,
-  NativeCodexMux,
-  type RehomeAdoption,
-  routeForModel,
-} from './codex-mux.mjs'
+import { appBaseline, baselinedRow, inheritIntoThread } from './claude-project-guard.mjs'
+import { type NativeCodexMux, type RehomeAdoption, routeForModel } from './codex-mux.mjs'
 import {
   codexPluginMarketplaces,
   findCodexPlugin,
@@ -28,12 +25,14 @@ import {
   readPluginSkill,
   withCodexPluginMcpServers,
 } from './codex-plugins.mjs'
-import { CodexUpstream } from './codex-upstream.mjs'
 import { isGrokModel } from './grok-acp.mjs'
-import { grokModelOptions } from './grok-models.mjs'
 import { callMcpTool, listMcpServerStatuses, readMcpConfig, readMcpResource } from './mcp.mjs'
+import { createNativeCodexMux, localCodexSurface } from './native-codex.mjs'
+import { applyCodexParams, DEFAULT_POSTURE, postureFields, threadPosture } from './posture.mjs'
+import { approvalVerdict } from './posture-claude.mjs'
 import { resolveProviderLoopSelection } from './provider-loop-selection.mjs'
 import { engineForModel, formatTranscript, transcriptEntriesFromTurns } from './rehome.mjs'
+import { gptBridgeLine } from './router-link.mjs'
 import { recordRunEvent } from './run-registry.mjs'
 import {
   accountRateLimitsPayload,
@@ -48,14 +47,11 @@ import {
   compactSummary,
   fallbackStructuredText,
   gitDiff,
-  hasLegacyPermissionParams,
   isSubagentToolName,
   modelFromParams,
-  normalizeApprovalPolicy,
   normalizeDecision,
   normalizePersonality,
   normalizeReasoningEffortEnum,
-  normalizeSandboxMode,
   normalizeSelectableModelId,
   normalizeSessionSource,
   normalizeThreadSource,
@@ -67,11 +63,9 @@ import {
   parseWebSearchAction,
   permissionProfileIdFromParams,
   permissionProfileList,
-  permissionProfilePolicy,
   reasoningEffortFromParams,
   reviewLabel,
   reviewPrompt,
-  sandboxFromTurnParams,
   stringListFromEnv,
   stringOr,
   summarizeInjectedItem,
@@ -90,6 +84,7 @@ import {
   pluginShareSave,
   pluginShareUpdateTargets,
 } from './server-plugins.mjs'
+import { applyRehomePrefix } from './server-rehome-prefix.mjs'
 import {
   type TurnItemsView,
   threadEnvelope,
@@ -101,6 +96,7 @@ import {
 } from './server-views.mjs'
 import { WorkspaceOps } from './server-workspace.mjs'
 import type { SessionStore } from './store.mjs'
+import { rowWithPosture } from './store-rows.mjs'
 import type {
   ClaudeRuntime,
   ImageInput,
@@ -121,11 +117,9 @@ import type {
   WireMessage,
 } from './types.mjs'
 import {
-  claudeModelOptions,
   claudeOutputFormat,
   codexExecRouteEnabled,
   codexHome,
-  codexProxyModelOptions,
   codexUserAgent,
   debugLog,
   defaultAllowedTools,
@@ -238,6 +232,9 @@ export class CodexClaudeAppServer {
   }
 
   async handle(peer: RpcPeer, message: WireMessage): Promise<void> {
+    const admitted = this.mux?.accountWork?.admit(peer, message)
+    if (admitted === false) return
+    peer = admitted ?? peer
     if ('method' in message && message.method) {
       debugLog('rpc.request', {
         peerId: peer.id,
@@ -285,6 +282,7 @@ export class CodexClaudeAppServer {
     this.completeActiveTurns('interrupted', { message: 'server stopped' })
     await this.mux?.stop()
     await this.runtime.stop()
+    await this.mux?.accountWork?.close()
     this.store.close()
   }
 
@@ -296,32 +294,26 @@ export class CodexClaudeAppServer {
     binary: string
     args: string[]
     eager: boolean
+    bridgeOnChild: boolean
     env?: Record<string, string>
   }): NativeCodexMux {
-    const local: MuxLocalServer = {
+    const local = localCodexSurface(this.store, {
       dispatch: (peer, method, params) => this.dispatch(peer, method, params),
-      localThreadOwner: (threadId) => {
-        const thread = this.store.getThread(threadId)
-        if (!thread) return null
-        return thread.runtimeBackend === 'codex' ? 'codex-exec' : 'claude'
-      },
-      localThreadModel: (threadId) => this.store.getThread(threadId)?.model ?? null,
       hasActiveTurn: (threadId) => this.activeTurnByThread.has(threadId),
       adoptThread: (peer, input) => this.adoptRehomedThread(peer, input),
-    }
-    let mux: NativeCodexMux | null = null
-    const upstream = new CodexUpstream({
-      binary: options.binary,
-      args: options.args,
-      env: options.env ? { ...process.env, ...options.env } : process.env,
-      onMessage: (message) => mux?.onUpstreamMessage(message),
     })
-    mux = new NativeCodexMux({
+    const mux = createNativeCodexMux({
+      child: {
+        binary: options.binary,
+        args: options.args,
+        env: options.env ? { ...process.env, ...options.env } : process.env,
+      },
+      eager: options.eager,
       store: this.store,
-      upstream,
       local,
       onNotification: (message) => this.bridge?.onNotification(message),
-      bridgeCatalog: () => this.bridgeCatalogForInstructions(),
+      bridgeLine: () =>
+        this.bridgeCatalogForInstructions() ? gptBridgeLine(options.bridgeOnChild) : null,
     })
     this.mux = mux
     debugLog('codex.mux.attach', {
@@ -329,7 +321,6 @@ export class CodexClaudeAppServer {
       args: options.args,
       eager: options.eager,
     })
-    if (options.eager) upstream.start()
     return mux
   }
 
@@ -370,8 +361,7 @@ export class CodexClaudeAppServer {
           createdAt: input.createdAt ?? now,
           updatedAt: now,
           status: { type: 'idle' },
-          approvalPolicy: input.approvalPolicy ?? 'never',
-          sandboxMode: input.sandboxMode ?? 'danger-full-access',
+          ...postureFields(input.posture ?? DEFAULT_POSTURE),
           permissionProfileId: null,
           ephemeral: false,
           threadSource: 'user',
@@ -407,17 +397,6 @@ export class CodexClaudeAppServer {
     recordRunEvent('thread.rehomed', { threadId: thread.id, from, to })
   }
 
-  // The carried transcript rides on the prompt of the first turn after a
-  // switch and is consumed there. Never on a summary/title turn: those run on
-  // their own model and must not inherit a conversation.
-  private applyRehomePrefix(thread: ThreadRecord, prompt: string, isSummary: boolean): string {
-    const prefix = thread.rehomePrefix
-    if (!prefix || isSummary) return prompt
-    thread.rehomePrefix = null
-    this.store.updateRehomePrefix(thread.id, null)
-    return prompt ? `${prefix}\n\n${prompt}` : prefix
-  }
-
   hasActiveTurns(): boolean {
     return this.activeTurnByThread.size > 0
   }
@@ -434,7 +413,7 @@ export class CodexClaudeAppServer {
     const seen = new Set<string>()
     const catalog: BridgeCatalogModel[] = []
     const upstream = this.mux?.active ? (this.mux.upstreamModels() ?? []) : []
-    for (const option of [...this.localModelOptions(), ...upstream]) {
+    for (const option of [...localModelOptions(this.config.model), ...upstream]) {
       if (seen.has(option.id)) continue
       seen.add(option.id)
       catalog.push({
@@ -447,16 +426,6 @@ export class CodexClaudeAppServer {
     return catalog
   }
 
-  private localModelOptions(): Array<{ id: string; displayName: string; isDefault?: boolean }> {
-    const options = [...claudeModelOptions(), ...codexProxyModelOptions(), ...grokModelOptions()]
-    const defaultModel = this.config.model
-    return options.map((option) => ({
-      id: option.id,
-      displayName: option.displayName,
-      isDefault: option.id === defaultModel || option.isDefault === true,
-    }))
-  }
-
   // What the cross-engine bridge (src/bridge-control.mts) borrows from the
   // protocol layer. Requests come back in through `handle` under a bridge
   // peer, so routing and persistence stay the desktop's code paths.
@@ -467,12 +436,13 @@ export class CodexClaudeAppServer {
       appPeerFor: (threadId) => this.appPeerFor(threadId),
       threadInfo: (threadId) => this.bridgeThreadInfo(threadId),
       routeForModel: (model) => (this.mux?.active ? routeForModel(model) : 'local'),
-      soleActiveThread: () => {
-        const ids = new Set<string>(this.activeTurnByThread.keys())
-        for (const id of this.mux?.activeUpstreamThreadIds() ?? []) ids.add(id)
-        return ids.size === 1 ? ([...ids][0] ?? null) : null
-      },
+      activeThreadIds: () => [
+        ...this.activeTurnByThread.keys(),
+        ...(this.mux?.activeUpstreamThreadIds() ?? []),
+      ],
       createSubagentThread: (input) => this.createBridgeSubagentThread(input),
+      inheritFromCaller: (threadId, caller) =>
+        inheritIntoThread(this.store, this.mux, threadId, caller),
       emitParentItem: (parentThreadId, turnId, item, phase) =>
         this.emitBridgeParentItem(parentThreadId, turnId, item, phase),
       supportsCompletedActivity: (threadId) => {
@@ -506,8 +476,7 @@ export class CodexClaudeAppServer {
         owner: 'local',
         cwd: local.cwd,
         model: local.model,
-        approvalPolicy: local.approvalPolicy,
-        sandboxMode: local.sandboxMode,
+        posture: threadPosture(local),
         activeTurnId: this.activeTurnByThread.get(threadId) ?? null,
       }
     }
@@ -517,6 +486,7 @@ export class CodexClaudeAppServer {
       id: threadId,
       owner: 'upstream',
       ...upstream,
+      posture: threadPosture({ ...upstream, approvalPolicy: null, sandboxMode: null }),
       activeTurnId: this.mux?.activeUpstreamTurnId(threadId) ?? null,
     }
   }
@@ -550,8 +520,7 @@ export class CodexClaudeAppServer {
       createdAt: now,
       updatedAt: now,
       status: { type: 'idle' },
-      approvalPolicy: normalizeApprovalPolicy(input.approvalPolicy) ?? 'never',
-      sandboxMode: normalizeSandboxMode(input.sandboxMode) ?? 'danger-full-access',
+      ...postureFields(input.posture),
       permissionProfileId: null,
       ephemeral: true,
       threadSource: 'subagent',
@@ -1019,7 +988,6 @@ export class CodexClaudeAppServer {
     const model = modelFromParams(params, this.config.model)
     const reasoningEffort = reasoningEffortFromParams(params, this.config.reasoningEffort)
     const permissionProfileId = permissionProfileIdFromParams(params)
-    const permissionProfile = permissionProfilePolicy(permissionProfileId)
     const selectedProviderLoop = resolveProviderLoopSelection(
       this.config.providerLoopSelectionInput(),
     )
@@ -1062,15 +1030,8 @@ export class CodexClaudeAppServer {
       createdAt: now,
       updatedAt: now,
       status: { type: 'idle' },
-      approvalPolicy:
-        permissionProfile?.approvalPolicy ??
-        normalizeApprovalPolicy(params.approvalPolicy) ??
-        'never',
-      sandboxMode:
-        permissionProfile?.sandboxMode ??
-        normalizeSandboxMode(params.sandbox) ??
-        'danger-full-access',
-      permissionProfileId: permissionProfile?.id ?? null,
+      ...postureFields(appBaseline(peer, applyCodexParams(DEFAULT_POSTURE, params), cwd)),
+      permissionProfileId,
       ephemeral: isTitleOrHelper,
       threadSource: normalizeThreadSource(params.threadSource),
       agentRole: nullIfEmpty(typeof params.agentRole === 'string' ? params.agentRole : null),
@@ -1109,8 +1070,6 @@ export class CodexClaudeAppServer {
     const rawModel = modelFromParams(params, null)
     const model = rawModel ? normalizeSelectableModelId(rawModel, thread.model) : null
     const reasoningEffort = reasoningEffortFromParams(params, null)
-    const permissionProfileId = permissionProfileIdFromParams(params)
-    const permissionProfile = permissionProfilePolicy(permissionProfileId)
     if (model) {
       // runtimeBackend is pinned at thread/start. Refuse cross-backend
       // model changes on resume — the conversation history wouldn't carry
@@ -1130,18 +1089,7 @@ export class CodexClaudeAppServer {
       }
     }
     if (reasoningEffort) thread.reasoningEffort = reasoningEffort
-    if (permissionProfileId) {
-      thread.permissionProfileId = permissionProfileId
-      if (permissionProfile?.approvalPolicy)
-        thread.approvalPolicy = permissionProfile.approvalPolicy
-      if (permissionProfile?.sandboxMode) thread.sandboxMode = permissionProfile.sandboxMode
-    } else {
-      if (hasLegacyPermissionParams(params)) thread.permissionProfileId = null
-      if (typeof params.approvalPolicy === 'string')
-        thread.approvalPolicy = normalizeApprovalPolicy(params.approvalPolicy)
-      if (typeof params.sandbox === 'string')
-        thread.sandboxMode = normalizeSandboxMode(params.sandbox)
-    }
+    Object.assign(thread, baselinedRow(peer, rowWithPosture(thread, params)))
     if (typeof params.threadSource === 'string')
       thread.threadSource = normalizeThreadSource(params.threadSource)
     if (typeof params.baseInstructions === 'string')
@@ -1176,7 +1124,7 @@ export class CodexClaudeAppServer {
     const requestedCwd = stringOr(params.cwd, parent.cwd)
     const cwd = maybeCreateThreadWorktree(id, requestedCwd).cwd
     const thread: ThreadRecord = {
-      ...parent,
+      ...rowWithPosture(parent, params),
       id,
       sessionId: parent.sessionId,
       forkedFromId: parent.id,
@@ -1188,19 +1136,6 @@ export class CodexClaudeAppServer {
       createdAt: now,
       updatedAt: now,
       status: { type: 'idle' },
-      approvalPolicy:
-        permissionProfilePolicy(permissionProfileIdFromParams(params))?.approvalPolicy ??
-        (typeof params.approvalPolicy === 'string'
-          ? normalizeApprovalPolicy(params.approvalPolicy)
-          : parent.approvalPolicy),
-      sandboxMode:
-        permissionProfilePolicy(permissionProfileIdFromParams(params))?.sandboxMode ??
-        (typeof params.sandbox === 'string'
-          ? normalizeSandboxMode(params.sandbox)
-          : parent.sandboxMode),
-      permissionProfileId:
-        permissionProfileIdFromParams(params) ??
-        (hasLegacyPermissionParams(params) ? null : (parent.permissionProfileId ?? null)),
       ephemeral: parent.ephemeral,
       threadSource:
         typeof params.threadSource === 'string'
@@ -1523,10 +1458,7 @@ export class CodexClaudeAppServer {
       thread.model = model
     }
     if (reasoningEffort) thread.reasoningEffort = reasoningEffort
-    if (typeof params.approvalPolicy === 'string')
-      thread.approvalPolicy = normalizeApprovalPolicy(params.approvalPolicy)
-    if (typeof params.sandbox === 'string')
-      thread.sandboxMode = normalizeSandboxMode(params.sandbox)
+    Object.assign(thread, rowWithPosture(thread, params))
     if (typeof params.baseInstructions === 'string')
       thread.baseInstructions = nullIfEmpty(params.baseInstructions)
     if (typeof params.developerInstructions === 'string')
@@ -1852,25 +1784,12 @@ export class CodexClaudeAppServer {
     if (typeof params.cwd === 'string' && params.cwd.length > 0) thread.cwd = params.cwd
     const model = modelFromParams(params, thread.model)
     const reasoningEffort = reasoningEffortFromParams(params, thread.reasoningEffort)
-    const permissionProfileId = permissionProfileIdFromParams(params)
-    const permissionProfile = permissionProfilePolicy(permissionProfileId)
     // Routing is per turn, not per thread: a model from another engine hands
     // the thread over before the turn runs (src/rehome.mts).
     if (model && params.outputSchema == null) this.rehomeLocalThread(thread, model)
     if (model) thread.model = model
     if (reasoningEffort) thread.reasoningEffort = reasoningEffort
-    if (permissionProfileId) {
-      thread.permissionProfileId = permissionProfileId
-      if (permissionProfile?.approvalPolicy)
-        thread.approvalPolicy = permissionProfile.approvalPolicy
-      if (permissionProfile?.sandboxMode) thread.sandboxMode = permissionProfile.sandboxMode
-    } else {
-      if (hasLegacyPermissionParams(params)) thread.permissionProfileId = null
-      if (typeof params.approvalPolicy === 'string')
-        thread.approvalPolicy = normalizeApprovalPolicy(params.approvalPolicy)
-      const requestedSandbox = sandboxFromTurnParams(params)
-      if (requestedSandbox) thread.sandboxMode = requestedSandbox
-    }
+    Object.assign(thread, rowWithPosture(thread, params))
     this.store.upsertThread(thread)
     if (!thread.preview && prompt) {
       thread.preview = prompt.slice(0, 200)
@@ -1881,7 +1800,7 @@ export class CodexClaudeAppServer {
     // transcript when this is the first turn after an engine switch. The
     // stored `userMessage` item keeps the user's own input, so the App's
     // transcript is unchanged.
-    const runtimePrompt = this.applyRehomePrefix(thread, prompt, params.outputSchema != null)
+    const runtimePrompt = applyRehomePrefix(this.store, thread, prompt, params.outputSchema != null)
     const initialItems: ThreadItem[] = [{ type: 'userMessage', id: newId(), content: input }]
     const imageItems: ThreadItem[] = []
     for (const img of images) {
@@ -2177,20 +2096,6 @@ export class CodexClaudeAppServer {
       return reasoningItemId
     }
 
-    // Allow per-turn override of policy (Codex App may attach updated values
-    // when the user toggles Full access mid-conversation), then fall back to
-    // the thread-level setting captured at start/resume. turn/start ships a
-    // sandboxPolicy struct (e.g. {type:"dangerFullAccess"}); thread/start uses
-    // the simpler sandbox string. Both are honoured.
-    const permissionProfile = permissionProfilePolicy(permissionProfileIdFromParams(params))
-    const approvalPolicy =
-      permissionProfile?.approvalPolicy ??
-      (typeof params.approvalPolicy === 'string'
-        ? normalizeApprovalPolicy(params.approvalPolicy)
-        : null) ??
-      thread.approvalPolicy
-    const sandboxMode =
-      permissionProfile?.sandboxMode ?? sandboxFromTurnParams(params) ?? thread.sandboxMode
     // Per-turn instruction overrides: Codex App may resend its instruction
     // panel state when the user toggles personality mid-thread. Falls back to
     // whatever was captured at thread/start.
@@ -2578,8 +2483,7 @@ export class CodexClaudeAppServer {
         createdAt: childStartedAt,
         updatedAt: childStartedAt,
         status: { type: 'active', activeFlags: [] },
-        approvalPolicy: thread.approvalPolicy,
-        sandboxMode: thread.sandboxMode,
+        ...postureFields(threadPosture(thread)),
         ephemeral: true,
         threadSource: 'subagent',
         agentRole,
@@ -2918,6 +2822,7 @@ export class CodexClaudeAppServer {
         turnId: turn.id,
         purpose: turnPurpose,
         prompt: effectivePrompt,
+        modelAuthored: params._modelAuthored === true,
         cwd: stringOr(params.cwd, thread.cwd),
         runtimeType: isCodexThread ? 'codex-proxy' : grokRuntimeTypeFor(resolvedModel),
         model: resolvedModel,
@@ -2938,8 +2843,8 @@ export class CodexClaudeAppServer {
         addDirs: stringListFromEnv('ANYENGINE_ADD_DIRS', []),
         enableFileCheckpointing: process.env.ANYENGINE_ENABLE_FILE_CHECKPOINTING === '1',
         outputFormat: claudeOutputFormat(params.outputSchema),
-        approvalPolicy,
-        sandboxMode,
+        // turnStart already applied this turn's posture fields to the thread.
+        ...postureFields(threadPosture(thread)),
         systemPromptAddendum,
         planMode: params.planMode === true,
         imageInputs: Array.isArray(params._imageInputs)
@@ -3522,36 +3427,20 @@ export class CodexClaudeAppServer {
     itemId: string,
     event: Extract<RuntimeEvent, { type: 'permission_request' }>,
   ): Promise<PermissionDecision> {
-    // Defensive: if Codex App selected approvalPolicy=never (or "Full access"
-    // sandbox), auto-accept without bouncing the request to the user. The
-    // sidecar already drops can_use_tool in those modes, but in case some
-    // future SDK path still emits permission_request, this prevents the
-    // adapter from sitting on "Awaiting approval" forever.
+    // The thread's posture answers first: in-bounds calls are accepted and
+    // refusals declined without a card; only what it would ask about reaches the app.
     const thread = this.store.getThread(threadId)
-    if (
-      thread &&
-      (thread.approvalPolicy === 'never' || thread.sandboxMode === 'danger-full-access')
-    ) {
-      return { decision: 'accept' }
-    }
+    const verdict = thread
+      ? approvalVerdict(threadPosture(thread), event.toolName, event.input, thread.cwd)
+      : 'deny'
+    if (verdict !== 'ask') return { decision: verdict === 'allow' ? 'accept' : 'decline' }
     const command = String(event.input.command ?? '')
     if (command && this.commandSessionAllow.get(threadId)?.has(command)) {
       return { decision: 'accept' }
     }
 
-    // The App renders exactly two approval cards, and each one attaches to the
-    // item type it names: `item/commandExecution/requestApproval` to a
-    // commandExecution item, `item/fileChange/requestApproval` to a fileChange
-    // item. The protocol has no approval request for an mcpToolCall — Codex
-    // runs MCP tools without asking (config `default_tools_approval_mode`,
-    // `auto` for local servers). Asking for a fileChange approval on an
-    // mcpToolCall item left the App with nothing to draw and the turn spun
-    // forever, which is what every `mcp__*`, ToolSearch and Skill call did.
+    // Only Bash, Edit, Write and MultiEdit get here (APPROVAL_CARD_TOOLS): each has a card.
     const approvalKind = approvalKindForTool(event.toolName)
-    if (approvalKind === 'none') {
-      debugLog('approval.autoAccepted', { threadId, itemId, toolName: event.toolName })
-      return { decision: 'accept' }
-    }
 
     this.setThreadStatus(peer, threadId, { type: 'active', activeFlags: ['waitingOnApproval'] })
     const requestId = newId()
@@ -3726,6 +3615,7 @@ export class CodexClaudeAppServer {
   }
 
   private notify(peer: RpcPeer, notification: { method: string; params: unknown }): void {
+    this.mux?.accountWork?.observe(notification)
     // Shutdown intentionally suppresses wire notifications: the peer may
     // already have closed, while persistence still needs to settle child and
     // parent state without throwing on a broken pipe.

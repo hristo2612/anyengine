@@ -1,0 +1,247 @@
+{
+  "base": "72d2a3f",
+  "branch": "m1/t02d",
+  "binaryAudit": {
+    "version": "2.1.287",
+    "sha256": "6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea",
+    "method": "Read-only static binary inspection; no real Claude invocation"
+  },
+  "baseline": {
+    "tests": 581,
+    "pass": 581,
+    "fail": 0
+  },
+  "red": {
+    "tests": 10,
+    "pass": 8,
+    "fail": 2,
+    "reason": "Missing SSH_AUTH_SOCK in full-access PTY child and SDK options"
+  },
+  "targeted": {
+    "tests": 33,
+    "pass": 33,
+    "fail": 0
+  },
+  "mutations": [
+    {
+      "mutation": "all-strict",
+      "file": "src/claude-environment.mts",
+      "buildExit": 0,
+      "testExit": 1,
+      "failures": [
+        "✖ PTY child environment: full access (39.888ms)",
+        "✖ SDK and claude-p environment: full access (2.387333ms)",
+        "✖ strict modes retain exactly the Task 2c allowlist; full access preserves values without mutating the source (0.642083ms)"
+      ],
+      "seconds": 7.31,
+      "replacement": {
+        "before": "mode === 'bash'",
+        "after": "(mode === 'bash' && Boolean(0))"
+      }
+    },
+    {
+      "mutation": "all-full",
+      "file": "src/claude-environment.mts",
+      "buildExit": 0,
+      "testExit": 1,
+      "failures": [
+        "✖ all Claude launch environments reject inherited provider, proxy, runtime and secret controls (3.562416ms)",
+        "✖ PTY child environment: workspace (32.075958ms)",
+        "✖ SDK and claude-p environment: workspace (2.514583ms)",
+        "✖ PTY child environment: shell off (33.894167ms)",
+        "✖ SDK and claude-p environment: shell off (1.703458ms)",
+        "✖ PTY child environment: full access planning (31.577125ms)",
+        "✖ SDK and claude-p environment: full access planning (2.041167ms)",
+        "✖ PTY child environment: read restricted (31.299625ms)",
+        "✖ SDK and claude-p environment: read restricted (2.875ms)",
+        "✖ strict modes retain exactly the Task 2c allowlist; full access preserves values without mutating the source (0.813083ms)",
+        "✖ environment is an allowlist even for unknown credential and injection variables (456.605167ms)"
+      ],
+      "seconds": 7.27,
+      "replacement": {
+        "before": "mode === 'bash'",
+        "after": "(mode === 'bash' || Boolean(1))"
+      }
+    },
+    {
+      "mutation": "provider-prefix-removed",
+      "file": "src/claude-environment.mts",
+      "buildExit": 0,
+      "testExit": 1,
+      "failures": [
+        "✖ PTY child environment: full access (38.675375ms)",
+        "✖ SDK and claude-p environment: full access (2.293833ms)",
+        "✖ strict modes retain exactly the Task 2c allowlist; full access preserves values without mutating the source (0.56325ms)"
+      ],
+      "seconds": 7.24,
+      "replacement": {
+        "before": "/^(ANTHROPIC_|",
+        "after": "/^("
+      }
+    },
+    {
+      "mutation": "pty-mode-lost",
+      "file": "src/anyengine-runtime.mts",
+      "buildExit": 0,
+      "testExit": 1,
+      "failures": [
+        "✖ PTY child environment: full access (40.700875ms)"
+      ],
+      "seconds": 7.31,
+      "replacement": {
+        "before": "claudeEnvironment(claudeLaunchFor(context).shell)",
+        "after": "claudeEnvironment(claudeLaunchFor(context).shell === 'bash' ? 'none' : 'none')"
+      }
+    },
+    {
+      "mutation": "sdk-mode-lost",
+      "file": "src/posture-claude.mts",
+      "buildExit": 0,
+      "testExit": 1,
+      "failures": [
+        "✖ SDK and claude-p environment: full access (2.412875ms)"
+      ],
+      "seconds": 7.31,
+      "replacement": {
+        "before": "env: claudeEnvironment(shell)",
+        "after": "env: claudeEnvironment(shell === 'bash' ? 'none' : shell)"
+      }
+    },
+    {
+      "mutation": "trampoline-full",
+      "file": "src/trampoline-launch.mts",
+      "buildExit": 0,
+      "testExit": 1,
+      "failures": [
+        "✖ environment is an allowlist even for unknown credential and injection variables (441.522ms)"
+      ],
+      "seconds": 7.09,
+      "replacement": {
+        "before": "const env = claudeEnvironment()",
+        "after": "const env = claudeEnvironment('bash')"
+      }
+    }
+  ],
+  "gates": [
+    {
+      "gate": "check",
+      "command": "npm run check",
+      "exit": 0,
+      "seconds": 0.81,
+      "loadBefore": [
+        1.8837890625,
+        2.17236328125,
+        3.0390625
+      ],
+      "loadAfter": [
+        2.05322265625,
+        2.20263671875,
+        3.04443359375
+      ],
+      "summary": []
+    },
+    {
+      "gate": "typecheck",
+      "command": "npm run typecheck",
+      "exit": 0,
+      "seconds": 1.28,
+      "loadBefore": [
+        2.05322265625,
+        2.20263671875,
+        3.04443359375
+      ],
+      "loadAfter": [
+        2.05322265625,
+        2.20263671875,
+        3.04443359375
+      ],
+      "summary": []
+    },
+    {
+      "gate": "test-1",
+      "command": "npm test",
+      "exit": 0,
+      "seconds": 40.46,
+      "loadBefore": [
+        2.05322265625,
+        2.20263671875,
+        3.04443359375
+      ],
+      "loadAfter": [
+        3.8564453125,
+        2.73388671875,
+        3.20458984375
+      ],
+      "summary": [
+        "ℹ tests 592",
+        "ℹ pass 592",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ duration_ms 37994.296584",
+        "ℹ all files                             |  86.09 |    77.04 |   88.41 | "
+      ]
+    },
+    {
+      "gate": "test-2",
+      "command": "npm test",
+      "exit": 0,
+      "seconds": 40.51,
+      "loadBefore": [
+        3.8564453125,
+        2.73388671875,
+        3.20458984375
+      ],
+      "loadAfter": [
+        4.916015625,
+        3.22998046875,
+        3.369140625
+      ],
+      "summary": [
+        "ℹ tests 592",
+        "ℹ pass 592",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ duration_ms 37996.404958",
+        "ℹ all files                             |  86.07 |    77.02 |   88.41 | "
+      ]
+    },
+    {
+      "gate": "test-3",
+      "command": "npm test",
+      "exit": 0,
+      "seconds": 40.58,
+      "loadBefore": [
+        4.916015625,
+        3.22998046875,
+        3.369140625
+      ],
+      "loadAfter": [
+        5.3935546875,
+        3.64794921875,
+        3.51953125
+      ],
+      "summary": [
+        "ℹ tests 592",
+        "ℹ pass 592",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ duration_ms 38080.512083",
+        "ℹ all files                             |  86.09 |    76.98 |   88.46 | "
+      ]
+    }
+  ],
+  "correctedVerificationIssue": {
+    "initialCoverageFailures": 4,
+    "tests": "SDK and claude-p: workspace, shell off, full access planning, read restricted",
+    "cause": "Node child_process explicitly propagates NODE_V8_COVERAGE even with an explicit environment",
+    "fix": "Account for the runtime-added name in child observation assertions; production allowlist unchanged"
+  },
+  "limitations": [
+    "No real Claude model or external SSH/GitHub/cloud operation",
+    "Designated independent review follows implementation handoff"
+  ],
+  "implementationCommit": "a71962fcccfe9f2a963e63810d90e35518773922"
+}

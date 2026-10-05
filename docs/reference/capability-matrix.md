@@ -39,9 +39,9 @@ Agent SDK sidecar; runtime selection is pluggable. Status legend: **Supported**,
 | Area | Status | Notes |
 | --- | --- | --- |
 | Claude Code tools | Supported | Not restricted by default; set `ANYENGINE_ALLOWED_TOOLS` to restrict. |
-| Approval policy / sandbox | Supported | App's approvalPolicy + sandbox persist on the thread and map to Claude permission_mode. "Full access" drops the can_use_tool callback; read-only restricts tools to read/search. |
-| Bash approval | Supported | can_use_tool → Codex `item/commandExecution/requestApproval`. Bypassed when approvalPolicy=never / Full access. |
-| File edit approval | Supported | Edit/Write/MultiEdit → Codex fileChange items with approval + diff updates. |
+| Approval policy / sandbox | Supported | The app's posture (profile, sandbox policy with roots and network, approval policy with granular flags, reviewer) is parsed into one type (`src/posture.mts`), stored on the thread and inherited by every child. A thread that names none is read-only and asks; a custom profile is read-only. |
+| Shell | Supported | With a native codex child: Bash off, commands through the bridge `exec` tool in the child's sandbox. Without one: Bash, asked or refused by posture, never run unattended outside full access. |
+| File edit approval | Supported | Writes inside the thread's writable roots run; writes outside them, or to `.git`, `.codex`, `.claude`, `.mcp.json` or `.anyengine` at a root, ask (Edit/Write/MultiEdit cards with diffs) or are refused under `never`. |
 | Bash output | Supported | Forwarded as command output on completion (SDK has no incremental tool-output streaming). |
 | Generic Claude tools | Supported | Non-command/file tools → mcpToolCall items under the `claude-code` pseudo server. |
 | Subagent (Task) | Supported | Task spawns an ephemeral child thread and emits native `subAgentActivity` lifecycle events (capability-gated `completed`) plus `spawnAgent`/`wait` tool state; inner events are hidden, and the final result lands as one agentMessage on the child thread. |
@@ -73,25 +73,32 @@ Agent SDK sidecar; runtime selection is pluggable. Status legend: **Supported**,
 
 ## Protocol version
 
-The adapter advertises codex app-server protocol **v2 @ 0.142.3** (via
-`codex --version` and the `initialize` userAgent; override with
-`ANYENGINE_COMPAT_VERSION`). The 0.130 → 0.142 delta is additive and
-backward-compatible: new optional request methods (`thread/search`,
-`thread/delete`, `account/usage/read`, `plugin/*`, `remoteControl/*`,
-`environment/add`, …) plus widened enums (`ReasoningEffort` → free-form string,
-new `AuthMode` / `WebSearchMode` variants). The new methods are
-OpenAI-account / plugin / remote-control surfaces with no Claude Code
-equivalent; unimplemented methods return a JSON-RPC error, which Codex App
-treats as "unsupported" for these optional features. Regenerate the reference
-schema under `generated/` with `npm run generate:schema` (needs a matching
-`codex` on PATH).
+The adapter advertises the version of the codex it stands in for (via
+`codex --version` and the `initialize` userAgent): the shim asks the app's
+bundled codex for its version at every launch and passes it on, so the
+version follows an app update by itself. The shim and the adapter find that
+codex with one rule (`src/bundled-codex.mts`) that knows each layout the app
+has shipped, so an update that moves it (26.928 did) does not lose it. Startup
+admission checks the selected executable's generated canonical schema and
+required protocol fixtures; the update gate also requires installed terminal
+work before publishing success. These checks cover the supported contract and
+do not establish exhaustive protocol coverage. Installed/native acceptance
+remains pending. When the bundled codex cannot be asked, the
+adapter reports the version this release is pinned to `0.160.0`
+(ChatGPT.app 26.930.31730); override with `ANYENGINE_COMPAT_VERSION`. Move every
+written pin with `node scripts/sync-codex-compat.mjs`; `npm run doctor` fails
+while the bundled codex and the pin differ, or while an explicit
+`ANYENGINE_COMPAT_VERSION` does. Unimplemented optional methods
+return a JSON-RPC error, which Codex App treats as "unsupported". Regenerate
+the reference schema under `generated/` with `npm run generate:schema` (needs
+a matching `codex` on PATH).
 
-Because the adapter now reports the same version as a real `codex`, it appends a
-distinguishing suffix: `codex --version` prints `codex-cli 0.142.3
-(anyengine)` and the `initialize` userAgent carries `anyengine` in its
-originator field. The version number stays first so the App's semver probe still
-parses it. Set `ANYENGINE_VERSION_SUFFIX=""` to behave exactly like upstream
-codex.
+Because the adapter reports the same version as a real `codex`, it appends a
+distinguishing suffix: `codex --version` prints
+`codex-cli <version> (anyengine)` and the `initialize` userAgent carries
+`anyengine` in its originator field. The version number stays first so the
+App's semver probe still parses it. Set `ANYENGINE_VERSION_SUFFIX=""` to behave
+exactly like upstream codex.
 
 ## Wire conformance
 

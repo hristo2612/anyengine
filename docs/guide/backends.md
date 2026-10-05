@@ -76,7 +76,27 @@ anyengine-mode set agentapi opus
 Runs `claude-p --output-format json --input-file ...` per turn and emits the
 final assistant text. Not streaming, no `turn/steer`; defaults to one-shot turns
 (some `claude-p` builds replay results when combining `--resume` with
-`--input-file`).
+`--input-file`). Like the `anyengine` runtime below (and the SDK runtime, via
+`settingSources` and `strictMcpConfig`), it runs with `--setting-sources user
+--strict-mcp-config` when the project's Claude config no longer matches the
+thread's baseline under a bounded or untrusted posture, and says so; with no
+trust dialog to refuse, it does the same for a project the parent does not
+trust. It takes no hook of ours, so a pre-approved tool the posture refuses is
+dropped from `--allowedTools`, and a tool the posture refuses in every call is
+passed as `--disallowedTools`, which beats an allow rule in the user's
+settings. `--permission-mode` is pinned on every call (`dontAsk`, `plan` when
+planning, `bypassPermissions` only with `--dangerously-skip-permissions`), so
+a settings `defaultMode` such as `acceptEdits` never applies, and a call that
+would ask is refused, since nothing answers a prompt here. The SDK runtime
+does this per call with a PreToolUse hook: the posture's deny, or its ask
+(which then reaches the App's card), beats any allow rule.
+
+::: warning claude-p and allow rules
+Without a per-call hook, an allow rule in the user's or the project's Claude
+settings still pre-approves a call under `claude-p` that the posture would
+ask about, or a write outside the thread's writable roots. Use the SDK or
+`anyengine` runtime where that matters.
+:::
 
 ```bash
 export ANYENGINE_RUNTIME_TYPE="claude-p"
@@ -105,20 +125,34 @@ How a turn works:
    `--permission-mode plan` when the App asks for plan mode. A thread whose
    PTY is gone but that has a Claude session id respawns with `--resume <id>`.
    The workspace-trust dialog is answered from the screen (the runtime keeps a
-   headless terminal emulator of the PTY), and the PTY is kept warm afterwards.
+   headless terminal emulator of the PTY), or refused when the parent does not
+   trust the project, and the PTY is kept warm afterwards.
 2. **Submit.** The prompt is bracketed-pasted into the composer followed by
    Enter; the `UserPromptSubmit` hook confirms the submit landed (the CR is
    re-sent until it does). `turn/steer` pastes into the live PTY;
    `turn/interrupt` sends Escape.
 3. **Hooks.** The settings file wires `SessionStart`, `UserPromptSubmit`,
-   `PreToolUse`, `PostToolUse`, `Stop`, `StopFailure`, `SubagentStop`,
+   `PreToolUse`, `PostToolUse`, `PostToolUseFailure` (a failed call, read as
+   an error result), `Stop`, `StopFailure`, `SubagentStop`,
    `Notification` and `SessionEnd` to `scripts/anyengine-hook-relay.mjs`, which POSTs each payload
    to a loopback HTTP server owned by the adapter (random port, token passed
-   through the PTY environment only). `PreToolUse` becomes the App's native
-   command / file-change approval: read-only tools (Read, Glob, Grep,
-   WebSearch, WebFetch, TodoWrite, Task) are auto-allowed, everything else is
-   allowed only if the App accepts, unless the thread runs with Full access
-   (`approvalPolicy=never` or `sandbox=danger-full-access`). `PostToolUse`
+   through the PTY environment only).
+   `PreToolUse` enforces the thread's posture (`src/posture-claude.mts`):
+   a call inside the thread's bounds runs, a call the posture refuses is
+   denied with the reason, and only what the posture would ask about becomes
+   the App's native command / file-change approval. Outside full access
+   Claude's `Bash` is switched off: with a native codex child running, shell
+   commands go through the bridge `exec` tool, which runs them in that
+   child's sandbox (`command/exec`); without one the thread has no shell and
+   says so (docs/guide/bridge.md, "Shell"). A project the parent does not trust is not trusted
+   here either: the workspace trust dialog is refused. The project's Claude
+   config (`.claude/settings.json`, `.claude/settings.local.json` here, at
+   the git root and at a linked worktree's main checkout, `.mcp.json` here
+   and above) is fingerprinted when the app
+   starts the thread (`src/claude-project-guard.mts`); if it no longer
+   matches at a launch and the posture is bounded or untrusted, Claude starts
+   with `--setting-sources user --strict-mcp-config` and the thread says so.
+   `PostToolUse`
    closes the tool item, `Stop` completes the turn with the final assistant
    text (from the hook, or the session transcript as a fallback),
    `StopFailure` fails it.
@@ -157,12 +191,13 @@ Daemon lifetime: because PTYs stay warm between turns, this runtime defaults
 the adapter spawned by pid.
 
 Known limits: `AskUserQuestion` and `ExitPlanMode` are disallowed (they render
-TUI dialogs no hook can answer); the Codex App's title/summary turns are
+TUI dialogs no hook can answer), and so is `EnterPlanMode`, since a plan mode
+Claude entered on its own could not be left; the Codex App's title/summary turns are
 answered locally instead of through the PTY; one turn per thread at a time;
 Windows is untested.
 
 ```bash
-npm run smoke:anyengine   # real-Claude smoke: PONG turn + Bash approval round-trip
+npm run smoke:anyengine   # real-Claude smoke: PONG turn, out-of-bounds Write approval, no shell without a sandbox
 ```
 
 ## native-codex passthrough (multiplexer)
@@ -209,10 +244,16 @@ How it works (`src/codex-upstream.mts`, `src/codex-mux.mts`):
    goes to both sides and the child's answer (real `userAgent`) wins.
 
 ```bash
-# Binary resolution order for the child:
-export ANYENGINE_REAL_CODEX="/Applications/ChatGPT.app/Contents/Resources/codex"
-#   1. ANYENGINE_REAL_CODEX   2. the bundled desktop binary above, if present
+# Binary resolution order for the child (src/bundled-codex.mts; the shim and
+# `npm run doctor` use the same rule):
+#   1. ANYENGINE_REAL_CODEX, while it names an executable file (leave it unset
+#      on a Mac with the app)
+#   2. ChatGPT.app's own codex, newest layout first:
+#        Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex  (26.928+)
+#        Contents/Resources/codex-cli/bin/codex                          (26.928+)
+#        Contents/Resources/codex                                        (26.911-)
 #   3. CODEX_REAL               (nothing found = multiplexer off, local-only as before)
+# A named codex that is gone is skipped for 2, loudly; `npm run doctor` fails on it.
 
 export ANYENGINE_GPT_ROUTE="native"   # default; `exec` restores the codex-exec proxy
 export ANYENGINE_TITLE_ROUTE="real"   # default; `local` answers the desktop's hidden
@@ -286,10 +327,15 @@ How a turn works:
    `agent_thought_chunk` → reasoning, `tool_call` / `tool_call_update` → tool
    items with their output. The prompt result's `_meta.usage` becomes the turn's
    token usage.
-3. **Approvals.** With `approvalPolicy=never` or `sandbox=danger-full-access`
-   the process runs with `--always-approve`. Otherwise grok's
-   `session/request_permission` is answered locally for read-only tools and
-   forwarded to the App for everything else; *accept* selects grok's
+3. **Approvals.** Only an unrestricted posture (full access, nothing that
+   asks, not planning) runs grok with `--always-approve`; `never` alone does
+   not. Otherwise grok's `session/request_permission` is answered locally for
+   read-only tools (not a web fetch, which is network); for everything else
+   the thread's posture decides: a request it refuses is rejected without a
+   card, one it allows runs, and only what it would ask about reaches the
+   App. Grok's shell runs in its own process, outside every sandbox, so
+   outside full access it is refused without a card, as Claude's `Bash` is
+   (docs/guide/bridge.md, "Shell"); *accept* selects grok's
    `allow_once`, *accept for session* its `allow_always`, *decline* its
    `reject_once`. grok also honours its own permission rules (it reads
    `~/.claude/settings.json` allow rules), so pre-allowed tools never prompt.

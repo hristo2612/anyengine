@@ -245,6 +245,10 @@ function remoteEnv(options = {}) {
     `export CODEX_HOME=${shQuote(home)}`,
     `export ANYENGINE_ADAPTER=${shQuote(adapter)}`,
     `export ANYENGINE_NODE=${shQuote(nodeBin)}`,
+    // The control socket takes a daemon with a native codex child
+    // (src/adapter.mts); the app's bundled codex is that child here, found in
+    // whichever layout the installed app ships (src/bundled-codex.mts).
+    'export ANYENGINE_REMOTE_NATIVE_CODEX=1',
   ]
   if (claudeCli) exports.push(`export ANYENGINE_CLI=${shQuote(claudeCli)}`)
   if (options.mock) exports.push('export ANYENGINE_MOCK=1')

@@ -12,10 +12,12 @@ pass straight through to the real Codex, untouched.
 ## How it works
 
 The ChatGPT desktop app talks to a local `codex app-server`. anyengine is a
-`codex` shim that answers that protocol and patches each thread through to the
+`codex` shim that answers that protocol and routes each thread through to the
 engine you name. Claude runs on the official `claude` CLI, Grok on the official
-`grok` CLI, GPT on the bundled Codex. No app patching, no signing, survives app
-updates.
+`grok` CLI, GPT on the bundled Codex. No app patching, no signing. The version
+it reports follows the app's own codex after an update. Startup compatibility
+checks and live activation checks fall back safely when a build is incompatible.
+The local router also lets Claude Code use GPT turns and GPT sub-agents.
 
 ```
 ChatGPT.app ──▶ codex (shim, earlier in PATH) ──▶ anyengine adapter
@@ -31,18 +33,38 @@ parallel sub-agents on any other one ([cross-engine bridge](docs/guide/bridge.md
 
 ## Install
 
+From a clean source checkout on macOS with Node.js 24+, npm, Git, ChatGPT.app
+and the official Claude Code CLI already installed and signed in:
+
 ```bash
-npm install
-npm run build                       # tsc -> dist/
-mkdir -p ~/bin
-cp scripts/codex-shim ~/bin/codex   # the app looks for a binary called `codex`
-chmod +x ~/bin/codex
-export PATH="$HOME/bin:$PATH"
-export ANYENGINE_ADAPTER="$PWD/dist/src/adapter.mjs"
+npm run setup
 ```
 
-Then open ChatGPT.app, start a thread, and pick Claude or Grok from the model
-picker. `npm run doctor` checks the environment.
+Setup builds and verifies the installed library, installs the controls and shell
+paths, and enables routing through the existing restart/check/rollback flow.
+It asks before restarting the app. A fresh install adds the CLI to new terminals.
+For the current terminal or an older install, run:
+
+```bash
+export PATH="$HOME/.anyengine/bin:$PATH"
+anyengine status
+anyengine doctor
+```
+
+In ChatGPT.app's coding workspace, pick GPT or Claude and switch engines in the
+same conversation. In a new Claude Code session, `/model` lists GPT; generated
+`gpt-*` agents also let Claude delegate to GPT. `anyengine limits` reports your
+registered ChatGPT accounts. Rotation and replay start off. `anyengine off`
+restores the managed settings and routing.
+
+The library lives outside project directories, so cleanup of an idle checkout
+cannot remove the live runtime's dependencies. Native fan-out becomes available
+after its live proof; bridge fallback remains available before that. See
+[Getting started](docs/guide/getting-started.md) for first use and
+[Installation and recovery](docs/guide/deployment.md) for staging and updates.
+
+M1–M3 are locally accepted and available in this source checkout. A packaged
+release is pending; this package is not currently published to npm.
 
 Provide credentials only through your own shell or secret manager. Never commit
 API keys, OAuth or session data, `.env` files, or acceptance logs.

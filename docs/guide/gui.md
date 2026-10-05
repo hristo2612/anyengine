@@ -1,41 +1,51 @@
-# Using the Codex App
+# Using ChatGPT.app
 
-Once the shim and exports are installed and the adapter is built:
+After [setup](getting-started.md), use ChatGPT.app's local coding workspace as
+usual. AnyEngine adds cross-engine routing behind the app's existing model picker,
+conversation history, agent view and approval controls.
 
-1. In **Codex App**, add a Remote connection to the host (or `localhost`). The
-   app runs its native SSH probe and bootstrap; the shim routes `codex
-   app-server` into the adapter.
-2. Start a thread and send a prompt. Claude Code runs the turn:
-   - Agent text and reasoning stream into the conversation.
-   - `Bash` calls surface as Codex **command approvals**.
-   - `Edit` / `Write` / `MultiEdit` surface as **file-change approvals** with a
-     live diff.
-3. Approve actions in the Codex App UI as usual.
-4. Disconnecting closes the proxy. Once no turn is active, the daemon idles out
-   and the in-process Claude runtime is reclaimed.
+## Pick or switch an engine
 
-## Picking a model
+Start a conversation and choose GPT, Claude Opus, Sonnet or Haiku. GPT runs
+through the real Codex client. Claude runs through the official Claude CLI.
+The existing Grok backend also supports Grok selections when its CLI is available.
 
-Codex App's model menu stays a **model selector** only — pick `Claude Sonnet`,
-`Claude Opus`, `Claude Haiku`, etc. The active Claude Code **route** (which
-backend serves the turn) is chosen outside the App with the shim mode; see
-[Backends](/guide/backends).
+Change the model mid-conversation to move work between engines. AnyEngine carries
+conversation context across the handoff and saves the selected engine for a cold
+reopen. An engine switch remains subject to that engine's permissions and context
+budget; it does not grant extra access or a larger context window.
 
-## Localhost GUI testing on macOS
+## Mixed sub-agents
 
-For localhost GUI testing, the adapter is launched by SSH and the in-process TS
-runtime invokes the Claude Code CLI directly — no external daemon to manage. Put
-these lightweight exports in `~/.zshenv`:
+Ask the parent to delegate across engines, for example:
 
-```bash
-REPO="$HOME/path/to/anyengine"
-export PATH="$HOME/bin:$PATH"
-export ANYENGINE_ADAPTER="$REPO/dist/src/adapter.mjs"
-export ANYENGINE_NODE="$(command -v node)"
-export ANYENGINE_CLI="$(command -v claude)"
-export CODEX_REAL="$(command -v codex)"
-```
+> Spawn seven sub-agents: three on Opus and four on GPT. Collect their results.
 
-`npm run acceptance:gui-ssh-localhost` drives this exact path end-to-end (real
-daemon + proxy over SSH, real Claude turn, approval bridge, diff events) and is
-the closest automated check to the GUI Remote experience.
+A verified native route uses Codex's agent machinery. An unproven or disabled
+native route uses the AnyEngine bridge fallback. `anyengine status` reports the
+observed path. See [Cross-engine bridge](bridge.md) and [Router](router.md).
+
+## Tools and approvals
+
+Text and reasoning stream into the conversation. Command and file-change
+approvals use the app's existing controls, including live diffs. Tool behavior
+follows the thread's access and sandbox policy. Keep using the app's approval
+controls for the actions you authorize.
+
+## Account switches
+
+The app continues to show the Home login identity while managed model traffic
+can use another registered account. A switch waits for managed work to finish;
+your next message continues with context on the selected account. Rotation and
+replay are off by default. Inspect accounts and limits through the
+[control CLI](control.md).
+
+## SSH Remote
+
+Advanced remote connections keep the app's normal SSH version probe, daemon
+bootstrap and proxy flow. The host's `codex` shim routes app-server calls into its
+installed adapter. The daemon owns its Unix socket while clients are connected
+and idles out after the last client leaves and active work finishes.
+
+Local setup and live acceptance do not establish remote authentication. See
+[Installation and recovery](deployment.md#remote-connections) for the limitations.

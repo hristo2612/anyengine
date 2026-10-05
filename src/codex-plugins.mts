@@ -75,10 +75,42 @@ export function enabledPluginRefs(home = codexHome()): CodexPluginRef[] {
   return refs
 }
 
-// Version directories are `0.0.1+codex.20260910T002427Z`, `1.0.1000926` or an
-// opaque hash. Compare the numeric runs so 1.0.10 sorts above 1.0.9, and fall
-// back to a plain string compare for anything unnumbered. Newest first.
+// Semver precedence first: a prerelease is below its release, numeric
+// prerelease identifiers compare numerically and below nonnumeric ones.
+// Build metadata only breaks equal-precedence ties for dated cache builds.
+// Opaque version/hash directories keep the existing natural ordering.
 function compareVersions(a: string, b: string): number {
+  const pattern = /^(\d+\.\d+\.\d+)(?:-([\w.-]+))?(?:\+([\w.-]+))?$/
+  const left = pattern.exec(a)
+  const right = pattern.exec(b)
+  if (!left?.[1] || !right?.[1]) return compareNaturalVersions(a, b)
+  const core = compareNaturalVersions(left[1], right[1])
+  if (core) return core
+  const pre = comparePrerelease(left[2], right[2])
+  return pre || compareNaturalVersions(left[3] ?? '', right[3] ?? '')
+}
+
+function comparePrerelease(a: string | undefined, b: string | undefined): number {
+  if (a === b) return 0
+  if (a === undefined) return -1
+  if (b === undefined) return 1
+  const left = a.split('.')
+  const right = b.split('.')
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    const x = left[i]
+    const y = right[i]
+    if (x === y) continue
+    if (x === undefined) return 1
+    if (y === undefined) return -1
+    const nx = /^\d+$/.test(x)
+    const ny = /^\d+$/.test(y)
+    if (nx !== ny) return nx ? 1 : -1
+    return nx ? (BigInt(x) > BigInt(y) ? -1 : 1) : x > y ? -1 : 1
+  }
+  return 0
+}
+
+function compareNaturalVersions(a: string, b: string): number {
   const partsA = a
     .split(/[^0-9]+/)
     .filter(Boolean)

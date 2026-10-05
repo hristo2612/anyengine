@@ -5,10 +5,11 @@ const repo = 'https://github.com/hristo2612/anyengine'
 export default defineConfig({
   title: 'anyengine',
   description:
-    'Use Claude Code inside the Codex desktop app over the native Codex app-server protocol.',
+    'Use GPT and Claude across ChatGPT.app and Claude Code, with mixed agents and account controls.',
   base: '/anyengine/',
   lastUpdated: true,
   cleanUrls: true,
+  srcExclude: ['drafts/**'],
   ignoreDeadLinks: true,
   head: [['meta', { name: 'theme-color', content: '#d97757' }]],
   themeConfig: {
@@ -25,11 +26,14 @@ export default defineConfig({
           text: 'Guide',
           items: [
             { text: 'Getting started', link: '/guide/getting-started' },
-            { text: 'Deployment', link: '/guide/deployment' },
-            { text: 'Using the Codex App', link: '/guide/gui' },
+            { text: 'Installation and recovery', link: '/guide/deployment' },
+            { text: 'Using ChatGPT.app', link: '/guide/gui' },
             { text: 'Configuration', link: '/guide/configuration' },
             { text: 'Backends', link: '/guide/backends' },
             { text: 'Cross-engine bridge', link: '/guide/bridge' },
+            { text: 'Router', link: '/guide/router' },
+            { text: 'GPT in Claude Code', link: '/guide/claude-code' },
+            { text: 'Control commands', link: '/guide/control' },
           ],
         },
       ],

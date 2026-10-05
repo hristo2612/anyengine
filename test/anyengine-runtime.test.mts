@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync, realpathSync, statSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import http from 'node:http'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
-import test from 'node:test'
+import { homedir, tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import test, { after } from 'node:test'
+import { MockRuntime } from '../src/mock-runtime.mjs'
+import { createRuntime } from '../src/runtime-factory.mjs'
+import { preparationGate, preparationHarness } from './helpers/pty-preparation.mjs'
+import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
+
+after(removeTempDirs)
+
+import { asToolResultHook, defaultStateDir } from '../src/anyengine-hooks.mjs'
 import {
   CompactionStreamGate,
   MAIN_AGENT_SENTINEL,
@@ -35,6 +44,16 @@ import {
   sanitizeAssistantText,
   taskNotificationsFromTranscript,
 } from '../src/anyengine-transcript.mjs'
+import { registerSandboxUpstream } from '../src/bridge-exec.mjs'
+import { projectBaseline } from '../src/claude-project-guard.mjs'
+import { DEFAULT_POSTURE, type Posture } from '../src/posture.mjs'
+import {
+  claudeLaunchFor,
+  claudeSpawnKey,
+  PROJECT_CONFIG_NOTICE,
+  relayDecision,
+  SHELL_OFF_NO_SANDBOX,
+} from '../src/posture-claude.mjs'
 import { resolveRuntimeConfig } from '../src/runtime-config.mjs'
 import type { PermissionDecision, RuntimeEvent, RuntimeTurnContext } from '../src/types.mjs'
 
@@ -81,7 +100,7 @@ async function harness(
   overrides: Partial<AnyengineRuntimeOptions> = {},
   env: Record<string, string> = {},
 ): Promise<Harness> {
-  const dir = await mkdtemp(join(tmpdir(), 'anyengine-pty-'))
+  const dir = await tempDir('anyengine-pty-')
   const argsFile = join(dir, 'args.jsonl')
   const previous = new Map<string, string | undefined>()
   const applied: Record<string, string> = {
@@ -101,7 +120,7 @@ async function harness(
     asyncSubagentTimeoutMs: 60_000,
     startupTimeoutMs: 10_000,
     streamProxy: false,
-    extraArgs: [],
+    extraArgs: ['--fixture-env', JSON.stringify(applied)],
     hookTimeoutSec: 60,
     autoApproveSafetyPrompts: true,
     keepApiKey: true,
@@ -234,6 +253,34 @@ test('buildInteractiveArgs mirrors the turn context onto the claude CLI', () => 
   assert.ok(!fresh.includes('--model'))
   assert.ok(!fresh.includes('--permission-mode'))
   assert.equal(fresh[fresh.indexOf('--append-system-prompt') + 1], MAIN_AGENT_SENTINEL)
+  // ExitPlanMode is a dialog no hook answers, so a plan mode Claude entered
+  // on its own could never be left: EnterPlanMode is off at every launch.
+  // A read-only thread with no codex child to sandbox a command has no shell.
+  const disallowed = fresh.slice(
+    fresh.indexOf('--disallowedTools') + 1,
+    fresh.indexOf('--append-system-prompt'),
+  )
+  assert.deepEqual(disallowed, [
+    'AskUserQuestion',
+    'ExitPlanMode',
+    'EnterPlanMode',
+    'Bash',
+    'Monitor',
+  ])
+})
+
+test('asToolResultHook: a failed call reads as an error result, for Bash and any other tool', () => {
+  const failed = asToolResultHook({
+    hook_event_name: 'PostToolUseFailure',
+    tool_name: 'Bash',
+    error: 'exit 1: boom',
+  })
+  assert.equal(failed.hook_event_name, 'PostToolUse')
+  const error = { content: 'exit 1: boom', isError: true }
+  assert.deepEqual(shapeToolResult('Bash', failed.tool_response), error)
+  assert.deepEqual(shapeToolResult('mcp__anyengine__exec', failed.tool_response), error)
+  const ok = { hook_event_name: 'PostToolUse', tool_name: 'Read', tool_response: 'x' }
+  assert.equal(asToolResultHook(ok), ok)
 })
 
 test('shapeToolResult flattens Bash responses and passes content arrays through', () => {
@@ -298,7 +345,13 @@ test('screen parsers recognise safety prompts and the workspace trust dialog', (
   assert.equal(answer.label, 'Yes, I trust this folder')
   assert.deepEqual(answer.keystrokes, ['\x1b[B', '\r'])
   assert.equal(
-    composerReady(['▐▛███▛█   Claude Code v2.1.263', '❯ ', '  ⏸ manual mode on · ? for shortcuts']),
+    composerReady([
+      '▐▛███▛█   Claude Code v2.1.263',
+      '─'.repeat(70),
+      '❯ ',
+      '─'.repeat(70),
+      '  ⏸ manual mode on · ? for shortcuts',
+    ]),
     true,
   )
   assert.equal(parseStartupPrompt(['❯ ', '  ? for shortcuts']), null)
@@ -455,32 +508,40 @@ test('anyengine runtime: turn, warm-PTY permission round-trip, deny and full acc
     assert.equal(h.permissionRequests.length, 0)
     assert.ok(h.runtime.hasLivePtys())
 
-    // Second turn reuses the warm PTY: Bash needs the App's approval.
+    // Second turn reuses the warm PTY: a write outside the thread's bounds
+    // needs the App's approval.
     h.events = []
-    await h.run(turnContext({ turnId: 'turn-2', prompt: 'Run echo hi' }))
+    const outside = join(h.dir, 'out.txt')
+    await h.run(turnContext({ turnId: 'turn-2', prompt: `WRITE ${outside}` }))
     assert.equal(h.permissionRequests.length, 1)
-    assert.equal(h.permissionRequests[0]?.toolName, 'Bash')
-    assert.equal(h.permissionRequests[0]?.input.command, 'echo hi')
+    assert.equal(h.permissionRequests[0]?.toolName, 'Write')
+    assert.equal(h.permissionRequests[0]?.input.file_path, outside)
     const toolUse = h.events.find((event) => event.type === 'tool_use')
     assert.ok(toolUse && toolUse.type === 'tool_use')
-    assert.equal(toolUse.toolName, 'Bash')
+    assert.equal(toolUse.toolName, 'Write')
     const toolResult = h.events.find((event) => event.type === 'tool_result')
     assert.ok(toolResult && toolResult.type === 'tool_result')
     assert.equal(toolResult.toolUseId, toolUse.toolUseId)
-    assert.equal(toolResult.content, 'hi')
-    assert.equal(text(h.events), 'ran: hi')
+    assert.equal(toolResult.content, '{"ok":true}')
+    assert.equal(text(h.events), `wrote: ${outside}`)
     const spawns = (await readFile(h.argsFile, 'utf8')).trim().split('\n')
     assert.equal(spawns.length, 1, 'warm PTY reused, no respawn')
     const args = JSON.parse(spawns[0] ?? '[]') as string[]
     assert.ok(!args.includes('--resume'))
     assert.ok(args.includes('--settings'))
     assert.equal(args[args.indexOf('--append-system-prompt') + 1], MAIN_AGENT_SENTINEL)
+    // No codex child sandboxes a command here, so the session has no Bash.
+    const disallowed = args.slice(
+      args.indexOf('--disallowedTools') + 1,
+      args.indexOf('--append-system-prompt'),
+    )
+    assert.ok(disallowed.includes('Bash'))
 
     // Declined approval reaches Claude as a deny with a reason.
     h.events = []
     h.permissionRequests = []
     h.decision = { decision: 'decline' }
-    await h.run(turnContext({ turnId: 'turn-3', prompt: 'Run echo nope' }))
+    await h.run(turnContext({ turnId: 'turn-3', prompt: `WRITE ${join(h.dir, 'nope.txt')}` }))
     assert.equal(h.permissionRequests.length, 1)
     assert.equal(text(h.events), 'denied: denied by user')
     assert.ok(!h.events.some((event) => event.type === 'tool_result'))
@@ -544,15 +605,321 @@ test('anyengine runtime: trust dialog is answered before the first prompt', asyn
   }
 })
 
-test('anyengine runtime: safety prompt falls back to keystrokes consistent with the approval', async () => {
+// Workspace-write on the cwd alone (temp dirs excluded), asking by default.
+const CWD_ONLY: Posture = {
+  ...DEFAULT_POSTURE,
+  fileSystem: {
+    kind: 'workspace-write',
+    writableRoots: [],
+    excludeTmpdirEnvVar: true,
+    excludeSlashTmp: true,
+  },
+}
+
+test('anyengine runtime: under never + workspace-write the bounds decide and nothing asks', async () => {
+  const h = await harness()
+  const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'anyengine-ws-')))
+  const posture: Posture = { ...CWD_ONLY, approval: 'never' }
+  const turn = (turnId: string, prompt: string) =>
+    h.run(turnContext({ turnId, cwd, posture, prompt }))
+  try {
+    await turn('turn-1', `WRITE ${join(cwd, 'inside.txt')}`)
+    assert.equal(text(h.events), `wrote: ${join(cwd, 'inside.txt')}`)
+    h.events = []
+    await turn('turn-2', `WRITE ${join(dirname(cwd), 'outside.txt')}`)
+    assert.match(
+      text(h.events),
+      /^denied: blocked by this thread's sandbox \(workspace-write, network off, never\)/,
+    )
+    h.events = []
+    await turn('turn-3', `WRITE ${join(cwd, '.git', 'config')}`)
+    assert.match(text(h.events), /^denied: blocked/)
+    h.events = []
+    // No codex child sandboxes a command here, so the shell is off.
+    await turn('turn-4', 'Run echo hi')
+    assert.match(text(h.events), /^denied: /)
+    assert.ok(text(h.events).includes(SHELL_OFF_NO_SANDBOX))
+    assert.equal(h.permissionRequests.length, 0, 'never asks the app')
+  } finally {
+    await h.close()
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
+
+// Claude's own configuration runs outside every sandbox once a Claude child
+// starts in that directory (project hooks, statusLine, MCP servers), so the
+// relay never lets a write reach it; talking to the user and the session's
+// own task list touch nothing and run under any posture.
+test('relay: Claude config is never written unattended, conversation-only tools run', async () => {
+  const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'anyengine-ws-')))
+  const never: Posture = { ...CWD_ONLY, approval: 'never' }
+  const verdict = (posture: Posture, tool: string, input: Record<string, unknown>) =>
+    relayDecision(turnContext({ cwd, posture }), tool, input).verdict
+  try {
+    const config = [
+      '.claude/settings.json',
+      '.claude/settings.local.json',
+      '.mcp.json',
+      '.CLAUDE/settings.json',
+      '.Mcp.Json',
+    ]
+    for (const path of config) {
+      const input = { file_path: join(cwd, path), content: '{}' }
+      assert.equal(verdict(never, 'Write', input), 'deny', `never: ${path}`)
+      assert.equal(verdict(CWD_ONLY, 'Edit', input), 'ask', `on-request: ${path}`)
+    }
+    // The relay's own per-spawn hooks and MCP config (~/.anyengine/pty).
+    for (const path of ['.anyengine/pty/1/settings-x.json', '.AnyEngine/lib/current']) {
+      assert.equal(verdict(never, 'Write', { file_path: join(cwd, path) }), 'deny', path)
+    }
+    assert.equal(verdict(never, 'Write', { file_path: join(cwd, 'notes.md') }), 'allow')
+    for (const tool of ['ScheduleWakeup', 'TaskCreate', 'TaskUpdate', 'EnterPlanMode']) {
+      assert.equal(verdict(never, tool, { prompt: 'check back' }), 'allow', tool)
+    }
+    assert.equal(verdict(never, 'TaskStop', { task_id: 'x' }), 'deny', 'a process is not inert')
+  } finally {
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
+
+// Each spawn's --settings (the relay hooks) and --mcp-config load whatever
+// --setting-sources says, so they live outside every default writable root
+// ($TMPDIR is one) in a directory only the user can enter.
+test('anyengine runtime: the relay state dir is ~/.anyengine/pty/<pid>, 0700, removed at stop', async () => {
+  const home = process.env.HOME
+  process.env.HOME = '/home/tester'
+  try {
+    const dir = defaultStateDir()
+    assert.equal(dir, join('/home/tester', '.anyengine', 'pty', String(process.pid)))
+    assert.ok(!dir.startsWith(tmpdir()), 'not under $TMPDIR')
+  } finally {
+    process.env.HOME = home
+  }
+  // Created for real under the suite's own HOME.
+  const stateDir = defaultStateDir()
+  assert.equal(stateDir, join(homedir(), '.anyengine', 'pty', String(process.pid)))
+  const h = await harness({ stateDir })
+  try {
+    await h.run(turnContext({ prompt: 'hi' }))
+    assert.equal(statSync(stateDir).mode & 0o777, 0o700)
+  } finally {
+    await h.close()
+  }
+  assert.equal(existsSync(stateDir), false, 'the per-pid dir goes with the runtime')
+})
+
+// Workspace trust is answered at startup, so a warm PTY cannot carry a thread
+// that has since stopped trusting the project.
+test('spawn key: a change of trust respawns the PTY', () => {
+  const trusted = turnContext({ posture: CWD_ONLY })
+  const untrusted = turnContext({ posture: { ...CWD_ONLY, trust: 'untrusted' } })
+  assert.equal(claudeSpawnKey(trusted), claudeSpawnKey(turnContext({ posture: CWD_ONLY })))
+  assert.notEqual(claudeSpawnKey(trusted), claudeSpawnKey(untrusted))
+})
+
+// Project Claude config written during the session (by any sandboxed writer)
+// must not reach a fresh Claude: the launch compares it with the thread's
+// baseline and, on a mismatch, loads the user's settings alone.
+test('anyengine runtime: changed project config isolates the next launch, the original matches', async () => {
+  const h = await harness()
+  const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'anyengine-ws-')))
+  const settings = join(cwd, '.claude', 'settings.json')
+  await mkdir(dirname(settings))
+  await writeFile(settings, '{}')
+  const mcpServers = { other: { type: 'stdio', command: process.execPath, args: [] } }
+  const posture: Posture = { ...CWD_ONLY, projectBaseline: projectBaseline(cwd) }
+  const context = (turnId: string) => turnContext({ turnId, cwd, posture, mcpServers })
+  const spawns = async () =>
+    (await readFile(h.argsFile, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as string[])
+  const notices = () =>
+    h.events.filter((e) => e.type === 'notice' && e.message.includes(PROJECT_CONFIG_NOTICE))
+  try {
+    const matching = claudeSpawnKey(context('turn-1'))
+    await h.run(context('turn-1'))
+    let args = (await spawns()).at(-1) ?? []
+    assert.ok(!args.includes('--setting-sources'), 'unchanged config launches normally')
+    assert.equal(notices().length, 0)
+
+    await writeFile(settings, '{"hooks":{"SessionStart":[]}}')
+    assert.notEqual(claudeSpawnKey(context('turn-2')), matching, 'a mismatch changes the key')
+    await h.run(context('turn-2'))
+    assert.equal((await spawns()).length, 2, 'the warm PTY does not outlive the change')
+    args = (await spawns()).at(-1) ?? []
+    const at = args.indexOf('--setting-sources')
+    assert.deepEqual(args.slice(at, at + 3), ['--setting-sources', 'user', '--strict-mcp-config'])
+    assert.ok(args.includes('--settings') && args.includes('--mcp-config'), 'relay and MCP kept')
+    assert.equal(notices().length, 1, 'one visible line in the thread')
+
+    await writeFile(settings, '{}')
+    h.events = []
+    await h.run(context('turn-3'))
+    assert.equal((await spawns()).length, 3)
+    assert.ok(!(await spawns()).at(-1)?.includes('--setting-sources'), 'original bytes match')
+    assert.equal(notices().length, 0)
+  } finally {
+    await h.close()
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
+
+test('project config: no baseline fails closed; unrestricted and trusted is exempt', async () => {
+  const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'anyengine-ws-')))
+  const launch = (posture: Posture) => claudeLaunchFor(turnContext({ cwd, posture }))
+  const full: Posture = { ...DEFAULT_POSTURE, fileSystem: { kind: 'full-access' }, network: true }
+  try {
+    assert.equal(launch(CWD_ONLY).settingSources, 'user', 'no baseline is a mismatch')
+    assert.equal(launch(CWD_ONLY).notice, `${PROJECT_CONFIG_NOTICE} ${SHELL_OFF_NO_SANDBOX}`)
+    assert.equal(launch(full).settingSources, null, 'unrestricted and trusted')
+    assert.equal(launch({ ...full, trust: 'untrusted' }).settingSources, 'user')
+    const baselined = { ...CWD_ONLY, projectBaseline: projectBaseline(cwd) }
+    assert.equal(launch(baselined).settingSources, null)
+    assert.equal(launch({ ...baselined, trust: 'untrusted' }).settingSources, null)
+  } finally {
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
+
+test('anyengine runtime: in-bounds writes run, out-of-bounds writes ask the app', async () => {
+  const h = await harness()
+  const cwd = realpathSync(await mkdtemp(join(tmpdir(), 'anyengine-ws-')))
+  try {
+    await h.run(turnContext({ cwd, posture: CWD_ONLY, prompt: `WRITE ${join(cwd, 'a.txt')}` }))
+    assert.equal(h.permissionRequests.length, 0)
+    h.events = []
+    const outside = join(dirname(cwd), 'b.txt')
+    await h.run(
+      turnContext({ turnId: 'turn-2', cwd, posture: CWD_ONLY, prompt: `WRITE ${outside}` }),
+    )
+    assert.equal(h.permissionRequests.length, 1)
+    assert.equal(h.permissionRequests[0]?.toolName, 'Write')
+    assert.equal(text(h.events), `wrote: ${outside}`)
+  } finally {
+    await h.close()
+    await rm(cwd, { recursive: true, force: true })
+  }
+})
+
+test('anyengine runtime: a parent that does not trust the project gets no trusted child', async () => {
+  const h = await harness({}, { FAKE_CLAUDE_TRUST_PROMPT: '1' })
+  try {
+    await assert.rejects(
+      h.run(turnContext({ posture: { ...DEFAULT_POSTURE, trust: 'untrusted' }, prompt: 'hi' })),
+      /does not trust this project/,
+    )
+    // The PTY parked on the dialog is let go, so the next turn is refused the
+    // same way instead of typing into the dialog.
+    await assert.rejects(
+      h.run(
+        turnContext({
+          turnId: 'turn-2',
+          posture: { ...DEFAULT_POSTURE, trust: 'untrusted' },
+          prompt: 'again',
+        }),
+      ),
+      /does not trust this project/,
+    )
+  } finally {
+    await h.close()
+  }
+})
+
+test('anyengine runtime: with a sandbox, shell goes through exec and Bash is off', async () => {
+  registerSandboxUpstream({ running: true, request: async () => ({}) })
+  const h = await harness()
+  const mcpServers = { anyengine: { type: 'stdio', command: process.execPath, args: [] } }
+  try {
+    await h.run(turnContext({ posture: CWD_ONLY, mcpServers, prompt: 'EXEC ls' }))
+    assert.equal(text(h.events), 'exec: allowed')
+    assert.equal(h.permissionRequests.length, 0, 'a sandboxed command needs no card')
+    let spawns = (await readFile(h.argsFile, 'utf8')).trim().split('\n')
+    const args = JSON.parse(spawns[0] ?? '[]') as string[]
+    assert.deepEqual(
+      args.slice(args.indexOf('--disallowedTools') + 1, args.indexOf('--append-system-prompt')),
+      ['AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode', 'Bash', 'Monitor'],
+    )
+    // Full access has nothing to bound, so Bash comes back; the tool list binds
+    // at spawn, so the PTY is respawned.
+    h.events = []
+    const full: Posture = { ...CWD_ONLY, fileSystem: { kind: 'full-access' }, network: true }
+    await h.run(turnContext({ turnId: 'turn-2', posture: full, mcpServers, prompt: 'Run echo hi' }))
+    assert.equal(text(h.events), 'ran: hi')
+    spawns = (await readFile(h.argsFile, 'utf8')).trim().split('\n')
+    assert.equal(spawns.length, 2, 'the launch changed, so the PTY was respawned')
+  } finally {
+    registerSandboxUpstream(null)
+    await h.close()
+  }
+})
+
+// A failed call (exec's error, a failing command) arrives as
+// PostToolUseFailure; its item completes with the error instead of staying
+// in progress.
+test('anyengine runtime: a failed tool call completes its item with the error', async () => {
   const h = await harness()
   try {
-    await h.run(turnContext({ prompt: 'do the SAFETY thing' }))
+    await h.run(turnContext({ posture: CWD_ONLY, prompt: 'EXECFAIL ls' }))
+    assert.equal(text(h.events), 'exec: failed')
+    const toolUse = h.events.find((event) => event.type === 'tool_use')
+    assert.ok(toolUse && toolUse.type === 'tool_use')
+    assert.equal(toolUse.toolName, 'mcp__anyengine__exec')
+    const toolResult = h.events.find((event) => event.type === 'tool_result')
+    assert.ok(toolResult && toolResult.type === 'tool_result', 'the call completed')
+    assert.equal(toolResult.toolUseId, toolUse.toolUseId)
+    assert.equal(toolResult.isError, true)
+    assert.equal(toolResult.content, 'exit 1: boom')
+  } finally {
+    await h.close()
+  }
+})
+
+// A call completes once: a second report for it (here a late failure after
+// its result) must not complete its item again.
+test('anyengine runtime: a tool call that is reported twice completes once', async () => {
+  const h = await harness()
+  try {
+    await h.run(turnContext({ posture: CWD_ONLY, prompt: 'EXECTWICE ls' }))
+    assert.equal(text(h.events), 'exec: twice')
+    const results = h.events.filter((event) => event.type === 'tool_result')
+    assert.equal(results.length, 1, 'one result for one call')
+    const [result] = results
+    assert.ok(result && result.type === 'tool_result')
+    assert.equal(result.isError, false)
+    assert.equal(result.content, 'exit 0: ok')
+  } finally {
+    await h.close()
+  }
+})
+
+test('anyengine runtime: safety prompt falls back to keystrokes consistent with the approval', async () => {
+  const h = await harness()
+  // Bash is asked about only where it is on at all: full access, here with
+  // an approval mode that asks before every command.
+  const asks: Posture = {
+    ...DEFAULT_POSTURE,
+    fileSystem: { kind: 'full-access' },
+    network: true,
+    approval: 'untrusted',
+  }
+  try {
+    await h.run(turnContext({ posture: asks, prompt: 'do the SAFETY thing' }))
     assert.equal(h.permissionRequests.length, 1)
     assert.equal(text(h.events), 'safety approved')
     h.events = []
     h.decision = { decision: 'decline' }
-    await h.run(turnContext({ turnId: 'turn-2', prompt: 'do the SAFETY thing again' }))
+    await h.run(
+      turnContext({ turnId: 'turn-2', posture: asks, prompt: 'do the SAFETY thing again' }),
+    )
+    assert.equal(text(h.events), 'safety rejected')
+    // A bounded thread with no codex child has no shell: the relay refused
+    // the call, so its safety prompt is rejected without a card.
+    h.events = []
+    h.permissionRequests = []
+    h.decision = { decision: 'accept' }
+    await h.run(turnContext({ turnId: 'turn-3', prompt: 'do the SAFETY thing once more' }))
+    assert.equal(h.permissionRequests.length, 0)
     assert.equal(text(h.events), 'safety rejected')
   } finally {
     await h.close()
@@ -751,20 +1118,186 @@ test('anyengine runtime: async results consumed mid-turn complete on the first S
   }
 })
 
+// The window has to hold agent A's report: two 300 ms sleeps in the fake plus
+// a node start-up per hook relay, which a loaded machine stretches past a
+// second. 1500 ms failed that way (a suite run at twice its usual length);
+// 5000 ms leaves the margin and still times B out.
 test('anyengine runtime: a sub-agent that never stops times out with a placeholder result', async () => {
-  const h = await harness({ asyncSubagentTimeoutMs: 1500 })
+  const h = await harness({ asyncSubagentTimeoutMs: 5000 })
   try {
     await h.run(turnContext({ prompt: 'ASYNC_LOST fan out', sandboxMode: 'danger-full-access' }))
     const results = toolResults(h.events)
     assert.equal(results.length, 2)
     assert.match(String(results[0]?.content), /^ALPHA/)
     assert.equal(results[0]?.isError, false)
-    assert.match(String(results[1]?.content), /did not report back within 1500ms/)
+    assert.match(String(results[1]?.content), /did not report back within 5000ms/)
     assert.equal(results[1]?.isError, true)
     const done = completed(h.events)
     assert.equal(done.success, true)
     assert.equal(done.result, 'Got ALPHA, waiting for BRAVO')
   } finally {
     await h.close()
+  }
+})
+
+test('runtime release reaches the backend after its completed turn', async () => {
+  const runtime = createRuntime()
+  const released: string[] = []
+  Object.defineProperty(MockRuntime.prototype, 'release', {
+    configurable: true,
+    value: async (id: string) => {
+      released.push(id)
+    },
+  })
+  try {
+    await runtime.runTurn(turnContext({ runtimeType: 'mock', prompt: 'hello' }), {
+      onEvent: () => {},
+      onPermissionRequest: async () => ({ decision: 'decline' }),
+    })
+    assert.ok(runtime.release)
+    await runtime.release('thread-1')
+    assert.deepEqual(released, ['thread-1'])
+  } finally {
+    await runtime.stop()
+    Reflect.deleteProperty(MockRuntime.prototype, 'release')
+  }
+})
+
+test('anyengine release leaves an active turn alone, kills an idle PTY and resumes cold', async () => {
+  const h = await harness()
+  try {
+    await h.run(turnContext())
+    const first = h.runtime.livePids()[0]!
+    const session = h.events.find((e) => e.type === 'session')
+    assert.ok(session?.type === 'session')
+    h.events = []
+    const running = h.run(
+      turnContext({ turnId: 'slow', prompt: 'be SLOW', claudeSessionId: session.claudeSessionId }),
+    )
+    for (
+      const until = Date.now() + 30_000;
+      !h.events.some((e) => e.type === 'session') && Date.now() < until;
+    ) {
+      await new Promise((ok) => setTimeout(ok, 10))
+    }
+    assert.ok(h.events.some((e) => e.type === 'session'))
+    await h.runtime.release('thread-1')
+    assert.deepEqual(h.runtime.livePids(), [first])
+    await h.runtime.interrupt('thread-1')
+    await running
+    await h.runtime.release('thread-1')
+    assert.deepEqual(h.runtime.livePids(), [])
+    for (const until = Date.now() + 30_000; Date.now() < until; ) {
+      try {
+        process.kill(first, 0)
+      } catch {
+        break
+      }
+      await new Promise((ok) => setTimeout(ok, 20))
+    }
+    assert.throws(() => process.kill(first, 0))
+    await h.run(turnContext({ turnId: 'cold', claudeSessionId: session.claudeSessionId }))
+    assert.notEqual(h.runtime.livePids()[0], first)
+    const lines = (await readFile(h.argsFile, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    assert.ok(JSON.stringify(lines.at(-1)).includes(session.claudeSessionId))
+  } finally {
+    await h.close()
+  }
+})
+
+for (const phase of ['hooks', 'proxy'] as const) {
+  test(`anyengine cancellation: interrupt during ${phase} preparation prevents a late PTY without SessionStart`, async (t) => {
+    const h = await preparationHarness(t, phase)
+    const running = h.runtime
+      .runTurn(turnContext({ cwd: h.dir }), {
+        onEvent: () => {},
+        onPermissionRequest: async () => ({ decision: 'decline' }),
+      })
+      .catch(() => {})
+    try {
+      await h.entered.promise
+      await h.runtime.interrupt('thread-1')
+      h.resume.resolve()
+      await Promise.race([running, h.spawned.promise])
+      assert.equal(h.starts, 0, 'interrupt was lost before active-turn registration')
+      assert.equal(h.runtime.hasLivePtys(), false)
+      if (phase === 'proxy') assert.equal(h.listening, false)
+    } finally {
+      h.resume.resolve()
+      await h.runtime.stop()
+      await running
+    }
+    assert.equal(h.alive, 0)
+    assert.ok(!h.writes.some((s) => s.includes('\x1b[200~') || s === '\r'))
+  })
+}
+
+test('anyengine cancellation: stop joins pending preparation and leaves no late hooks or PTY', async (t) => {
+  const h = await preparationHarness(t, 'hooks')
+  const running = h.runtime
+    .runTurn(turnContext({ cwd: h.dir }), {
+      onEvent: () => {},
+      onPermissionRequest: async () => ({ decision: 'decline' }),
+    })
+    .catch(() => {})
+  await h.entered.promise
+  let stopped = false
+  const stopping = h.runtime.stop().then(() => {
+    stopped = true
+  })
+  try {
+    await Promise.resolve()
+    await Promise.resolve()
+    assert.equal(stopped, false, 'stop returned while hook preparation could resume')
+  } finally {
+    h.resume.resolve()
+    await Promise.race([running, h.spawned.promise])
+    await h.runtime.stop()
+    await stopping
+    await running
+  }
+  assert.equal(h.starts, 0)
+  assert.equal(h.alive, 0)
+  assert.equal(h.listening, false)
+})
+
+test('anyengine cancellation: interruption during the launch notice cannot register or submit a turn', async (t) => {
+  const h = await preparationHarness(t)
+  const entered = preparationGate()
+  const resume = preparationGate()
+  const context = turnContext({
+    cwd: h.dir,
+    sandboxMode: 'workspace-write',
+    approvalPolicy: 'on-request',
+  })
+  assert.ok(claudeLaunchFor(context).notice, 'fixture must exercise the launch-notice checkpoint')
+  const running = h.runtime
+    .runTurn(context, {
+      onEvent: async (event) => {
+        if (event.type === 'notice') {
+          entered.resolve()
+          await resume.promise
+        }
+      },
+      onPermissionRequest: async () => ({ decision: 'decline' }),
+    })
+    .catch(() => {})
+  try {
+    await entered.promise
+    await h.runtime.interrupt('thread-1')
+    resume.resolve()
+    await Promise.race([running, h.wrote.promise])
+    assert.ok(
+      !h.writes.some((s) => s.includes('\x1b[200~')),
+      'cancelled preparation pasted a prompt',
+    )
+    assert.equal(h.alive, 0, 'cancelled cold preparation left its PTY alive')
+  } finally {
+    resume.resolve()
+    await h.runtime.stop()
+    await running
   }
 })

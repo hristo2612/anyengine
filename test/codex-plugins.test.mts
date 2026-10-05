@@ -2,7 +2,11 @@ import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import test from 'node:test'
+import test, { after } from 'node:test'
+import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
+
+after(removeTempDirs)
+
 import {
   codexPluginMarketplaces,
   codexPluginMcpServers,
@@ -208,3 +212,30 @@ test('a CODEX_HOME with no config.toml lists nothing instead of throwing', async
     await rm(home, { recursive: true, force: true })
   }
 })
+
+// Exercising package selection catches a numeric-only sorter treating alpha
+// suffixes as extra (newer) version components.
+for (const [versions, expected] of [
+  [['0.159.0-alpha.12.1', '0.159.0'], '0.159.0'],
+  [['0.159.0-alpha.12.1', '0.159.2'], '0.159.2'],
+  [['0.159.0-alpha.12.1', '0.159.0-alpha.2.9'], '0.159.0-alpha.12.1'],
+  [['0.159.0-beta.1', '0.159.0-alpha.12.1'], '0.159.0-beta.1'],
+  [['0.159.0-alpha', '0.159.0-alpha.1'], '0.159.0-alpha.1'],
+  [['0.159.0-1', '0.159.0-alpha'], '0.159.0-alpha'],
+  [['0.159.0-alpha+build.999', '0.159.0-beta+build.1'], '0.159.0-beta+build.1'],
+  [['0.159.0+build.999', '0.159.1+build.1'], '0.159.1+build.1'],
+  [
+    ['0.0.1+codex.20260910T002427Z', '0.0.1+codex.20260911T002427Z'],
+    '0.0.1+codex.20260911T002427Z',
+  ],
+  [['hash-9', 'hash-10'], 'hash-10'],
+] as Array<[string[], string]>) {
+  test(`plugin versions: ${versions.join(', ')} selects ${expected}`, async () => {
+    const home = await tempDir('plugins-semver-')
+    await writeFile(join(home, 'config.toml'), '[plugins."example@personal"]\nenabled = true\n')
+    for (const version of versions) {
+      await mkdir(join(home, 'plugins/cache/personal/example', version), { recursive: true })
+    }
+    assert.equal(listCodexPlugins(home)[0]?.version, expected)
+  })
+}

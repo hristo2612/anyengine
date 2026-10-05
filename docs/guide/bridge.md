@@ -40,17 +40,23 @@ Informal model names are resolved by the bridge, case-insensitively:
 An engine on its own (`claude`, `grok`, `gpt`) picks that engine's default
 model; an unknown name is refused with the list of valid ids.
 
-How the instruction reaches each engine (one helper, `bridgeInstructions`
-in `src/bridge-instructions.mts`):
+AnyEngine adds one line: Claude and Grok threads get `BRIDGE_LINE` in
+their system prompt (Grok prefixes it on the first prompt of a session).
+A GPT thread gets `BRIDGE_LINE_GPT` in its developer instructions only
+when native `spawn_agent` cannot start Claude (the bridge path; see the
+[router guide](./router.md)). On the native path GPT threads get neither
+the line nor the `anyengine` MCP server. New GPT handovers keep the caller's
+developer block, or the local thread's stored block, before appending once.
+Internal handovers back to a known GPT child omit an instruction override:
+warm resumes ignore it, and cold resumes would replace the stored block.
+This preserves existing instructions; it does not establish retroactive
+bridge-line insertion into a preexisting or restarted rollout whose desktop
+block is unavailable.
 
-- **Claude** — appended to the per-turn `systemPromptAddendum`, i.e.
-  `--append-system-prompt` for `anyengine` and the SDK's `systemPrompt.append`.
-- **Grok** — the same addendum prefixed on the first prompt of a session
-  (ACP has no system-prompt field).
-- **GPT (native child)** — appended to `developerInstructions` on every
-  `thread/start` / `thread/resume` / `thread/fork` the multiplexer forwards
-  (`turn/start` has no instruction fields in the v2 schema). The desktop's
-  own instructions stay first; a resend never stacks a second copy.
+The GPT child's router and MCP attachment stay fixed until the adapter
+restarts. Proof or settings drift immediately stops Claude model-mode
+routing through that child; restart the adapter to refresh GPT's bridge
+attachment after drift.
 
 `ANYENGINE_BRIDGE_INSTRUCTIONS=0` turns the injection off (the tools stay
 available; the model then needs to be told about them).
@@ -62,8 +68,25 @@ available; the model then needs to be told about them).
 | `list_models()` | The merged catalog (`model/list`): GPT ids from the native child when attached, the Claude entries from `ANYENGINE_MODELS`, the Grok models. Ids, display names, provider. |
 | `spawn_session({ model, prompt, cwd?, title?, wait?, timeoutMs? })` | New top-level thread (visible in the App sidebar), one turn. Waits for the answer by default (10 min). Returns `{ threadId, turnId, status, text }`. |
 | `spawn_subagents({ tasks: [{ model, prompt, name? }], cwd?, timeoutMs?, parentThreadId? })` | Runs the tasks in parallel as **children of the calling thread**; returns every result. The App shows them as native sub-agents under the parent. |
-| `send_to_session({ threadId, prompt, wait?, timeoutMs? })` | Another turn on an existing thread (spawned or not). |
+| `send_to_session({ threadId, prompt, wait?, timeoutMs? })` | Another turn on a thread the calling thread started, directly or through its own children. A caller with full access may send to any thread; an unknown caller to none. |
 | `wait_session({ threadId, timeoutMs? })` | Waits for the running turn (after `wait:false`), or returns the last finished one. |
+
+`exec` (Claude and Grok threads only) runs one shell command in the real
+codex child's sandbox with the calling thread's posture, through app-server
+`command/exec`, and returns the exit code, stdout and stderr. It refuses when
+no native codex child is running, in plan mode, and under `untrusted` (which
+asks before every command). The `exec` tool is marked always-loaded
+(`_meta["anthropic/alwaysLoad"]`), so Claude sees its shell without searching
+for it.
+
+Shell: inside the thread's sandbox through the `exec` tool when this Mac's
+codex is running; Claude's own Bash only under full access; otherwise no
+shell, and the thread says so. Under an approval mode that asks before every
+command (`untrusted`) Claude has no shell either, because sandboxed commands
+have no approval card. Grok's own shell (`run_terminal_command`) runs in
+grok's process, outside every sandbox, so the adapter declines it without a
+card under the same rule: only full access runs it (and asks, where the
+approval mode does).
 
 `model` accepts an id (`grok-4.6`, `haiku`, `gpt-5.6-sol`), a display name
 (`Claude Opus`) or an informal alias (`claude opus`, `grok`, `gpt`; see
@@ -81,15 +104,44 @@ into the protocol layer under a **bridge peer**, so:
 - every notification, approval and `requestUserInput` the spawned thread
   produces is teed to the desktop peer that owns the **calling** thread, so
   approvals still surface in the App for the child thread;
-- the child inherits the caller's `cwd`, `approvalPolicy` and sandbox (falls
-  back to `on-request` / `workspace-write` when the caller is unknown).
+- the child inherits the caller's `cwd` and full posture (`src/posture.mts`:
+  sandbox with its roots and network, approval policy including granular
+  flags, reviewer, trust); a GPT child gets it on `thread/start` and its first
+  `turn/start`. No Codex request carries trust or the project baseline (the
+  fingerprint of the project's Claude config the app took when it started
+  the calling thread), so the adapter hands both to the child itself (on the
+  row of a Claude or Grok child, beside what a GPT child reports). A child
+  never takes a baseline of its own, so Claude config written during the
+  session is not loaded by the Claude children started after it. When the caller is unknown the
+  child gets the default: read-only, asking before anything leaves it;
+- a `cwd` the model passes is resolved against the caller's. When the
+  caller can write (workspace-write or an external sandbox), it must be the
+  caller's own cwd or one of its explicit writable roots, matched by real
+  path, and the child gets that root as the caller holds it; anything else,
+  a subdirectory included, fails the call. A child writes to its own cwd,
+  and the caller could later swap a subdirectory or a link for a link to
+  anywhere;
+- `parentThreadId` must name the calling thread when the bridge knows it.
+  When it does not, the named thread only links the children, which get the
+  default posture, never the named thread's;
+- `send_to_session` runs the turn under the target thread's own posture,
+  which may be looser than the caller's. So the adapter remembers which
+  thread started each child (in memory: after an adapter restart a continue
+  is refused until the caller spawns again) and refuses a send from any other
+  thread, unless the caller is unrestricted (full access, not planning, not
+  under `untrusted`). A caller the bridge cannot identify is refused.
 
 Sub-agents mirror what the Task tool path emits: `collabAgentToolCall
 spawnAgent` → `subAgentActivity started` → `wait` on the parent's active turn,
 closed with `wait completed|failed` and `subAgentActivity completed|interrupted`.
 Local children are created with `parentThreadId`, `threadSource: subagent`,
-`agentRole` (= task name) and an `agent-<hex>` nickname; a gpt-* child is
-allocated by the real app-server and linked through the parent items only.
+`agentRole` (= task name) and an `agent-<hex>` nickname. A gpt-* child is
+allocated by the real app-server, which records it as a plain thread; the
+adapter keeps its parent (and depth, nickname, role) on the child thread's
+row and gives every Thread the app-server sends for it the same
+`parentThreadId` and `source.subAgent.thread_spawn` a local child has, so it
+is listed under its parent, kept out of the sidebar, and opens like one
+(`src/upstream-subagents.mts`).
 
 ## Wiring per engine
 
@@ -118,6 +170,18 @@ The adapter builds the server spec once per thread:
   uses the single thread with a turn in flight, or `parentThreadId` when
   given. `tool_timeout_sec` is raised because Codex defaults MCP calls to 60 s.
 
+Picking a Claude or Grok model in the app no longer writes it to
+`~/.codex/config.toml`. AnyEngine keeps that pick in
+`~/.codex/anyengine/app-model-pick.json` and shows it to the app, so a
+terminal `codex` with no `-m` keeps its GPT default. Picking a GPT model
+writes `config.toml` as before. The pick counts as a line in your own
+`config.toml`: it wins over a default from MDM, enterprise or system
+configuration, and only a trusted project's `.codex/config.toml`, a
+`--profile` or `-c` flag, or a legacy `managed_config.toml` that sets `model`
+wins over it. Only the top-level
+`model` and `review_model` are kept; codex refuses writes to profile tables,
+and that refusal reaches the app unchanged.
+
 Hand-written configs can use `scripts/bridge-mcp.mjs` as the command with the
 three variables set.
 
@@ -145,11 +209,13 @@ node scripts/smoke-bridge.mjs natural  # the two natural-language prompts above,
 
 ## Known gaps
 
-- A gpt-* **child** thread is not linked by `parentThreadId` (the real
-  app-server owns it); the parent's collab items carry the link.
+- A gpt-* **child** thread is linked by the adapter, not by the real
+  app-server: its own rollout still says `source: vscode`, so a codex TUI
+  opening that rollout directly sees a plain thread.
 - Parent-side collab items for a gpt-* **parent** are live notifications
   only: the child's rollout does not persist them.
-- The caller of a GPT thread is inferred; two GPT turns calling the bridge at
-  once need `parentThreadId`.
+- The caller of a GPT thread is inferred on each call; two GPT turns calling
+  the bridge at once need `parentThreadId`, and their children then get the
+  default posture.
 - Turn text is collected from `item/completed agentMessage` (fallback: the
   deltas); tool output of the spawned thread is not returned.

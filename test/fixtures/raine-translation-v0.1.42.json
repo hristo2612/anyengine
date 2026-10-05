@@ -1,0 +1,1590 @@
+{
+  "upstream": {
+    "repository": "https://github.com/raine/claude-code-proxy",
+    "version": "0.1.42",
+    "commit": "1e30e301a48c01a797308e2d24f6c66515363cbf",
+    "release": "https://github.com/raine/claude-code-proxy/releases/tag/v0.1.42",
+    "platform": "darwin-arm64",
+    "binarySha256": "480d16882ab327230d3b8728330bc45fac9e9637f0534cfabf990bd62b9bb15c"
+  },
+  "isolation": {
+    "sandboxEveryInvocation": true,
+    "externalNetworkDenied": true,
+    "keychainDenied": true,
+    "realHomesDenied": true,
+    "subprocessForkDenied": true,
+    "fakeAuthOnly": true,
+    "cleanupJoined": true
+  },
+  "normalization": "Generated message IDs and UUIDs are deterministic labels; request JSON and response SSE otherwise retain their exact bytes. HTTP dates/transport headers and credentials are excluded.",
+  "expectedDeltas": [
+    {
+      "cases": [
+        "read-rewrite"
+      ],
+      "rule": "Preserve caller tool description/schema and exact arguments; omit upstream Read offset guidance, argument sanitation, result rewrites and stalled-argument repair."
+    },
+    {
+      "cases": [
+        "context-overflow"
+      ],
+      "rule": "Map context overflow to HTTP 400 invalid_request_error, code context_length_exceeded, with safe message: prompt is too long: context length exceeded."
+    },
+    {
+      "cases": [
+        "rate-limit",
+        "context-overflow",
+        "truncated-stream"
+      ],
+      "rule": "Redact backend text. No automatic quota, ordinary 5xx, EOF or incomplete-stream replay; never emit a successful terminal after failure."
+    },
+    {
+      "cases": [
+        "cached-usage"
+      ],
+      "rule": "Use authoritative final usage, with saturating subtraction when cached tokens exceed input tokens; never estimated final totals."
+    },
+    {
+      "cases": [
+        "reasoning-replay"
+      ],
+      "rule": "Replay supplied full history only; no process-global continuation or previous_response_id. Validate owned signature grammar and bounds; preserve unknown signatures."
+    },
+    {
+      "cases": [
+        "text-stream",
+        "text-json",
+        "image",
+        "tool-call",
+        "tool-result"
+      ],
+      "rule": "Choose backend model/lane/effort from the current admitted catalog; do not import upstream Claude aliases or a static GPT allowlist."
+    }
+  ],
+  "cases": [
+    {
+      "id": "text-stream",
+      "input": {
+        "model": "gpt-5.5",
+        "max_tokens": 32,
+        "stream": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ]
+      },
+      "backend": {
+        "status": 200,
+        "sse": "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[]}}\n\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"item_text\",\"delta\":\"hello\"}\n\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\",\"annotations\":[]}]}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"error\":null,\"incomplete_details\":null,\"output\":[{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":100,\"output_tokens\":9,\"input_tokens_details\":{\"cached_tokens\":20}}}}\n\n",
+        "events": [
+          {
+            "type": "response.created",
+            "response": {
+              "id": "resp_1",
+              "status": "in_progress"
+            }
+          },
+          {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": []
+            }
+          },
+          {
+            "type": "response.output_text.delta",
+            "output_index": 0,
+            "item_id": "item_text",
+            "delta": "hello"
+          },
+          {
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "hello",
+                  "annotations": []
+                }
+              ]
+            }
+          },
+          {
+            "type": "response.completed",
+            "response": {
+              "id": "resp_1",
+              "status": "completed",
+              "error": null,
+              "incomplete_details": null,
+              "output": [
+                {
+                  "type": "message",
+                  "id": "item_text",
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "hello",
+                      "annotations": []
+                    }
+                  ]
+                }
+              ],
+              "usage": {
+                "input_tokens": 100,
+                "output_tokens": 9,
+                "input_tokens_details": {
+                  "cached_tokens": 20
+                }
+              }
+            }
+          }
+        ]
+      },
+      "upstream": {
+        "requests": [
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hello\"}]}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "hello"
+                    }
+                  ]
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          }
+        ],
+        "attempts": 1
+      },
+      "output": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "retryAfter": null,
+        "body": "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_fixture\",\"model\":\"gpt-5.5\",\"role\":\"assistant\",\"stop_reason\":null,\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"input_tokens\":11,\"output_tokens\":0}},\"type\":\"message_start\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"hello\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"type\":\"message_delta\",\"usage\":{\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":20,\"input_tokens\":80,\"output_tokens\":9}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+      }
+    },
+    {
+      "id": "text-json",
+      "input": {
+        "model": "gpt-5.5",
+        "max_tokens": 32,
+        "stream": false,
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello"
+          }
+        ]
+      },
+      "backend": {
+        "status": 200,
+        "sse": "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[]}}\n\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"item_text\",\"delta\":\"hello\"}\n\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\",\"annotations\":[]}]}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"error\":null,\"incomplete_details\":null,\"output\":[{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":100,\"output_tokens\":9,\"input_tokens_details\":{\"cached_tokens\":20}}}}\n\n",
+        "events": [
+          {
+            "type": "response.created",
+            "response": {
+              "id": "resp_1",
+              "status": "in_progress"
+            }
+          },
+          {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": []
+            }
+          },
+          {
+            "type": "response.output_text.delta",
+            "output_index": 0,
+            "item_id": "item_text",
+            "delta": "hello"
+          },
+          {
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "hello",
+                  "annotations": []
+                }
+              ]
+            }
+          },
+          {
+            "type": "response.completed",
+            "response": {
+              "id": "resp_1",
+              "status": "completed",
+              "error": null,
+              "incomplete_details": null,
+              "output": [
+                {
+                  "type": "message",
+                  "id": "item_text",
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "hello",
+                      "annotations": []
+                    }
+                  ]
+                }
+              ],
+              "usage": {
+                "input_tokens": 100,
+                "output_tokens": 9,
+                "input_tokens_details": {
+                  "cached_tokens": 20
+                }
+              }
+            }
+          }
+        ]
+      },
+      "upstream": {
+        "requests": [
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"hello\"}]}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "hello"
+                    }
+                  ]
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          }
+        ],
+        "attempts": 1
+      },
+      "output": {
+        "status": 200,
+        "contentType": "application/json",
+        "retryAfter": null,
+        "body": "{\"content\":[{\"text\":\"hello\",\"type\":\"text\"}],\"id\":\"msg_fixture\",\"model\":\"gpt-5.5\",\"role\":\"assistant\",\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":20,\"input_tokens\":80,\"output_tokens\":9}}"
+      }
+    },
+    {
+      "id": "tool-call",
+      "input": {
+        "model": "gpt-5.5",
+        "max_tokens": 32,
+        "stream": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "lookup"
+          }
+        ],
+        "tools": [
+          {
+            "name": "Lookup",
+            "description": "Fixture lookup",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "q": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "q"
+              ]
+            }
+          }
+        ],
+        "tool_choice": {
+          "type": "any"
+        }
+      },
+      "backend": {
+        "status": 200,
+        "sse": "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"item_tool\",\"call_id\":\"call_1\",\"name\":\"Lookup\",\"arguments\":\"\"}}\n\ndata: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"{\\\"q\\\":\"}\n\ndata: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"\\\"fixture\\\"}\"}\n\ndata: {\"type\":\"response.function_call_arguments.done\",\"output_index\":0,\"arguments\":\"{\\\"q\\\":\\\"fixture\\\"}\"}\n\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"id\":\"item_tool\",\"call_id\":\"call_1\",\"name\":\"Lookup\",\"arguments\":\"{\\\"q\\\":\\\"fixture\\\"}\"}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"error\":null,\"incomplete_details\":null,\"output\":[{\"type\":\"function_call\",\"id\":\"item_tool\",\"call_id\":\"call_1\",\"name\":\"Lookup\",\"arguments\":\"{\\\"q\\\":\\\"fixture\\\"}\"}],\"usage\":{\"input_tokens\":100,\"output_tokens\":9,\"input_tokens_details\":{\"cached_tokens\":20}}}}\n\n",
+        "events": [
+          {
+            "type": "response.created",
+            "response": {
+              "id": "resp_1",
+              "status": "in_progress"
+            }
+          },
+          {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+              "type": "function_call",
+              "id": "item_tool",
+              "call_id": "call_1",
+              "name": "Lookup",
+              "arguments": ""
+            }
+          },
+          {
+            "type": "response.function_call_arguments.delta",
+            "output_index": 0,
+            "delta": "{\"q\":"
+          },
+          {
+            "type": "response.function_call_arguments.delta",
+            "output_index": 0,
+            "delta": "\"fixture\"}"
+          },
+          {
+            "type": "response.function_call_arguments.done",
+            "output_index": 0,
+            "arguments": "{\"q\":\"fixture\"}"
+          },
+          {
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": {
+              "type": "function_call",
+              "id": "item_tool",
+              "call_id": "call_1",
+              "name": "Lookup",
+              "arguments": "{\"q\":\"fixture\"}"
+            }
+          },
+          {
+            "type": "response.completed",
+            "response": {
+              "id": "resp_1",
+              "status": "completed",
+              "error": null,
+              "incomplete_details": null,
+              "output": [
+                {
+                  "type": "function_call",
+                  "id": "item_tool",
+                  "call_id": "call_1",
+                  "name": "Lookup",
+                  "arguments": "{\"q\":\"fixture\"}"
+                }
+              ],
+              "usage": {
+                "input_tokens": 100,
+                "output_tokens": 9,
+                "input_tokens_details": {
+                  "cached_tokens": 20
+                }
+              }
+            }
+          }
+        ]
+      },
+      "upstream": {
+        "requests": [
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"lookup\"}]}],\"tools\":[{\"type\":\"function\",\"name\":\"Lookup\",\"description\":\"Fixture lookup\",\"parameters\":{\"properties\":{\"q\":{\"type\":\"string\"}},\"required\":[\"q\"],\"type\":\"object\"},\"strict\":false}],\"tool_choice\":\"required\",\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "lookup"
+                    }
+                  ]
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "name": "Lookup",
+                  "description": "Fixture lookup",
+                  "parameters": {
+                    "properties": {
+                      "q": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "q"
+                    ],
+                    "type": "object"
+                  },
+                  "strict": false
+                }
+              ],
+              "tool_choice": "required",
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          }
+        ],
+        "attempts": 1
+      },
+      "output": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "retryAfter": null,
+        "body": "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_fixture\",\"model\":\"gpt-5.5\",\"role\":\"assistant\",\"stop_reason\":null,\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"input_tokens\":37,\"output_tokens\":0}},\"type\":\"message_start\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"id\":\"call_1\",\"input\":{},\"name\":\"Lookup\",\"type\":\"tool_use\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"partial_json\":\"{\\\"q\\\":\",\"type\":\"input_json_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"partial_json\":\"\\\"fixture\\\"}\",\"type\":\"input_json_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"type\":\"message_delta\",\"usage\":{\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":20,\"input_tokens\":80,\"output_tokens\":9}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+      }
+    },
+    {
+      "id": "tool-result",
+      "input": {
+        "model": "gpt-5.5",
+        "max_tokens": 32,
+        "stream": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "lookup"
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool_use",
+                "id": "call_1",
+                "name": "Lookup",
+                "input": {
+                  "q": "fixture"
+                }
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "tool_result",
+                "tool_use_id": "call_1",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "first"
+                  },
+                  {
+                    "type": "text",
+                    "text": "second"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "tools": [
+          {
+            "name": "Lookup",
+            "description": "Fixture lookup",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "q": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "q"
+              ]
+            }
+          }
+        ]
+      },
+      "backend": {
+        "status": 200,
+        "sse": "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[]}}\n\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"item_text\",\"delta\":\"done\"}\n\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"done\",\"annotations\":[]}]}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"error\":null,\"incomplete_details\":null,\"output\":[{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"done\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":100,\"output_tokens\":9,\"input_tokens_details\":{\"cached_tokens\":20}}}}\n\n",
+        "events": [
+          {
+            "type": "response.created",
+            "response": {
+              "id": "resp_1",
+              "status": "in_progress"
+            }
+          },
+          {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": []
+            }
+          },
+          {
+            "type": "response.output_text.delta",
+            "output_index": 0,
+            "item_id": "item_text",
+            "delta": "done"
+          },
+          {
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "done",
+                  "annotations": []
+                }
+              ]
+            }
+          },
+          {
+            "type": "response.completed",
+            "response": {
+              "id": "resp_1",
+              "status": "completed",
+              "error": null,
+              "incomplete_details": null,
+              "output": [
+                {
+                  "type": "message",
+                  "id": "item_text",
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "done",
+                      "annotations": []
+                    }
+                  ]
+                }
+              ],
+              "usage": {
+                "input_tokens": 100,
+                "output_tokens": 9,
+                "input_tokens_details": {
+                  "cached_tokens": 20
+                }
+              }
+            }
+          }
+        ]
+      },
+      "upstream": {
+        "requests": [
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"lookup\"}]},{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"Lookup\",\"arguments\":\"{\\\"q\\\":\\\"fixture\\\"}\"},{\"type\":\"function_call_output\",\"call_id\":\"call_1\",\"output\":\"first\\nsecond\"}],\"tools\":[{\"type\":\"function\",\"name\":\"Lookup\",\"description\":\"Fixture lookup\",\"parameters\":{\"properties\":{\"q\":{\"type\":\"string\"}},\"required\":[\"q\"],\"type\":\"object\"},\"strict\":false}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "lookup"
+                    }
+                  ]
+                },
+                {
+                  "type": "function_call",
+                  "call_id": "call_1",
+                  "name": "Lookup",
+                  "arguments": "{\"q\":\"fixture\"}"
+                },
+                {
+                  "type": "function_call_output",
+                  "call_id": "call_1",
+                  "output": "first\nsecond"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "name": "Lookup",
+                  "description": "Fixture lookup",
+                  "parameters": {
+                    "properties": {
+                      "q": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "q"
+                    ],
+                    "type": "object"
+                  },
+                  "strict": false
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          }
+        ],
+        "attempts": 1
+      },
+      "output": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "retryAfter": null,
+        "body": "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_fixture\",\"model\":\"gpt-5.5\",\"role\":\"assistant\",\"stop_reason\":null,\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"input_tokens\":54,\"output_tokens\":0}},\"type\":\"message_start\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"done\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"type\":\"message_delta\",\"usage\":{\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":20,\"input_tokens\":80,\"output_tokens\":9}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+      }
+    },
+    {
+      "id": "image",
+      "input": {
+        "model": "gpt-5.5",
+        "max_tokens": 32,
+        "stream": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": [
+              {
+                "type": "text",
+                "text": "image"
+              },
+              {
+                "type": "image",
+                "source": {
+                  "type": "base64",
+                  "media_type": "image/png",
+                  "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "backend": {
+        "status": 200,
+        "sse": "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[]}}\n\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"item_text\",\"delta\":\"image\"}\n\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"image\",\"annotations\":[]}]}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"error\":null,\"incomplete_details\":null,\"output\":[{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"image\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":100,\"output_tokens\":9,\"input_tokens_details\":{\"cached_tokens\":20}}}}\n\n",
+        "events": [
+          {
+            "type": "response.created",
+            "response": {
+              "id": "resp_1",
+              "status": "in_progress"
+            }
+          },
+          {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": []
+            }
+          },
+          {
+            "type": "response.output_text.delta",
+            "output_index": 0,
+            "item_id": "item_text",
+            "delta": "image"
+          },
+          {
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "image",
+                  "annotations": []
+                }
+              ]
+            }
+          },
+          {
+            "type": "response.completed",
+            "response": {
+              "id": "resp_1",
+              "status": "completed",
+              "error": null,
+              "incomplete_details": null,
+              "output": [
+                {
+                  "type": "message",
+                  "id": "item_text",
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "image",
+                      "annotations": []
+                    }
+                  ]
+                }
+              ],
+              "usage": {
+                "input_tokens": 100,
+                "output_tokens": 9,
+                "input_tokens_details": {
+                  "cached_tokens": 20
+                }
+              }
+            }
+          }
+        ]
+      },
+      "upstream": {
+        "requests": [
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"image\"},{\"type\":\"input_image\",\"image_url\":\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==\"}]}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "image"
+                    },
+                    {
+                      "type": "input_image",
+                      "image_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
+                    }
+                  ]
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          }
+        ],
+        "attempts": 1
+      },
+      "output": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "retryAfter": null,
+        "body": "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_fixture\",\"model\":\"gpt-5.5\",\"role\":\"assistant\",\"stop_reason\":null,\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"input_tokens\":2011,\"output_tokens\":0}},\"type\":\"message_start\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"image\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"type\":\"message_delta\",\"usage\":{\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":20,\"input_tokens\":80,\"output_tokens\":9}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+      }
+    },
+    {
+      "id": "cached-usage",
+      "input": {
+        "model": "gpt-5.5",
+        "max_tokens": 32,
+        "stream": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "usage"
+          }
+        ]
+      },
+      "backend": {
+        "status": 200,
+        "sse": "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[]}}\n\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"item_text\",\"delta\":\"usage\"}\n\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"usage\",\"annotations\":[]}]}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"error\":null,\"incomplete_details\":null,\"output\":[{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"usage\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":100,\"output_tokens\":9,\"input_tokens_details\":{\"cached_tokens\":20}}}}\n\n",
+        "events": [
+          {
+            "type": "response.created",
+            "response": {
+              "id": "resp_1",
+              "status": "in_progress"
+            }
+          },
+          {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": []
+            }
+          },
+          {
+            "type": "response.output_text.delta",
+            "output_index": 0,
+            "item_id": "item_text",
+            "delta": "usage"
+          },
+          {
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "usage",
+                  "annotations": []
+                }
+              ]
+            }
+          },
+          {
+            "type": "response.completed",
+            "response": {
+              "id": "resp_1",
+              "status": "completed",
+              "error": null,
+              "incomplete_details": null,
+              "output": [
+                {
+                  "type": "message",
+                  "id": "item_text",
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "usage",
+                      "annotations": []
+                    }
+                  ]
+                }
+              ],
+              "usage": {
+                "input_tokens": 100,
+                "output_tokens": 9,
+                "input_tokens_details": {
+                  "cached_tokens": 20
+                }
+              }
+            }
+          }
+        ]
+      },
+      "upstream": {
+        "requests": [
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"usage\"}]}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "usage"
+                    }
+                  ]
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          }
+        ],
+        "attempts": 1
+      },
+      "output": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "retryAfter": null,
+        "body": "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_fixture\",\"model\":\"gpt-5.5\",\"role\":\"assistant\",\"stop_reason\":null,\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"input_tokens\":11,\"output_tokens\":0}},\"type\":\"message_start\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"usage\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"type\":\"message_delta\",\"usage\":{\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":20,\"input_tokens\":80,\"output_tokens\":9}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+      }
+    },
+    {
+      "id": "reasoning-replay",
+      "input": {
+        "model": "gpt-5.5",
+        "max_tokens": 32,
+        "stream": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "start"
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "thinking",
+                "thinking": "plan",
+                "signature": "ccp:codex:v1:cnNfMQ:opaque-fixture"
+              },
+              {
+                "type": "text",
+                "text": "first answer"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "content": "continue"
+          }
+        ]
+      },
+      "backend": {
+        "status": 200,
+        "sse": "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[],\"encrypted_content\":\"opaque-fixture\"}}\n\ndata: {\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"summary_index\":0,\"delta\":\"plan\"}\n\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[]}}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[]}}\n\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"item_id\":\"item_text\",\"delta\":\"answer\"}\n\ndata: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\",\"annotations\":[]}]}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"error\":null,\"incomplete_details\":null,\"output\":[{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"answer\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":100,\"output_tokens\":9,\"input_tokens_details\":{\"cached_tokens\":20}}}}\n\n",
+        "events": [
+          {
+            "type": "response.created",
+            "response": {
+              "id": "resp_1",
+              "status": "in_progress"
+            }
+          },
+          {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+              "type": "reasoning",
+              "id": "rs_1",
+              "summary": [],
+              "encrypted_content": "opaque-fixture"
+            }
+          },
+          {
+            "type": "response.reasoning_summary_text.delta",
+            "output_index": 0,
+            "summary_index": 0,
+            "delta": "plan"
+          },
+          {
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": {
+              "type": "reasoning",
+              "id": "rs_1",
+              "summary": []
+            }
+          },
+          {
+            "type": "response.output_item.added",
+            "output_index": 1,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": []
+            }
+          },
+          {
+            "type": "response.output_text.delta",
+            "output_index": 1,
+            "item_id": "item_text",
+            "delta": "answer"
+          },
+          {
+            "type": "response.output_item.done",
+            "output_index": 1,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "answer",
+                  "annotations": []
+                }
+              ]
+            }
+          },
+          {
+            "type": "response.completed",
+            "response": {
+              "id": "resp_1",
+              "status": "completed",
+              "error": null,
+              "incomplete_details": null,
+              "output": [
+                {
+                  "type": "message",
+                  "id": "item_text",
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "answer",
+                      "annotations": []
+                    }
+                  ]
+                }
+              ],
+              "usage": {
+                "input_tokens": 100,
+                "output_tokens": 9,
+                "input_tokens_details": {
+                  "cached_tokens": 20
+                }
+              }
+            }
+          }
+        ]
+      },
+      "upstream": {
+        "requests": [
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"start\"}]},{\"type\":\"reasoning\",\"id\":\"rs_1\",\"summary\":[],\"encrypted_content\":\"opaque-fixture\"},{\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"first answer\"}]},{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"continue\"}]}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "start"
+                    }
+                  ]
+                },
+                {
+                  "type": "reasoning",
+                  "id": "rs_1",
+                  "summary": [],
+                  "encrypted_content": "opaque-fixture"
+                },
+                {
+                  "type": "message",
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "first answer"
+                    }
+                  ]
+                },
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "continue"
+                    }
+                  ]
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          }
+        ],
+        "attempts": 1
+      },
+      "output": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "retryAfter": null,
+        "body": "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_fixture\",\"model\":\"gpt-5.5\",\"role\":\"assistant\",\"stop_reason\":null,\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"input_tokens\":26,\"output_tokens\":0}},\"type\":\"message_start\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"signature\":\"\",\"thinking\":\"\",\"type\":\"thinking\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"thinking\":\"plan\",\"type\":\"thinking_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"signature\":\"ccp:codex:v1:cnNfMQ:opaque-fixture\",\"type\":\"signature_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":1,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"answer\",\"type\":\"text_delta\"},\"index\":1,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":1,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"type\":\"message_delta\",\"usage\":{\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":20,\"input_tokens\":80,\"output_tokens\":9}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+      }
+    },
+    {
+      "id": "rate-limit",
+      "input": {
+        "model": "gpt-5.5",
+        "max_tokens": 32,
+        "stream": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "quota"
+          }
+        ]
+      },
+      "backend": {
+        "status": 429,
+        "retryAfter": "0",
+        "json": {
+          "error": {
+            "code": "usage_limit_reached",
+            "message": "FAKE_SECRET_MARKER_fixture"
+          }
+        }
+      },
+      "upstream": {
+        "requests": [
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"quota\"}]}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "quota"
+                    }
+                  ]
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          },
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"quota\"}]}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "quota"
+                    }
+                  ]
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          },
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"quota\"}]}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "quota"
+                    }
+                  ]
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          },
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"quota\"}]}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "quota"
+                    }
+                  ]
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          }
+        ],
+        "attempts": 4
+      },
+      "output": {
+        "status": 429,
+        "contentType": "application/json",
+        "retryAfter": "0",
+        "body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"FAKE_SECRET_MARKER_fixture\"}}"
+      }
+    },
+    {
+      "id": "context-overflow",
+      "input": {
+        "model": "gpt-5.5",
+        "max_tokens": 32,
+        "stream": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "context"
+          }
+        ]
+      },
+      "backend": {
+        "status": 400,
+        "json": {
+          "error": {
+            "code": "context_length_exceeded",
+            "message": "maximum context length exceeded FAKE_SECRET_MARKER_fixture"
+          }
+        }
+      },
+      "upstream": {
+        "requests": [
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"context\"}]}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "context"
+                    }
+                  ]
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          }
+        ],
+        "attempts": 1
+      },
+      "output": {
+        "status": 400,
+        "contentType": "application/json",
+        "retryAfter": null,
+        "body": "{\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"maximum context length exceeded FAKE_SECRET_MARKER_fixture\"}}"
+      }
+    },
+    {
+      "id": "truncated-stream",
+      "input": {
+        "model": "gpt-5.5",
+        "max_tokens": 32,
+        "stream": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "truncate"
+          }
+        ]
+      },
+      "backend": {
+        "status": 200,
+        "sse": "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[]}}\n\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"item_text\",\"delta\":\"partial\"}\n\n",
+        "events": [
+          {
+            "type": "response.created",
+            "response": {
+              "id": "resp_1",
+              "status": "in_progress"
+            }
+          },
+          {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": []
+            }
+          },
+          {
+            "type": "response.output_text.delta",
+            "output_index": 0,
+            "item_id": "item_text",
+            "delta": "partial"
+          }
+        ]
+      },
+      "upstream": {
+        "requests": [
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"truncate\"}]}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "truncate"
+                    }
+                  ]
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          }
+        ],
+        "attempts": 1
+      },
+      "output": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "retryAfter": null,
+        "body": "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_fixture\",\"model\":\"gpt-5.5\",\"role\":\"assistant\",\"stop_reason\":null,\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"input_tokens\":11,\"output_tokens\":0}},\"type\":\"message_start\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"partial\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: error\ndata: {\"error\":{\"message\":\"Codex SSE stream ended before a terminal response event\",\"type\":\"api_error\"},\"type\":\"error\"}\n\n"
+      }
+    },
+    {
+      "id": "read-rewrite",
+      "input": {
+        "model": "gpt-5.5",
+        "max_tokens": 32,
+        "stream": true,
+        "messages": [
+          {
+            "role": "user",
+            "content": "read"
+          }
+        ],
+        "tools": [
+          {
+            "name": "Read",
+            "description": "Original read description",
+            "input_schema": {
+              "type": "object",
+              "properties": {
+                "file_path": {
+                  "type": "string"
+                },
+                "offset": {
+                  "type": "integer",
+                  "description": "original offset"
+                },
+                "limit": {
+                  "type": "integer",
+                  "description": "original limit"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "backend": {
+        "status": 200,
+        "sse": "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[]}}\n\ndata: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"item_text\",\"delta\":\"read\"}\n\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"read\",\"annotations\":[]}]}}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"error\":null,\"incomplete_details\":null,\"output\":[{\"type\":\"message\",\"id\":\"item_text\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"read\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":100,\"output_tokens\":9,\"input_tokens_details\":{\"cached_tokens\":20}}}}\n\n",
+        "events": [
+          {
+            "type": "response.created",
+            "response": {
+              "id": "resp_1",
+              "status": "in_progress"
+            }
+          },
+          {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": []
+            }
+          },
+          {
+            "type": "response.output_text.delta",
+            "output_index": 0,
+            "item_id": "item_text",
+            "delta": "read"
+          },
+          {
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": {
+              "type": "message",
+              "id": "item_text",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "read",
+                  "annotations": []
+                }
+              ]
+            }
+          },
+          {
+            "type": "response.completed",
+            "response": {
+              "id": "resp_1",
+              "status": "completed",
+              "error": null,
+              "incomplete_details": null,
+              "output": [
+                {
+                  "type": "message",
+                  "id": "item_text",
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "output_text",
+                      "text": "read",
+                      "annotations": []
+                    }
+                  ]
+                }
+              ],
+              "usage": {
+                "input_tokens": 100,
+                "output_tokens": 9,
+                "input_tokens_details": {
+                  "cached_tokens": 20
+                }
+              }
+            }
+          }
+        ]
+      },
+      "upstream": {
+        "requests": [
+          {
+            "body": "{\"model\":\"gpt-5.5\",\"input\":[{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"read\"}]}],\"tools\":[{\"type\":\"function\",\"name\":\"Read\",\"description\":\"Original read description\\n\\nCodex Read guidance:\\n- offset is an optional zero based continuation index, not a line number lookup.\\n- Use offset only after a prior Read of the same file returned content and more lines are needed.\\n- Compute offset as prior offset plus the number of lines returned by that prior Read.\\n- Displayed line numbers, grep line numbers, byte counts, token counts, file sizes, and guessed positions are invalid offsets.\\n- Omit offset and limit when opening a file or when unsure.\",\"parameters\":{\"properties\":{\"file_path\":{\"type\":\"string\"},\"limit\":{\"description\":\"Optional number of lines to read. Omit when opening a file. Use with offset only when continuing a large file.\",\"type\":\"integer\"},\"offset\":{\"description\":\"Optional continuation index. Use only after a prior Read of the same file returned content and more lines are needed. Compute as prior offset plus returned line count. Displayed line numbers, grep line numbers, byte counts, token counts, file sizes, and guessed positions are invalid offsets. Omit when unsure.\",\"type\":\"integer\"}},\"type\":\"object\"},\"strict\":false}],\"store\":false,\"stream\":true,\"parallel_tool_calls\":true,\"text\":{\"verbosity\":\"low\"}}",
+            "json": {
+              "model": "gpt-5.5",
+              "input": [
+                {
+                  "type": "message",
+                  "role": "user",
+                  "content": [
+                    {
+                      "type": "input_text",
+                      "text": "read"
+                    }
+                  ]
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "name": "Read",
+                  "description": "Original read description\n\nCodex Read guidance:\n- offset is an optional zero based continuation index, not a line number lookup.\n- Use offset only after a prior Read of the same file returned content and more lines are needed.\n- Compute offset as prior offset plus the number of lines returned by that prior Read.\n- Displayed line numbers, grep line numbers, byte counts, token counts, file sizes, and guessed positions are invalid offsets.\n- Omit offset and limit when opening a file or when unsure.",
+                  "parameters": {
+                    "properties": {
+                      "file_path": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "description": "Optional number of lines to read. Omit when opening a file. Use with offset only when continuing a large file.",
+                        "type": "integer"
+                      },
+                      "offset": {
+                        "description": "Optional continuation index. Use only after a prior Read of the same file returned content and more lines are needed. Compute as prior offset plus returned line count. Displayed line numbers, grep line numbers, byte counts, token counts, file sizes, and guessed positions are invalid offsets. Omit when unsure.",
+                        "type": "integer"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "strict": false
+                }
+              ],
+              "store": false,
+              "stream": true,
+              "parallel_tool_calls": true,
+              "text": {
+                "verbosity": "low"
+              }
+            },
+            "fakeAuthorizationVerified": true
+          }
+        ],
+        "attempts": 1
+      },
+      "output": {
+        "status": 200,
+        "contentType": "text/event-stream",
+        "retryAfter": null,
+        "body": "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_fixture\",\"model\":\"gpt-5.5\",\"role\":\"assistant\",\"stop_reason\":null,\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"input_tokens\":236,\"output_tokens\":0}},\"type\":\"message_start\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: ping\ndata: {\"type\":\"ping\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"read\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"type\":\"message_delta\",\"usage\":{\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":20,\"input_tokens\":80,\"output_tokens\":9}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+      }
+    }
+  ]
+}

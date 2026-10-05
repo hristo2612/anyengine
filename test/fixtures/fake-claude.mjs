@@ -12,6 +12,17 @@
 //   FAKE_CLAUDE_TRANSCRIPT_DIR     where <session>.jsonl is written
 //   FAKE_CLAUDE_TRUST_PROMPT=1     show the trust dialog before the composer
 //   FAKE_CLAUDE_OMIT_LAST_MESSAGE=1 omit last_assistant_message from Stop
+//   FAKE_CLAUDE_TUI=fullscreen     draw like `"tui": "fullscreen"` on the
+//                                  alternate screen: header at the top, the
+//                                  composer pinned to the bottom rows under
+//                                  the effort line (the adapter's PTY turns
+//                                  the alternate screen off, and the real CLI
+//                                  then draws the default layout)
+//   FAKE_CLAUDE_DEFAULT_MODE       the mode user settings select when no
+//                                  --permission-mode is given
+//   FAKE_CLAUDE_PROMPT_SUGGESTION=1 an empty composer shows the faint
+//                                  `Try "…"` placeholder, the cursor drawn
+//                                  inverse on its first letter
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
@@ -23,6 +34,7 @@ const flag = (name) => {
   const index = args.indexOf(name)
   return index >= 0 ? args[index + 1] : undefined
 }
+if (flag('--fixture-env')) Object.assign(process.env, JSON.parse(flag('--fixture-env')))
 if (process.env.FAKE_CLAUDE_ARGS_FILE) {
   fs.appendFileSync(process.env.FAKE_CLAUDE_ARGS_FILE, `${JSON.stringify(args)}\n`)
 }
@@ -38,13 +50,52 @@ const transcriptDir = process.env.FAKE_CLAUDE_TRANSCRIPT_DIR ?? os.tmpdir()
 const transcriptPath = path.join(transcriptDir, `${sessionId}.jsonl`)
 
 const write = (text) => process.stdout.write(text)
-const composer = () => write('\r\n❯ \r\n  ? for shortcuts\r\n')
+const composerRule = '─'.repeat(70)
+const fullscreen = process.env.FAKE_CLAUDE_TUI === 'fullscreen'
+const header = ' ▐▛███▛█   Fake Claude Code'
+// As captured from 2.1.287 (test/fixtures/claude-composer-tui-2.1.287.json).
+const placeholder = '\x1b[7mT\x1b[27m\x1b[2mry "refactor <filepath>"\x1b[22m'
+function composer(prompt = '') {
+  const mode = flag('--permission-mode') ?? process.env.FAKE_CLAUDE_DEFAULT_MODE
+  const footer =
+    mode === 'plan'
+      ? '⏸ plan mode on (shift+tab to cycle)'
+      : mode === 'acceptEdits'
+        ? '⏵⏵ accept edits on (shift+tab to cycle)'
+        : mode === 'auto'
+          ? '⏵⏵ auto mode on (shift+tab to cycle)'
+          : '⏸ manual mode on'
+  const lines = prompt.split('\n')
+  const collapsed = lines.length > 4 || prompt.length > 400
+  const body = collapsed
+    ? `[Pasted text #1 +${Math.max(1, lines.length - 1)} lines]`
+    : lines.join('\r\n  ')
+  const hint =
+    !prompt && !['plan', 'acceptEdits', 'auto'].includes(mode) ? ' · ? for shortcuts' : ''
+  const status = collapsed
+    ? 'paste again to expand'
+    : `${footer}${hint}${prompt ? '' : ' · ← for agents'}`
+  const input = prompt || process.env.FAKE_CLAUDE_PROMPT_SUGGESTION !== '1' ? body : placeholder
+  const frame = `${composerRule}\r\n❯ ${input}\r\n${composerRule}\r\n  ${status}`
+  if (!fullscreen) {
+    write(`\r\n${frame}\r\n`)
+    return
+  }
+  // The whole screen is redrawn; no newline after the footer, which would
+  // scroll the alternate screen.
+  const height = 4 + (collapsed ? 1 : lines.length)
+  const top = Math.max(2, (process.stdout.rows || 30) - height + 1)
+  write(`\x1b[2J\x1b[H${header}\x1b[${top};1H${' '.repeat(50)}◐ medium · /effort\r\n${frame}`)
+}
 
 function runHook(command, payload) {
   return new Promise((resolve) => {
+    // A hook still running when this process exits gets the terminal's
+    // SIGHUP, which can cut its V8 coverage file short and fail the coverage
+    // run; the relay is not in the report, so it writes none.
     const child = spawn('/bin/sh', ['-c', command], {
       stdio: ['pipe', 'pipe', 'inherit'],
-      env: process.env,
+      env: { ...process.env, NODE_V8_COVERAGE: '' },
     })
     let out = ''
     child.stdout.on('data', (chunk) => {
@@ -218,6 +269,26 @@ async function asyncSubagents(prompt) {
   await injectNotification(b, 'A=ALPHA B=BRAVO')
 }
 
+// One tool call through the PreToolUse relay: replies `done` when the relay
+// allows it, `denied: <reason>` when it does not. The tool itself never runs.
+async function toolCall(toolName, input, done) {
+  const toolUseId = `toolu_${randomUUID().slice(0, 8)}`
+  const decision = permissionDecision(
+    await fire('PreToolUse', { tool_name: toolName, tool_input: input, tool_use_id: toolUseId }),
+  )
+  if (decision.permissionDecision !== 'allow') {
+    await reply(`denied: ${decision.permissionDecisionReason ?? 'no reason'}`)
+    return
+  }
+  await fire('PostToolUse', {
+    tool_name: toolName,
+    tool_input: input,
+    tool_use_id: toolUseId,
+    tool_response: { ok: true },
+  })
+  await reply(done)
+}
+
 async function submit(prompt) {
   const promptId = randomUUID()
   await fire('UserPromptSubmit', { prompt, prompt_id: promptId })
@@ -258,6 +329,38 @@ async function submit(prompt) {
     })
     return
   }
+  const writeMatch = /WRITE (\S+)/.exec(prompt)
+  if (writeMatch) {
+    await toolCall('Write', { file_path: writeMatch[1], content: 'x' }, `wrote: ${writeMatch[1]}`)
+    return
+  }
+  // A tool call that fails: Claude Code 2.1.285 reports it through
+  // PostToolUseFailure, never PostToolUse. EXECTWICE reports one call twice
+  // (its result, then a late failure), which must complete it only once.
+  const execFail = /EXEC(FAIL|TWICE) (.+)$/.exec(prompt)
+  if (execFail) {
+    const toolUseId = `toolu_${randomUUID().slice(0, 8)}`
+    const call = { tool_name: 'mcp__anyengine__exec', tool_input: { command: execFail[2] } }
+    const decision = permissionDecision(
+      await fire('PreToolUse', { ...call, tool_use_id: toolUseId }),
+    )
+    if (decision.permissionDecision !== 'allow') {
+      await reply(`denied: ${decision.permissionDecisionReason ?? 'no reason'}`)
+      return
+    }
+    const twice = execFail[1] === 'TWICE'
+    const result = { tool_response: { content: 'exit 0: ok' } }
+    if (twice) await fire('PostToolUse', { ...call, tool_use_id: toolUseId, ...result })
+    const failure = { error: 'exit 1: boom', is_interrupt: false, duration_ms: 5 }
+    await fire('PostToolUseFailure', { ...call, tool_use_id: toolUseId, ...failure })
+    await reply(twice ? 'exec: twice' : 'exec: failed')
+    return
+  }
+  const execMatch = /EXEC (.+)$/.exec(prompt)
+  if (execMatch) {
+    await toolCall('mcp__anyengine__exec', { command: execMatch[1] }, 'exec: allowed')
+    return
+  }
   if (echo) {
     const toolUseId = `toolu_${randomUUID().slice(0, 8)}`
     const input = { command: `echo ${echo[1]}`, description: 'echo' }
@@ -293,12 +396,33 @@ async function submit(prompt) {
 let interrupted = false
 let buffer = ''
 let pendingPrompt = null
+let lateOfferShown = false
+function lateOffer() {
+  const offer = process.env.FAKE_CLAUDE_LATE_OFFER
+  if (!offer || lateOfferShown) return
+  lateOfferShown = true
+  const known = offer === 'auto'
+  showDialog(
+    [known ? 'Make auto mode your default permission mode?' : 'Enable an unknown new feature?'],
+    known
+      ? ['Yes, set auto mode as my default permission mode', 'No, keep manual mode']
+      : ['Enable', 'Cancel'],
+    0,
+    (position) => {
+      fs.appendFileSync(process.env.FAKE_CLAUDE_SELECTION_FILE, String(position))
+      write('\x1b[2J\x1b[H')
+      composer()
+    },
+  )
+}
 function onInput(chunk) {
   buffer += chunk
   for (;;) {
     const paste = /\x1b\[200~([\s\S]*?)\x1b\[201~/.exec(buffer)
     if (paste) {
       pendingPrompt = paste[1]
+      composer(pendingPrompt)
+      lateOffer()
       buffer = buffer.slice(0, paste.index) + buffer.slice(paste.index + paste[0].length)
       continue
     }
@@ -345,7 +469,10 @@ function onInput(chunk) {
   }
 }
 
+// Handled, a SIGTERM or the terminal's SIGHUP that lands while this process is
+// already exiting cannot cut its coverage file short.
 process.on('SIGTERM', () => process.exit(0))
+process.on('SIGHUP', () => process.exit(0))
 for (const signal of ['uncaughtException', 'unhandledRejection']) {
   process.on(signal, (error) => {
     if (process.env.FAKE_CLAUDE_ARGS_FILE) {
@@ -358,6 +485,7 @@ if (process.stdin.isTTY) process.stdin.setRawMode(true)
 process.stdin.setEncoding('utf8')
 process.stdin.on('data', onInput)
 
+if (fullscreen) write('\x1b[?1049h')
 await fire('SessionStart', {
   source: flag('--resume') ? 'resume' : 'startup',
   model: flag('--model') ?? 'fake',
@@ -374,11 +502,11 @@ if (process.env.FAKE_CLAUDE_TRUST_PROMPT) {
     async (position) => {
       if (position === 0) process.exit(1)
       // The real TUI redraws from a clean screen once the dialog is answered.
-      write('\x1b[2J\x1b[H ▐▛███▛█   Fake Claude Code\r\n')
+      write(`\x1b[2J\x1b[H${header}\r\n`)
       composer()
     },
   )
 } else {
-  write('\r\n ▐▛███▛█   Fake Claude Code\r\n')
+  write(`\r\n${header}\r\n`)
   composer()
 }

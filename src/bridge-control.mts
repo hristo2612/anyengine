@@ -1,14 +1,25 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, rmSync } from 'node:fs'
 import http from 'node:http'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { type WebSocket, WebSocketServer } from 'ws'
+import { runBridgeExec } from './bridge-exec.mjs'
+import {
+  assertChildCanEnforceReads,
+  prepareChildSend,
+  resolveBridgeCaller,
+  stringArg,
+} from './bridge-input.mjs'
 import { providerFor, resolveModelAlias } from './bridge-instructions.mjs'
+import { SpawnLineage } from './bridge-lineage.mjs'
+import { defaultBridgeSocketPath, reapStaleSockets } from './bridge-sockets.mjs'
 import type { Route } from './codex-mux.mjs'
+import { mcpServerRecord } from './mcp.mjs'
+import { modelPrompt } from './model-prompt.mjs'
+import { childStart, type Posture, toCodexThreadStart, toCodexTurn } from './posture.mjs'
 import type { JsonRpcResponse, RpcPeer, ThreadItem, WireMessage } from './types.mjs'
-import { adapterHome, debugLog, ensureParent, newId, socketPathLimit, stableHash } from './util.mjs'
+import { nicknameFor, SUBAGENT_START_PARAM, type SubagentStart } from './upstream-subagents.mjs'
+import { debugLog, ensureParent, newId } from './util.mjs'
 
 // Cross-engine bridge, adapter side (docs/guide/bridge.md).
 //
@@ -27,6 +38,7 @@ import { adapterHome, debugLog, ensureParent, newId, socketPathLimit, stableHash
 // resumed by the desktop, and survive the bridge connection going away.
 
 export { providerFor } from './bridge-instructions.mjs'
+export { nicknameFor } from './upstream-subagents.mjs'
 
 export const BRIDGE_SERVER_NAME = 'anyengine'
 export const BRIDGE_ENV_SOCKET = 'ANYENGINE_BRIDGE_SOCKET'
@@ -51,8 +63,7 @@ export interface BridgeThreadInfo {
   owner: 'local' | 'upstream'
   cwd: string | null
   model: string | null
-  approvalPolicy: string | null
-  sandboxMode: string | null
+  posture: Posture
   activeTurnId: string | null
 }
 
@@ -62,8 +73,7 @@ export interface BridgeSubagentThreadInput {
   prompt: string
   cwd: string
   name: string | null
-  approvalPolicy: string | null
-  sandboxMode: string | null
+  posture: Posture
   peer: RpcPeer
 }
 
@@ -78,15 +88,17 @@ export interface BridgeHost {
   appPeerFor(threadId: string | null): RpcPeer | null
   threadInfo(threadId: string): BridgeThreadInfo | null
   routeForModel(model: string): Route
-  // Fallback caller for engines that cannot carry the thread id in env (the
-  // codex child spawns one bridge per process): the single thread with a turn
-  // in flight, if there is exactly one.
-  soleActiveThread(): string | null
+  // All active local/upstream threads, for fallback caller resolution and
+  // fail-closed handling when several threads might have made the call.
+  activeThreadIds(): string[]
   createSubagentThread(input: BridgeSubagentThreadInput): {
     threadId: string
     agentNickname: string
     agentPath: string
   }
+  // What a thread/start child takes from its caller that no Codex request can
+  // carry: trust and the project baseline (src/claude-project-guard.mts).
+  inheritFromCaller(threadId: string, caller: Posture): void
   emitParentItem(
     parentThreadId: string,
     turnId: string,
@@ -133,9 +145,6 @@ interface PendingHostRequest {
   reject: (error: Error) => void
 }
 
-const SANDBOX_DEFAULT = 'workspace-write'
-const APPROVAL_DEFAULT = 'on-request'
-
 export class BridgeControl {
   readonly socketPath: string
   readonly token: string
@@ -146,6 +155,7 @@ export class BridgeControl {
   private readonly connections = new Set<BridgeConnection>()
   private readonly trackers = new Map<string, TurnTracker>()
   private readonly latestTurnByThread = new Map<string, string>()
+  readonly lineage = new SpawnLineage()
 
   constructor(host: BridgeHost, options: BridgeControlOptions = {}) {
     this.host = host
@@ -451,6 +461,9 @@ class BridgeConnection {
         case 'bridge/wait':
           result = await this.waitSession(args)
           break
+        case 'bridge/exec':
+          result = await runBridgeExec(resolveBridgeCaller(this.host, this.callerThreadId), args)
+          break
         default:
           throw new Error(`unknown bridge method: ${method}`)
       }
@@ -487,8 +500,7 @@ class BridgeConnection {
     return this.models
   }
 
-  // Ids, display names and informal aliases ("claude opus", "grok", "gpt")
-  // all resolve against the live catalog (bridge-instructions.mts).
+  // Ids, display names and informal aliases resolve against the live catalog.
   private async resolveModel(requested: unknown): Promise<string> {
     const wanted = typeof requested === 'string' ? requested.trim() : ''
     if (!wanted) throw new Error('model is required')
@@ -497,43 +509,26 @@ class BridgeConnection {
     return resolveModelAlias(wanted, models)
   }
 
-  private caller(): BridgeThreadInfo | null {
-    if (!this.callerThreadId) {
-      const sole = this.host.soleActiveThread()
-      if (sole) this.callerThreadId = sole
-    }
-    return this.callerThreadId ? this.host.threadInfo(this.callerThreadId) : null
-  }
-
   private async spawnSession(args: Record<string, unknown>): Promise<unknown> {
     const model = await this.resolveModel(args.model)
     const prompt = stringArg(args.prompt, 'prompt')
-    const caller = this.caller()
-    const cwd = typeof args.cwd === 'string' && args.cwd ? args.cwd : (caller?.cwd ?? process.cwd())
-    const started = asRecord(
-      await this.rpc('thread/start', {
-        cwd,
-        model,
-        approvalPolicy: caller?.approvalPolicy ?? APPROVAL_DEFAULT,
-        sandbox: caller?.sandboxMode ?? SANDBOX_DEFAULT,
-        experimentalRawEvents: false,
-        persistExtendedHistory: false,
-      }),
-    )
-    const threadId = idOf(asRecord(started.thread))
-    if (!threadId) throw new Error('thread/start returned no thread id')
+    const caller = resolveBridgeCaller(this.host, this.callerThreadId)
+    const { posture, cwd } = childStart(caller, args.cwd)
+    const threadId = await this.startChild(model, cwd, posture, caller?.id ?? null)
     debugLog('bridge.spawnSession', { callerThreadId: this.callerThreadId, threadId, model, cwd })
     if (typeof args.title === 'string' && args.title.trim()) {
       await this.rpc('thread/name/set', { threadId, name: args.title.trim() }).catch(() => null)
     }
-    const outcome = await this.runTurn(threadId, prompt, args.wait !== false, timeoutArg(args))
+    const [wait, overrides] = [args.wait !== false, toCodexTurn(posture)]
+    const outcome = await this.runTurn(threadId, prompt, wait, timeoutArg(args), overrides)
     return { ...outcome, model, cwd }
   }
 
   private async sendToSession(args: Record<string, unknown>): Promise<unknown> {
     const threadId = stringArg(args.threadId, 'threadId')
     const prompt = stringArg(args.prompt, 'prompt')
-    if (!this.host.threadInfo(threadId)) throw new Error(`unknown thread: ${threadId}`)
+    const caller = resolveBridgeCaller(this.host, this.callerThreadId)
+    prepareChildSend(this.host, this.control.lineage, caller, threadId)
     return this.runTurn(threadId, prompt, args.wait !== false, timeoutArg(args))
   }
 
@@ -546,16 +541,46 @@ class BridgeConnection {
     return this.control.waitTurn(this.control.tracker(threadId, turnId), timeoutArg(args))
   }
 
+  private async startChild(
+    model: string,
+    cwd: string,
+    posture: Posture,
+    spawner: string | null,
+    subagent: SubagentStart | null = null,
+  ) {
+    assertChildCanEnforceReads(this.host, posture, model)
+    const started = asRecord(
+      await this.rpc('thread/start', {
+        cwd,
+        model,
+        ...toCodexThreadStart(posture),
+        experimentalRawEvents: false,
+        persistExtendedHistory: false,
+        ...(subagent ? { [SUBAGENT_START_PARAM]: subagent } : {}),
+      }),
+    )
+    const threadId = idOf(asRecord(started.thread))
+    if (!threadId) throw new Error('thread/start returned no thread id')
+    const selected = typeof started.model === 'string' ? started.model : null
+    debugLog('bridge.thread.started', { threadId, model: selected })
+    this.host.inheritFromCaller(threadId, posture)
+    this.control.lineage.record(threadId, spawner)
+    return threadId
+  }
+
   private async runTurn(
     threadId: string,
     prompt: string,
     wait: boolean,
     timeoutMs: number,
+    overrides: Record<string, unknown> = {},
   ): Promise<BridgeTurnOutcome> {
     const started = asRecord(
       await this.rpc('turn/start', {
+        ...overrides,
         threadId,
-        input: [{ type: 'text', text: prompt, text_elements: [] }],
+        _modelAuthored: true,
+        input: [{ type: 'text', text: modelPrompt(prompt), text_elements: [] }],
       }),
     )
     const turnId = idOf(asRecord(started.turn))
@@ -568,29 +593,29 @@ class BridgeConnection {
   private async spawnSubagents(args: Record<string, unknown>): Promise<unknown> {
     const tasks = Array.isArray(args.tasks) ? args.tasks.map((task) => asRecord(task)) : []
     if (tasks.length === 0) throw new Error('tasks must be a non-empty array')
-    const explicitParent = typeof args.parentThreadId === 'string' ? args.parentThreadId : null
-    if (explicitParent) this.callerThreadId = explicitParent
-    const parent = this.caller()
-    const parentThreadId = this.callerThreadId
+    const caller = resolveBridgeCaller(this.host, this.callerThreadId)
+    const named = typeof args.parentThreadId === 'string' ? args.parentThreadId : null
+    if (named && caller && named !== caller.id)
+      throw new Error(`parentThreadId ${named} is not the calling thread ${caller.id}`)
+    const parentThreadId = caller?.id ?? named
     if (!parentThreadId) {
       throw new Error(
         'calling thread unknown: pass parentThreadId (the bridge could not infer which thread is running)',
       )
     }
-    const parentTurnId = parent?.activeTurnId ?? null
-    const timeoutMs = timeoutArg(args)
-    const cwd = typeof args.cwd === 'string' && args.cwd ? args.cwd : (parent?.cwd ?? process.cwd())
+    const linked = caller ?? this.host.threadInfo(parentThreadId)
+    const parentTurnId = linked?.activeTurnId ?? null
+    const start = { ...childStart(caller, args.cwd || linked?.cwd), spawner: caller?.id ?? null }
     const used = new Set<string>()
     const results = await Promise.all(
       tasks.map((task, index) =>
         this.runSubagent(
           parentThreadId,
-          parent,
+          start,
           parentTurnId,
           task,
           index,
-          cwd,
-          timeoutMs,
+          timeoutArg(args),
           used,
         ).catch(
           (error): SubagentResult => ({
@@ -609,27 +634,23 @@ class BridgeConnection {
 
   private async runSubagent(
     parentThreadId: string,
-    parent: BridgeThreadInfo | null,
+    { posture, cwd, spawner }: { posture: Posture; cwd: string; spawner: string | null },
     parentTurnId: string | null,
     task: Record<string, unknown>,
     index: number,
-    cwd: string,
     timeoutMs: number,
     usedNames: Set<string>,
   ): Promise<SubagentResult> {
     const model = await this.resolveModel(task.model)
+    assertChildCanEnforceReads(this.host, posture, model)
     const prompt = stringArg(task.prompt, `tasks[${index}].prompt`)
     const requestedName =
       typeof task.name === 'string' && task.name.trim() ? task.name.trim() : null
     const name = uniqueName(requestedName ?? `task-${index + 1}`, usedNames)
-    const approvalPolicy = parent?.approvalPolicy ?? APPROVAL_DEFAULT
-    const sandboxMode = parent?.sandboxMode ?? SANDBOX_DEFAULT
     let childThreadId: string
     let agentNickname: string
     let agentPath: string
     if (this.host.routeForModel(model) === 'local') {
-      // Local child: created with the parent linkage the desktop's sub-agent
-      // view reads (parentThreadId, agentRole/agentNickname), like a Task.
       ;({
         threadId: childThreadId,
         agentNickname,
@@ -640,33 +661,23 @@ class BridgeConnection {
         prompt,
         cwd,
         name: requestedName,
-        approvalPolicy,
-        sandboxMode,
+        posture,
         peer: this.peer,
       }))
+      this.control.lineage.record(childThreadId, spawner)
     } else {
-      // Child-owned (gpt-*) thread: the real app-server allocates it; the
-      // parent-side collab items below carry the linkage.
-      const started = asRecord(
-        await this.rpc('thread/start', {
-          cwd,
-          model,
-          approvalPolicy,
-          sandbox: sandboxMode,
-          experimentalRawEvents: false,
-          persistExtendedHistory: false,
-        }),
-      )
-      const id = idOf(asRecord(started.thread))
-      if (!id) throw new Error('thread/start returned no thread id')
-      childThreadId = id
-      agentNickname = nicknameFor(id)
+      const role = requestedName ?? 'bridge'
+      const start = { parentThreadId, spawnerThreadId: spawner, agentRole: role }
+      childThreadId = await this.startChild(model, cwd, posture, spawner, start)
+      agentNickname = nicknameFor(childThreadId)
       agentPath = `/root/${agentNickname}`
-      if (requestedName)
-        await this.rpc('thread/name/set', { threadId: id, name: requestedName }).catch(() => null)
+      const naming = { threadId: childThreadId, name: requestedName }
+      if (requestedName) await this.rpc('thread/name/set', naming).catch(() => null)
     }
     debugLog('bridge.spawnSubagent', { parentThreadId, parentTurnId, childThreadId, model, name })
-
+    const overrides = toCodexTurn(posture)
+    const started = await this.runTurn(childThreadId, prompt, false, timeoutMs, overrides)
+    if (!started.turnId) throw new Error('turn/start returned no turn id')
     const supportsCompleted = this.host.supportsCompletedActivity(parentThreadId)
     const spawnId = newId()
     const waitId = newId()
@@ -718,9 +729,18 @@ class BridgeConnection {
       }
       this.host.emitParentItem(parentThreadId, parentTurnId, waitBegin, 'begin')
     }
-
-    const outcome = await this.runTurn(childThreadId, prompt, true, timeoutMs)
+    const tracker = this.control.tracker(childThreadId, started.turnId)
+    const outcome = await this.control.waitTurn(tracker, timeoutMs)
     const failed = outcome.status !== 'completed'
+    debugLog('bridge.subagent.done', {
+      parentThreadId,
+      parentTurnId,
+      threadId: childThreadId,
+      turnId: outcome.turnId,
+      model,
+      status: outcome.status,
+      success: !failed && !outcome.error,
+    })
     if (parentTurnId) {
       if (failed || supportsCompleted) {
         this.host.emitParentItem(
@@ -758,9 +778,6 @@ class BridgeConnection {
       error: outcome.error,
     }
   }
-
-  // ---- the BridgePeer: requests into the protocol layer, tee out --------
-
   private rpc(method: string, params: unknown): Promise<unknown> {
     const id = `b${++this.nextId}`
     return new Promise((resolve, reject) => {
@@ -832,39 +849,6 @@ interface SubagentResult {
 
 // ---- helpers ------------------------------------------------------------
 
-export function nicknameFor(threadId: string): string {
-  return `agent-${threadId.replace(/-/g, '').slice(0, 12)}`
-}
-
-export function defaultBridgeSocketPath(): string {
-  const preferred = join(adapterHome(), `bridge-${process.pid}.sock`)
-  if (preferred.length <= socketPathLimit()) return preferred
-  return join(tmpdir(), `ccxb-${stableHash(preferred).slice(0, 12)}-${process.pid}.sock`)
-}
-
-// Sockets left by adapters that died without unlinking (pid encoded in the
-// name; `kill -0` decides).
-function reapStaleSockets(socketPath: string): void {
-  const dir = join(socketPath, '..')
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true, mode: 0o700 })
-    return
-  }
-  for (const entry of readdirSync(dir)) {
-    const match = /^(?:bridge|ccxb-[0-9a-f]+)-(\d+)\.sock$/.exec(entry)
-    if (!match) continue
-    const pid = Number(match[1])
-    if (pid === process.pid) continue
-    try {
-      process.kill(pid, 0)
-    } catch {
-      try {
-        rmSync(join(dir, entry), { force: true })
-      } catch {}
-    }
-  }
-}
-
 function adapterEntry(): string {
   return fileURLToPath(new URL('./adapter.mjs', import.meta.url))
 }
@@ -872,25 +856,6 @@ function adapterEntry(): string {
 // JSON string literals are valid TOML basic strings for paths and names.
 function tomlString(value: string): string {
   return JSON.stringify(value)
-}
-
-export function mcpServerRecord(base: unknown): Record<string, unknown> {
-  let value = base
-  if (typeof value === 'string') {
-    try {
-      value = JSON.parse(readFileSync(value, 'utf8'))
-    } catch {
-      return {}
-    }
-  }
-  const record = asRecord(value)
-  if (
-    record.mcpServers &&
-    typeof record.mcpServers === 'object' &&
-    !Array.isArray(record.mcpServers)
-  )
-    return asRecord(record.mcpServers)
-  return record
 }
 
 function trackerText(tracker: TurnTracker): string {
@@ -904,11 +869,6 @@ function uniqueName(name: string, used: Set<string>): string {
   while (used.has(candidate)) candidate = `${name}-${n++}`
   used.add(candidate)
   return candidate
-}
-
-function stringArg(value: unknown, name: string): string {
-  if (typeof value !== 'string' || value.length === 0) throw new Error(`${name} is required`)
-  return value
 }
 
 function timeoutArg(args: Record<string, unknown>): number {

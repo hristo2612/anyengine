@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { isolatedCommand } from './lib/codex-probe.mjs'
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const fixturesDir = join(root, 'crates', 'anyengine-protocol', 'fixtures')
 const repoShim = join(root, 'scripts', 'codex-shim')
 
 const fixtures = [
@@ -61,12 +61,11 @@ const unsupportedCredentialSources =
   )
 
 function fail(message) {
-  console.error(`rust protocol fixture drift check failed: ${message}`)
-  process.exit(1)
+  throw new Error(`rust protocol fixture drift check failed: ${message}`)
 }
 
-function readFixture(file) {
-  const path = join(fixturesDir, file)
+function readFixture(file, directory) {
+  const path = join(directory, file)
   try {
     return JSON.parse(readFileSync(path, 'utf8'))
   } catch (error) {
@@ -74,8 +73,8 @@ function readFixture(file) {
   }
 }
 
-function validateFixture(fixture) {
-  const body = readFixture(fixture.file)
+function validateFixture(fixture, directory) {
+  const body = readFixture(fixture.file, directory)
   if (body?.jsonrpc !== '2.0') fail(`${fixture.file} is not a JSON-RPC 2.0 envelope`)
 
   if (fixture.kind === 'request') {
@@ -209,7 +208,7 @@ function resolveGenerator() {
     if (looksLikeAdapterShim(candidate)) {
       fail(`CODEX_REAL is unset and PATH codex looks like an adapter shim: ${candidate}`)
     }
-    const version = spawnSync(candidate, ['--version'], { encoding: 'utf8' })
+    const version = isolatedCommand(candidate, ['--version'])
     if (version.status !== 0 || !/\bcodex-cli\b/.test(`${version.stdout}\n${version.stderr}`)) {
       fail('CODEX_REAL is unset and PATH codex does not identify as the real codex-cli')
     }
@@ -218,30 +217,23 @@ function resolveGenerator() {
   return candidate
 }
 
-function generateSchema(generator, outDir) {
-  const result = spawnSync(
+function generateSchema(generator) {
+  const result = isolatedCommand(
     generator,
-    ['app-server', 'generate-ts', '--experimental', '--out', outDir],
-    { encoding: 'utf8' },
+    ({ work }) => ['app-server', 'generate-ts', '--experimental', '--out', work],
+    {
+      env: process.env,
+      read: ({ work }, answer) =>
+        answer.status === 0
+          ? {
+              'ClientRequest.ts': readFileSync(join(work, 'ClientRequest.ts'), 'utf8'),
+              'ServerNotification.ts': readFileSync(join(work, 'ServerNotification.ts'), 'utf8'),
+            }
+          : null,
+    },
   )
-  if (result.status !== 0) {
-    fail(
-      [`schema generation exited ${result.status}`, result.stdout.trim(), result.stderr.trim()]
-        .filter(Boolean)
-        .join('\n'),
-    )
-  }
-  const clientRequest = join(outDir, 'ClientRequest.ts')
-  const serverNotification = join(outDir, 'ServerNotification.ts')
-  if (!existsSync(clientRequest) || !existsSync(serverNotification)) {
-    fail(
-      'schema generation exited 0 but did not emit ClientRequest.ts and ServerNotification.ts; this usually means an adapter shim handled app-server instead of the real Codex CLI. Set CODEX_REAL to the real codex binary.',
-    )
-  }
-  return {
-    'ClientRequest.ts': readFileSync(clientRequest, 'utf8'),
-    'ServerNotification.ts': readFileSync(serverNotification, 'utf8'),
-  }
+  if (result.status !== 0) fail(`schema generation exited ${result.status}: ${result.stderr}`)
+  return result.value
 }
 
 function methodLiteral(method) {
@@ -258,14 +250,19 @@ function validateSchema(fixturesByFile) {
   }
 }
 
-for (const fixture of fixtures) validateFixture(fixture)
-
-const generator = resolveGenerator()
-const outDir = mkdtempSync(join(tmpdir(), 'anyengine-schema-'))
-try {
-  const generated = generateSchema(generator, outDir)
-  validateSchema(generated)
-  console.log(`Rust protocol fixtures match generated Codex app-server methods using ${generator}`)
-} finally {
-  rmSync(outDir, { recursive: true, force: true })
+export function validateProtocol(artifacts, fixtureRoot = root) {
+  const directory = join(fixtureRoot, 'crates', 'anyengine-protocol', 'fixtures')
+  for (const fixture of fixtures) validateFixture(fixture, directory)
+  validateSchema(artifacts)
 }
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+  try {
+    const generator = resolveGenerator()
+    validateProtocol(generateSchema(generator))
+    console.log(
+      `Rust protocol fixtures match generated Codex app-server methods using ${generator}`,
+    )
+  } catch (error) {
+    console.error(error.message)
+    process.exitCode = 1
+  }

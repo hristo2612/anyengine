@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { IPty } from 'node-pty'
+import { ptyEnv } from './anyengine-env.mjs'
 import {
   type HookPayload,
   PtyHookServer,
@@ -18,17 +17,32 @@ import {
   SsePtyProxy,
   type SseStreamInfo,
   sseEventToDeltas,
+  streamIsCurrent,
 } from './anyengine-proxy.mjs'
 import {
   chooseApproval,
   chooseRejection,
-  composerReady,
   keystrokesToSelect,
   PtyScreen,
   parsePermissionPrompt,
-  parseStartupPrompt,
   pasteAndSubmit,
 } from './anyengine-screen.mjs'
+import { steerComposer, waitForComposer } from './anyengine-startup.mjs'
+import {
+  type ActiveTurn,
+  type AsyncSubagent,
+  type PendingTool,
+  type PtySession,
+  removePtyFiles,
+  type StreamTag,
+  TurnCancellation,
+  TurnLifecycles,
+  type TurnPreparation,
+} from './anyengine-turn-lifecycle.mjs'
+import { captureClaudeLimit } from './limits-claude.mjs'
+
+export type { StreamTag } from './anyengine-turn-lifecycle.mjs'
+
 import {
   lastAssistantTextFromTranscript,
   parseTaskNotifications,
@@ -37,6 +51,9 @@ import {
   type TaskNotification,
   taskNotificationsFromTranscript,
 } from './anyengine-transcript.mjs'
+import { modelPrompt } from './model-prompt.mjs'
+import { claudeLaunchFor, claudeSpawnKey, relayDecision, trustRefusal } from './posture-claude.mjs'
+import { asRecord } from './rpc-shape.mjs'
 import type {
   ClaudeRuntime,
   PermissionDecision,
@@ -69,25 +86,15 @@ export interface AnyengineRuntimeOptions {
   extraArgs: string[]
   hookTimeoutSec: number
   autoApproveSafetyPrompts: boolean
-  // Keep ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN in the child env. Off by
-  // default so the TUI always authenticates with the subscription login.
+  // Legacy option, ignored: credentials never come from the adapter environment.
   keepApiKey: boolean
   stateDir: string
   relayScript: string
   nodeBinary: string
 }
 
-const READ_ONLY_TOOLS = new Set([
-  'Read',
-  'Glob',
-  'Grep',
-  'WebSearch',
-  'WebFetch',
-  'TodoWrite',
-  'Task',
-  'Agent',
-])
 const EFFORT_LEVELS = new Set(['low', 'medium', 'high', 'max'])
+const TUI_DIALOG_TOOLS = ['AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode']
 const IMMEDIATE_STOP_FAILURE_ERRORS = new Set([
   'rate_limit',
   'billing_error',
@@ -95,12 +102,6 @@ const IMMEDIATE_STOP_FAILURE_ERRORS = new Set([
   'max_output_tokens',
 ])
 const STOP_FAILURE_GRACE_MS = 20_000
-const STARTUP_POLL_MS = 250
-// The real TUI can take several seconds to draw its dialogs after the
-// SessionStart hook fires, so the hook alone is trusted only late.
-const STARTUP_HOOK_GRACE_MS = 12_000
-const STARTUP_PROMPT_RETRY_MS = 1500
-const STARTUP_PROMPT_MAX_ANSWERS = 5
 const PERMISSION_PROMPT_SETTLE_MS = 400
 const PERMISSION_PROMPT_VERIFY_MS = 1500
 const PERMISSION_PROMPT_MAX_ATTEMPTS = 3
@@ -116,83 +117,6 @@ const NATIVE_COMMAND_MAX_MS = 90_000
 const ASYNC_NOTIFY_GRACE_MS = 6000
 const ASYNC_SUBAGENT_TOOLS = new Set(['task', 'agent'])
 
-interface PtySession {
-  threadId: string
-  proc: IPty
-  screen: PtyScreen
-  // Last raw bytes from the PTY (ANSI stripped at read time): the screen
-  // emulator can be empty when the CLI dies within milliseconds of spawning.
-  rawTail: string
-  proxy: SsePtyProxy | null
-  cwd: string
-  model: string | null
-  claudeSessionId: string | null
-  settingsPath: string
-  mcpPath: string | null
-  exited: boolean
-  disposed: boolean
-  sessionStarted: boolean
-  lastOutputAt: number
-}
-
-interface PendingTool {
-  toolName: string
-  input: Record<string, unknown>
-  decision: 'allow' | 'deny' | null
-}
-
-// A Task/Agent call the CLI answered with `async_launched`: the tool_result
-// is withheld until the sub-agent stops (SubagentStop hook) or the wait times
-// out, and the turn stays open until the main agent has consumed the result.
-interface AsyncSubagent {
-  agentId: string
-  toolUseId: string
-  description: string
-  finished: boolean
-  delivered: boolean
-}
-
-// What the SSE proxy records at request start; compared against the turn on
-// every event so only streams that began inside the accepted prompt pass.
-export interface StreamTag {
-  turnId: string
-  acceptedAt: number | null
-}
-
-interface ActiveTurn {
-  context: RuntimeTurnContext
-  handlers: RuntimeHandlers
-  session: PtySession
-  startedAt: number
-  settled: boolean
-  resolve: () => void
-  reject: (error: Error) => void
-  gate: CompactionStreamGate
-  // Text streamed to the App that it will actually show.
-  streamedChars: number
-  promptSubmitted: boolean
-  // Set by UserPromptSubmit (the CLI accepted the prompt), cleared by a Stop
-  // the turn survives; SSE streams that started outside such a window are
-  // not this turn's text.
-  promptAcceptedAt: number | null
-  pendingTools: Map<string, PendingTool>
-  lastToolUseId: string | null
-  cancelSubmit: (() => void) | null
-  stopFailure: HookPayload | null
-  graceTimer: NodeJS.Timeout | null
-  timeoutTimer: NodeJS.Timeout | null
-  nativeTimer: NodeJS.Timeout | null
-  approvingPrompt: boolean
-  asyncAgents: Map<string, AsyncSubagent>
-  // The Stop that was held back because sub-agents were still outstanding.
-  heldStop: HookPayload | null
-  asyncTimer: NodeJS.Timeout | null
-  notifyTimer: NodeJS.Timeout | null
-  // The next streamed text follows a held Stop: separate it from the text
-  // already delivered.
-  continuation: boolean
-}
-
 export class AnyengineRuntime implements ClaudeRuntime {
   private readonly options: AnyengineRuntimeOptions
   private readonly sessions = new Map<string, PtySession>()
@@ -200,7 +124,8 @@ export class AnyengineRuntime implements ClaudeRuntime {
   private readonly hooks: PtyHookServer
   private hooksStarted: Promise<number> | null = null
   private spawnSeq = 0
-  private stopped = false
+  private readonly lifecycle = new TurnLifecycles()
+  private stopping: Promise<void> | null = null
 
   constructor(options: AnyengineRuntimeOptions) {
     this.options = options
@@ -217,58 +142,76 @@ export class AnyengineRuntime implements ClaudeRuntime {
   }
 
   async runTurn(context: RuntimeTurnContext, handlers: RuntimeHandlers): Promise<void> {
+    const preparation = this.lifecycle.begin(context.threadId)
     try {
-      await this.runTurnOnce(context, handlers)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      // A stored Claude session id can stop resolving (rollout pruned, thread
-      // opened from another cwd, `claude` upgraded): the CLI prints
-      // "No conversation found with session ID" and exits 1 before the prompt
-      // lands. Fall back to a fresh session once; SessionStart then reports
-      // the new id and the server replaces the stale one.
-      // The screen tail can be empty when the CLI dies within milliseconds, so
-      // any early exit of a resumed spawn (before the prompt was accepted) is
-      // treated the same way, once.
-      const staleResume =
-        /No conversation found with session ID/i.test(message) ||
-        /exited \(code 1\) before the turn completed/i.test(message)
-      if (context.claudeSessionId && staleResume) {
-        debugLog('anyengine.resumeFallback', {
-          threadId: context.threadId,
-          staleSessionId: context.claudeSessionId,
-        })
-        await handlers.onEvent({
-          type: 'notice',
-          level: 'warning',
-          message:
-            'Previous Claude session could not be resumed; starting a fresh Claude session for this thread.',
-        })
-        await this.runTurnOnce({ ...context, claudeSessionId: null, forkSession: false }, handlers)
-        return
+      try {
+        await this.runTurnOnce(context, handlers, preparation)
+      } catch (error) {
+        preparation.check()
+        const message = error instanceof Error ? error.message : String(error)
+        // A stored Claude session id can stop resolving (rollout pruned, thread
+        // opened from another cwd, `claude` upgraded): the CLI prints
+        // "No conversation found with session ID" and exits 1 before the prompt
+        // lands. Fall back to a fresh session once; SessionStart then reports
+        // the new id and the server replaces the stale one.
+        // The screen tail can be empty when the CLI dies within milliseconds, so
+        // any early exit of a resumed spawn (before the prompt was accepted) is
+        // treated the same way, once.
+        const staleResume =
+          /No conversation found with session ID/i.test(message) ||
+          /exited \(code 1\) before the turn completed/i.test(message)
+        if (context.claudeSessionId && staleResume) {
+          preparation.prepare()
+          debugLog('anyengine.resumeFallback', {
+            threadId: context.threadId,
+            staleSessionId: context.claudeSessionId,
+          })
+          await handlers.onEvent({
+            type: 'notice',
+            level: 'warning',
+            message:
+              'Previous Claude session could not be resumed; starting a fresh Claude session for this thread.',
+          })
+          preparation.check()
+          await this.runTurnOnce(
+            { ...context, claudeSessionId: null, forkSession: false },
+            handlers,
+            preparation,
+          )
+          return
+        }
+        throw error
       }
-      throw error
+    } catch (error) {
+      if (!(error instanceof TurnCancellation) || error.reason) throw error
+    } finally {
+      this.lifecycle.finish(context.threadId, preparation)
     }
   }
 
-  private async runTurnOnce(context: RuntimeTurnContext, handlers: RuntimeHandlers): Promise<void> {
-    if (this.stopped) throw new Error('anyengine runtime is stopped')
-    if (this.turns.has(context.threadId)) {
-      throw new Error('anyengine runtime: a turn is already running for this thread')
-    }
+  private async runTurnOnce(
+    context: RuntimeTurnContext,
+    handlers: RuntimeHandlers,
+    preparation: TurnPreparation,
+  ): Promise<void> {
+    preparation.check()
     await this.ensureHooks()
+    preparation.check()
 
     let session = this.sessions.get(context.threadId)
-    let fresh = false
-    if (session && (session.exited || session.model !== (context.model ?? null))) {
-      // `--model` binds at spawn; a changed model means a cold respawn that
-      // resumes the same Claude session.
+    if (session && (session.exited || session.spawnKey !== claudeSpawnKey(context))) {
+      // `--model`, `--permission-mode` and `--disallowedTools` bind at spawn; a
+      // change means a cold respawn that resumes the same Claude session.
       this.releaseSession(session, 'respawn')
       session = undefined
     }
     if (!session) {
-      session = await this.spawn(context)
-      fresh = true
+      session = await this.spawn(context, preparation)
+      preparation.check()
+      const notice = claudeLaunchFor(context).notice
+      if (notice) await handlers.onEvent({ type: 'notice', level: 'warning', message: notice })
     }
+    preparation.check()
     const active = session
 
     let resolveTurn!: () => void
@@ -308,14 +251,18 @@ export class AnyengineRuntime implements ClaudeRuntime {
       continuation: false,
     }
     this.turns.set(context.threadId, turn)
+    preparation.commit()
 
     try {
-      if (fresh) await this.awaitReady(active, turn)
+      await this.awaitReady(active, turn)
+      preparation.check()
       if (turn.settled) return await done
       if (active.claudeSessionId) {
         await handlers.onEvent({ type: 'session', claudeSessionId: active.claudeSessionId })
+        preparation.check()
       }
       const prompt = await this.composePrompt(context, handlers)
+      preparation.check()
       const native = isNativeClaudeCommand(prompt)
       turn.cancelSubmit = pasteAndSubmit(
         active.proc,
@@ -335,6 +282,24 @@ export class AnyengineRuntime implements ClaudeRuntime {
                     'anyengine: Claude Code never acknowledged the prompt; it may be stranded in the TUI composer.',
                 }),
             },
+        {
+          beforeWrite: async (phase) => {
+            preparation.check()
+            const interrupted = await this.awaitReady(
+              active,
+              turn,
+              phase === 'submit' ? prompt : undefined,
+            )
+            preparation.check()
+            if (phase === 'submit' && interrupted) {
+              throw new Error('anyengine: a dialog interrupted prompt input; retry the turn.')
+            }
+          },
+          onError: (error) => {
+            this.releaseSession(active, 'unsafe input screen')
+            this.settle(turn, error)
+          },
+        },
       )
       if (native) this.armNativeCommandTimer(turn)
       this.armTurnTimeout(turn)
@@ -349,10 +314,18 @@ export class AnyengineRuntime implements ClaudeRuntime {
   async steer(threadId: string, prompt: string): Promise<void> {
     const session = this.sessions.get(threadId)
     if (!session || session.exited) throw new Error('anyengine runtime: no live PTY for thread')
-    pasteAndSubmit(session.proc, prompt)
+    try {
+      await steerComposer(session.screen, session.proc, prompt, session.cwd)
+    } catch (error) {
+      this.releaseSession(session, 'unsafe steer screen')
+      const turn = this.turns.get(threadId)
+      if (turn) this.settle(turn, error instanceof Error ? error : new Error(String(error)))
+      throw error
+    }
   }
 
   async interrupt(threadId: string): Promise<void> {
+    this.lifecycle.interrupt(threadId)
     const session = this.sessions.get(threadId)
     const turn = this.turns.get(threadId)
     if (session && !session.exited) {
@@ -363,17 +336,28 @@ export class AnyengineRuntime implements ClaudeRuntime {
     if (turn) this.settle(turn)
   }
 
+  async release(threadId: string): Promise<void> {
+    const session = this.sessions.get(threadId)
+    if (session && !this.turns.has(threadId)) this.releaseSession(session, 'release')
+  }
+
   async stop(): Promise<void> {
-    this.stopped = true
+    if (this.stopping) return this.stopping
+    const preparing = this.lifecycle.stop()
     for (const turn of [...this.turns.values()]) {
       this.settle(turn, new Error('anyengine runtime stopped'))
     }
     for (const session of [...this.sessions.values()]) this.releaseSession(session, 'stop')
     this.hooks.stop()
-    this.hooksStarted = null
-    try {
-      rmSync(this.options.stateDir, { recursive: true, force: true })
-    } catch {}
+    this.stopping = preparing.then(() => {
+      // A start already in flight can finish after the first stop sweep.
+      this.hooks.stop()
+      this.hooksStarted = null
+      try {
+        rmSync(this.options.stateDir, { recursive: true, force: true })
+      } catch {}
+    })
+    return this.stopping
   }
 
   // -------------------------------------------------------------------------
@@ -384,7 +368,11 @@ export class AnyengineRuntime implements ClaudeRuntime {
     return this.hooksStarted
   }
 
-  private async spawn(context: RuntimeTurnContext): Promise<PtySession> {
+  private async spawn(
+    context: RuntimeTurnContext,
+    preparation: TurnPreparation,
+  ): Promise<PtySession> {
+    preparation.check()
     repairNodePtySpawnHelper()
     const { spawn } = require('node-pty') as typeof import('node-pty')
     this.spawnSeq += 1
@@ -396,7 +384,9 @@ export class AnyengineRuntime implements ClaudeRuntime {
       nodeBinary: this.options.nodeBinary,
       hookTimeoutSec: this.options.hookTimeoutSec,
     })
-    const mcpPath = context.mcpServers
+    let mcpPath: string | null = null
+    preparation.own(() => removePtyFiles([settingsPath, mcpPath]))
+    mcpPath = context.mcpServers
       ? writePtyMcpConfig(this.options.stateDir, fileStem, context.mcpServers)
       : null
 
@@ -407,25 +397,36 @@ export class AnyengineRuntime implements ClaudeRuntime {
         (event, stream) => this.onSseEvent(context.threadId, event, stream),
         { tagStream: () => this.streamTag(context.threadId) },
       )
+      proxy = candidate
+      preparation.own(() => candidate.stop())
       try {
         await candidate.start()
         proxy = candidate
       } catch (err) {
         candidate.stop()
+        proxy = null
         debugLog('anyengine.proxy.startFailed', {
           threadId: context.threadId,
           error: err instanceof Error ? err.message : String(err),
         })
       }
     }
+    preparation.check()
 
+    const spawnKey = claudeSpawnKey(context) // before the flags: a change between respawns
     const args = buildInteractiveArgs({
       context,
       settingsPath,
       mcpPath,
       extraArgs: this.options.extraArgs,
     })
-    const env = this.buildEnv(proxy)
+    const env = ptyEnv({
+      hookUrl: this.hooks.url,
+      hookToken: this.hooks.token,
+      proxyPort: proxy?.port ?? null,
+      shell: claudeLaunchFor(context).shell,
+      keepApiKey: this.options.keepApiKey,
+    })
     const { file, argv } = resolveCliInvocation(this.options.cli, args)
     debugLog('anyengine.spawn', {
       threadId: context.threadId,
@@ -434,6 +435,7 @@ export class AnyengineRuntime implements ClaudeRuntime {
       model: context.model,
       proxyPort: proxy?.port ?? 0,
     })
+    preparation.check()
     const proc = spawn(file, argv, {
       name: 'xterm-256color',
       cols: this.options.cols,
@@ -448,7 +450,7 @@ export class AnyengineRuntime implements ClaudeRuntime {
       screen: new PtyScreen(this.options.cols, this.options.rows),
       proxy,
       cwd: context.cwd,
-      model: context.model ?? null,
+      spawnKey,
       claudeSessionId: context.claudeSessionId ?? null,
       settingsPath,
       mcpPath,
@@ -457,6 +459,7 @@ export class AnyengineRuntime implements ClaudeRuntime {
       sessionStarted: false,
       lastOutputAt: Date.now(),
     }
+    preparation.own(() => this.releaseSession(session, 'cancelled preparation'))
     proc.onData((data) => {
       session.rawTail = (session.rawTail + data).slice(-4000)
       session.lastOutputAt = Date.now()
@@ -484,7 +487,11 @@ export class AnyengineRuntime implements ClaudeRuntime {
               .slice(-6)
               .join('\n')
           }
-          debugLog('anyengine.exit', { threadId: session.threadId, exitCode: event.exitCode, tail })
+          debugLog('anyengine.exit', {
+            threadId: session.threadId,
+            exitCode: event.exitCode,
+            tail,
+          })
           this.disposeSession(session)
           const turn = this.turns.get(session.threadId)
           if (turn && turn.session === session && !turn.settled) {
@@ -495,11 +502,13 @@ export class AnyengineRuntime implements ClaudeRuntime {
           }
         })
     })
+    preparation.check()
     this.sessions.set(context.threadId, session)
     return session
   }
 
   private releaseSession(session: PtySession, reason: string): void {
+    if (session.disposed) return
     if (this.sessions.get(session.threadId) === session) this.sessions.delete(session.threadId)
     debugLog('anyengine.release', { threadId: session.threadId, reason, pid: session.proc.pid })
     if (!session.exited) {
@@ -524,92 +533,31 @@ export class AnyengineRuntime implements ClaudeRuntime {
     session.proxy?.stop()
     session.proxy = null
     session.screen.dispose()
-    for (const file of [session.settingsPath, session.mcpPath]) {
-      if (!file) continue
-      try {
-        rmSync(file, { force: true })
-      } catch {}
-    }
+    removePtyFiles([session.settingsPath, session.mcpPath])
   }
 
-  private buildEnv(proxy: SsePtyProxy | null): Record<string, string> {
-    const env: Record<string, string> = {}
-    for (const [key, value] of Object.entries(process.env)) {
-      if (value === undefined) continue
-      // Nested-session markers would make the child refuse to start.
-      if (key === 'CLAUDECODE' || key === 'CLAUDE_CODE_ENTRYPOINT') continue
-      if (key === 'ANTHROPIC_BASE_URL') continue
-      if (
-        !this.options.keepApiKey &&
-        (key === 'ANTHROPIC_API_KEY' || key === 'ANTHROPIC_AUTH_TOKEN')
-      )
-        continue
-      env[key] = value
-    }
-    env.TERM = 'xterm-256color'
-    // Main-screen renderer so the headless screen keeps scrollback; suppress
-    // the "resume from summary?" picker so --resume always full-resumes.
-    env.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN = '1'
-    env.CLAUDE_CODE_RESUME_TOKEN_THRESHOLD = '999999999'
-    env.ANYENGINE_PTY_HOOK_URL = this.hooks.url
-    env.ANYENGINE_PTY_HOOK_TOKEN = this.hooks.token
-    if (proxy) {
-      env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${proxy.port}`
-      // The proxy forwards unchanged, so this still is a first-party session;
-      // the CLI decides that by host string, and a loopback host would drop
-      // the model's context ceiling to the 200K fallback.
-      env._CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL = '1'
-    }
-    return env
-  }
-
-  // Poll the screen after a cold spawn: answer startup dialogs (workspace
-  // trust defaults to "No, exit"), then wait for the composer or SessionStart.
-  private async awaitReady(session: PtySession, turn: ActiveTurn): Promise<void> {
-    const startedAt = Date.now()
-    const deadline = startedAt + this.options.startupTimeoutMs
-    let dialogSeen = 0
-    let answers = 0
-    let lastAnswerAt = 0
-    while (Date.now() < deadline && !turn.settled && !session.exited) {
-      const viewport = await session.screen.viewport()
-      const dialog = parseStartupPrompt(viewport)
-      if (dialog) {
-        // Verify rather than assume: keystrokes sent while the TUI is still
-        // mounting its input handler are dropped, so answer only once the
-        // dialog has been stable for two polls and re-answer while it stays.
-        dialogSeen += 1
-        const now = Date.now()
-        if (
-          dialogSeen >= 2 &&
-          answers < STARTUP_PROMPT_MAX_ANSWERS &&
-          now - lastAnswerAt >= STARTUP_PROMPT_RETRY_MS
-        ) {
-          answers += 1
-          lastAnswerAt = now
+  private async awaitReady(
+    session: PtySession,
+    turn: ActiveTurn,
+    expectedPrompt?: string,
+  ): Promise<boolean> {
+    try {
+      return await waitForComposer(session.screen, session.proc, {
+        timeoutMs: this.options.startupTimeoutMs,
+        cwd: session.cwd,
+        ...(expectedPrompt === undefined ? {} : { expectedPrompt }),
+        stopped: () => turn.settled || session.exited,
+        refusal: (label) => trustRefusal(turn.context, label),
+        onAnswer: (label, attempt) =>
           debugLog('anyengine.startupPrompt', {
             threadId: session.threadId,
-            label: dialog.label,
-            attempt: answers,
-          })
-          for (const key of dialog.keystrokes) session.proc.write(key)
-        }
-        await delay(STARTUP_POLL_MS)
-        continue
-      }
-      dialogSeen = 0
-      if (composerReady(viewport)) return
-      // SessionStart alone is accepted only after a grace period, since a
-      // startup dialog can render after the hook fires.
-      if (session.sessionStarted && Date.now() - startedAt > STARTUP_HOOK_GRACE_MS) return
-      await delay(STARTUP_POLL_MS)
-    }
-    if (!turn.settled && !session.exited) {
-      await turn.handlers.onEvent({
-        type: 'notice',
-        level: 'warning',
-        message: 'anyengine: Claude Code composer not detected in time; submitting anyway.',
+            label,
+            attempt,
+          }),
       })
+    } catch (error) {
+      this.releaseSession(session, 'startup input refused')
+      throw error
     }
   }
 
@@ -617,7 +565,7 @@ export class AnyengineRuntime implements ClaudeRuntime {
     context: RuntimeTurnContext,
     handlers: RuntimeHandlers,
   ): Promise<string> {
-    let prompt = context.prompt
+    let prompt = context.modelAuthored ? modelPrompt(context.prompt) : context.prompt
     if (context.imageInputs.length === 0) return prompt
     const paths: string[] = []
     for (const [index, image] of context.imageInputs.entries()) {
@@ -648,12 +596,11 @@ export class AnyengineRuntime implements ClaudeRuntime {
     // Backticks keep the TUI from auto-attaching the file during the paste
     // (an async state that swallows the submit CR); Claude reads it instead.
     prompt += `\n\nAttached files:\n${paths.map((p) => `- \`${p}\``).join('\n')}`
-    return prompt
+    return context.modelAuthored ? modelPrompt(prompt) : prompt
   }
 
   // -------------------------------------------------------------------------
   // Hooks
-
   private async onHook(threadId: string, payload: HookPayload): Promise<unknown> {
     const session = this.sessions.get(threadId)
     const turn = this.turns.get(threadId)
@@ -664,6 +611,7 @@ export class AnyengineRuntime implements ClaudeRuntime {
         session.sessionStarted = true
         if (typeof payload.session_id === 'string' && payload.session_id) {
           session.claudeSessionId = payload.session_id
+          debugLog('anyengine.session', { threadId, sessionId: payload.session_id })
           if (turn && !turn.settled) {
             await turn.handlers.onEvent({ type: 'session', claudeSessionId: payload.session_id })
           }
@@ -746,9 +694,10 @@ export class AnyengineRuntime implements ClaudeRuntime {
     turn.lastToolUseId = toolUseId
     await turn.handlers.onEvent({ type: 'tool_use', toolUseId, toolName, input })
 
-    if (!this.needsApproval(turn.context, toolName)) {
-      pending.decision = 'allow'
-      return permissionOutput('allow', 'auto-approved by anyengine')
+    const relay = relayDecision(turn.context, toolName, input)
+    if (relay.verdict !== 'ask') {
+      pending.decision = relay.verdict
+      return permissionOutput(relay.verdict, relay.reason)
     }
     const requestId = `${turn.context.threadId}:${turn.context.turnId}:${toolName}:${toolUseId}`
     let decision: PermissionDecision
@@ -772,26 +721,18 @@ export class AnyengineRuntime implements ClaudeRuntime {
     return permissionOutput('deny', 'denied by user')
   }
 
-  private needsApproval(context: RuntimeTurnContext, toolName: string): boolean {
-    if (READ_ONLY_TOOLS.has(toolName)) return false
-    if (context.approvalPolicy === 'never' || context.sandboxMode === 'danger-full-access')
-      return false
-    if (context.allowedTools?.includes(toolName)) return false
-    return true
-  }
-
   private async onPostToolUse(turn: ActiveTurn, payload: HookPayload): Promise<void> {
     const toolUseId =
       typeof payload.tool_use_id === 'string' && payload.tool_use_id
         ? payload.tool_use_id
         : (turn.lastToolUseId ?? `pty-${randomUUID()}`)
-    turn.pendingTools.delete(toolUseId)
+    // A call completes once: a report for one no longer pending is dropped.
+    if (!turn.pendingTools.delete(toolUseId)) return
     const launch = asyncLaunch(payload.tool_name, payload.tool_response)
     if (launch) {
-      // Claude Code 2.1.x runs Task/Agent in the background: the tool returns
-      // `async_launched` at once and the result arrives later. Leave the
-      // App's wait item open (the child shows as running) and keep the turn
-      // alive until the sub-agent reports back.
+      // Claude Code 2.1.x runs Task/Agent in the background: the tool returns `async_launched`
+      // at once and the result arrives later. Leave the App's wait item open (the child shows
+      // as running) and keep the turn alive until the sub-agent reports back.
       turn.asyncAgents.set(launch.agentId, {
         agentId: launch.agentId,
         toolUseId,
@@ -1056,8 +997,13 @@ export class AnyengineRuntime implements ClaudeRuntime {
 
   private onSseEvent(threadId: string, event: SseDataEvent, stream: SseStreamInfo): void {
     const turn = this.turns.get(threadId)
-    if (!turn || turn.settled) return
-    if (!streamIsCurrent(stream, turn.context.turnId, turn.promptAcceptedAt)) return
+    if (
+      !turn ||
+      turn.settled ||
+      !streamIsCurrent(stream, turn.context.turnId, turn.promptAcceptedAt)
+    )
+      return
+    captureClaudeLimit(event)
     if (event.type === 'message_start') turn.gate.reset()
     const deltas = turn.gate.accept(sseEventToDeltas(event))
     if (event.type === 'message_stop') deltas.push(...turn.gate.end())
@@ -1257,40 +1203,30 @@ export function buildInteractiveArgs(input: InteractiveArgsInput): string[] {
     args.push('--resume', context.claudeSessionId)
     if (context.forkSession) args.push('--fork-session')
   }
+  if (context.modelAuthored) args.push('--disable-slash-commands')
   if (context.model) args.push('--model', context.model)
   if (context.effort && EFFORT_LEVELS.has(context.effort)) args.push('--effort', context.effort)
   args.push('--settings', input.settingsPath)
-  // AskUserQuestion / ExitPlanMode render TUI dialogs no hook can answer.
-  args.push('--disallowedTools', 'AskUserQuestion', 'ExitPlanMode')
+  // AskUserQuestion / ExitPlanMode render TUI dialogs no hook can answer, so a
+  // plan mode EnterPlanMode starts could not be left either; Bash goes unless
+  // nothing is bounded (shellMode, src/posture-claude.mts).
+  const launch = claudeLaunchFor(context)
+  args.push('--disallowedTools', ...TUI_DIALOG_TOOLS, ...launch.disallowedTools)
   const addendum = context.systemPromptAddendum?.trim()
   args.push(
     '--append-system-prompt',
     addendum ? `${addendum}\n\n${MAIN_AGENT_SENTINEL}` : MAIN_AGENT_SENTINEL,
   )
-  if (context.planMode) args.push('--permission-mode', 'plan')
+  if (launch.permissionMode) args.push('--permission-mode', launch.permissionMode)
+  if (launch.settingSources) args.push('--setting-sources', 'user', '--strict-mcp-config')
   if (input.mcpPath) args.push('--mcp-config', input.mcpPath)
   if (context.addDirs.length > 0) args.push('--add-dir', ...context.addDirs)
-  if (context.allowedTools && context.allowedTools.length > 0) {
-    args.push('--allowedTools', ...context.allowedTools)
-  }
+  if (context.allowedTools?.length) args.push('--allowedTools', ...context.allowedTools)
   args.push(...input.extraArgs)
   return args
 }
 
-// An SSE stream is this turn's only if it began after the turn's prompt was
-// accepted and no Stop / further prompt acceptance has happened since: the
-// acceptance timestamp doubles as the epoch the stream was tagged with.
-export function streamIsCurrent(
-  stream: SseStreamInfo,
-  turnId: string,
-  promptAcceptedAt: number | null,
-): boolean {
-  const tag = stream.tag as StreamTag | null | undefined
-  if (!tag || tag.turnId !== turnId) return false
-  if (tag.acceptedAt === null || promptAcceptedAt === null) return false
-  if (tag.acceptedAt !== promptAcceptedAt) return false
-  return stream.startedAt >= tag.acceptedAt
-}
+export { streamIsCurrent } from './anyengine-proxy.mjs'
 
 export function asyncLaunch(
   toolName: unknown,
@@ -1364,17 +1300,8 @@ function stopFailureMessage(payload: HookPayload): string {
   return `Claude Code turn failed (${payload.error ?? 'unknown'})${detail}`
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-}
-
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms)
-    timer.unref()
-  })
+  return new Promise((resolve) => setTimeout(resolve, ms).unref())
 }
 
 // node-pty publishes spawn-helper without the executable bit; without it every
@@ -1407,8 +1334,4 @@ export function defaultRelayScript(): string {
     'scripts',
     'anyengine-hook-relay.mjs',
   )
-}
-
-export function defaultStateDir(): string {
-  return join(tmpdir(), `anyengine-pty-${process.pid}`)
 }

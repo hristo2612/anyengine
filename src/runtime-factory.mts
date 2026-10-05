@@ -1,4 +1,5 @@
-import { AnyengineRuntime, defaultRelayScript, defaultStateDir } from './anyengine-runtime.mjs'
+import { defaultStateDir } from './anyengine-hooks.mjs'
+import { AnyengineRuntime, defaultRelayScript } from './anyengine-runtime.mjs'
 import { ClaudePTranscriptRuntime } from './claude-p-runtime.mjs'
 import { CodexProxyRuntime } from './codex-proxy-runtime.mjs'
 import { GrokRuntime } from './grok-runtime.mjs'
@@ -84,6 +85,13 @@ class SelectableRuntime implements ClaudeRuntime {
       return
     }
     await Promise.allSettled([...this.runtimes.values()].map((entry) => entry.interrupt(threadId)))
+  }
+
+  // A completed turn has no active entry, so ask every instantiated backend.
+  async release(threadId: string): Promise<void> {
+    await Promise.allSettled(
+      [...this.runtimes.values()].map((runtime) => runtime.release?.(threadId)),
+    )
   }
 
   async stop(): Promise<void> {

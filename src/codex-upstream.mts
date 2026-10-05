@@ -1,34 +1,15 @@
 import { type ChildProcess, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import readline from 'node:readline'
-import {
-  accountUpdatedFor,
-  RESERVE_ACCOUNT_READ,
-  RESERVE_ACCOUNT_UPDATED,
-  RESERVE_AUTH_STATUS,
-  RESERVE_FIRST_READ_TIMEOUT_MS,
-  RESERVE_POLL_MS,
-  ReserveState,
-  stripReserveMarkers,
-} from './reserve.mjs'
+import type { ManagedChild, ManagedChildLifecycle } from './accounts-family.mjs'
+import { CodexServerRequests } from './codex-server-requests.mjs'
+import { CodexUpstreamReserve } from './codex-upstream-reserve.mjs'
+import { stopCodexChild } from './codex-upstream-stop.mjs'
+import { assertStartupBinary } from './startup-compat.mjs'
 import type { JsonRpcId, JsonRpcResponse, RpcPeer, WireMessage } from './types.mjs'
-import { debugLog, sleep } from './util.mjs'
+import { debugLog } from './util.mjs'
 
-// The REAL `codex app-server` child behind the native-codex multiplexer. One
-// child per adapter process, JSON-RPC over the child's stdio, spawned with the
-// exact argv the desktop handed the shim (leading `-c` globals + `app-server`
-// + the desktop's flags) and the inherited environment, so the child sees the
-// same `CODEX_APP_TOOLS_PIPE_PATH`, `mcp_servers.codex_app` override and
-// ChatGPT login the desktop's private server would have.
-//
-// Two request-id spaces meet here:
-// - downstream -> upstream: the desktop's id is replaced by `u<n>`; the table
-//   remembers the peer and original id so the child's response can be sent
-//   back verbatim under the desktop's id.
-// - upstream -> downstream (server requests such as approvals): the child's id
-//   is replaced by `s<n>`; the desktop's answer is translated back.
-// Ids are never forwarded raw, so a desktop request id and a child server
-// request id can collide without ambiguity.
+export { sanitizeRateLimitPayload } from './codex-upstream-reserve.mjs'
 
 export interface CodexUpstreamOptions {
   binary: string
@@ -37,6 +18,23 @@ export interface CodexUpstreamOptions {
   onMessage: (message: WireMessage) => void
   onAvailabilityChange?: (available: boolean) => void
   maxRestarts?: number
+  processLifecycle?: ManagedChildLifecycle
+  onRawMessage?: (method: string, params: unknown, observation?: unknown) => void
+  beforeRequest?: (method: string) => unknown
+  reserveEnabled?: boolean
+  afterInitialize?: (upstream: CodexUpstream) => Promise<void>
+  mapDownstreamResult?: (method: string, result: unknown) => unknown
+}
+
+export type CodexChildEvent =
+  | { type: 'ready'; childId: string; pid: number }
+  | { type: 'exit'; childId: string }
+
+interface ChildIdentity {
+  child: ChildProcess
+  id: string
+  handshaken: boolean
+  ready: boolean
 }
 
 interface PendingUpstream {
@@ -46,46 +44,7 @@ interface PendingUpstream {
   resolve: ((value: unknown) => void) | null
   reject: ((error: Error) => void) | null
   timer: NodeJS.Timeout | null
-}
-
-interface PendingServerRequest {
-  upId: JsonRpcId
-  peer: RpcPeer
-  // The desktop already answered; the entry is kept only so the child's
-  // trailing `serverRequest/resolved` can still be rewritten.
-  answered: boolean
-}
-
-// Upper bound on answered-but-unresolved entries kept for id rewriting.
-const ANSWERED_SERVER_REQUEST_CAP = 512
-
-export function resolveNativeCodexBinary(env: NodeJS.ProcessEnv = process.env): string | null {
-  // ANYENGINE_NATIVE_CODEX=0 switches the passthrough off entirely, even
-  // when ANYENGINE_REAL_CODEX names a binary: the SSH/Remote twin runs this
-  // way so it never carries the account's rate-limit state into the App.
-  if ((env.ANYENGINE_NATIVE_CODEX ?? '').trim() === '0') return null
-  const explicit = env.ANYENGINE_REAL_CODEX?.trim()
-  if (explicit) return explicit
-  // Auto-detection is off in mock mode (the test suite): a dev machine with
-  // the desktop installed must not have its unit tests spawn the real binary.
-  if (env.ANYENGINE_MOCK === '1') return null
-  const bundled = '/Applications/ChatGPT.app/Contents/Resources/codex'
-  if (existsSync(bundled)) return bundled
-  const real = env.CODEX_REAL?.trim()
-  return real || null
-}
-
-// ANYENGINE_HIDE_RATE_LIMIT_UPSELL=1: superseded by auto-reserve (src/reserve.mts),
-// kept for one release. It strips the same "reserve" markers unconditionally —
-// whether or not the limit is actually reached — and, unlike auto-reserve, also
-// empties the OpenAI half of the model list (see `mergeModelList`).
-function hideRateLimitUpsell(): boolean {
-  return (process.env.ANYENGINE_HIDE_RATE_LIMIT_UPSELL ?? '').trim() === '1'
-}
-
-export function sanitizeRateLimitPayload<T>(value: T): T {
-  if (!hideRateLimitUpsell()) return value
-  return stripReserveMarkers(value)
+  observation: unknown
 }
 
 export class CodexUpstream {
@@ -96,21 +55,26 @@ export class CodexUpstream {
   private readonly onAvailabilityChange: ((available: boolean) => void) | null
   private readonly maxRestarts: number
   private child: ChildProcess | null = null
+  private childIdentity: ChildIdentity | null = null
+  private readonly childListeners = new Set<(event: CodexChildEvent) => void>()
+  private readonly closingChildren = new Map<ChildProcess, Promise<void>>()
   private stopping = false
   private restarts = 0
   private restartTimer: NodeJS.Timeout | null = null
   private nextUpId = 0
-  private nextServerId = 0
   private pending = new Map<string, PendingUpstream>()
-  private serverRequests = new Map<string, PendingServerRequest>()
+  private readonly serverRequests = new CodexServerRequests()
   private initializeParams: unknown = null
   private initializeResult: unknown = null
   private initializedSent = false
   private unavailable = false
-  // Auto-reserve (src/reserve.mts): the account's limit as last read from the
-  // child, plus the timer that re-reads it.
-  private readonly reserve = new ReserveState()
-  private reserveTimer: NodeJS.Timeout | null = null
+  private readonly reserve: CodexUpstreamReserve
+  private readonly lifecycle: ManagedChildLifecycle | null
+  private readonly raw: CodexUpstreamOptions['onRawMessage']
+  private readonly beforeRequest: CodexUpstreamOptions['beforeRequest']
+  private readonly afterInitialize: CodexUpstreamOptions['afterInitialize']
+  private readonly downstream: CodexUpstreamOptions['mapDownstreamResult']
+  private starting: Promise<void> | null = null
 
   constructor(options: CodexUpstreamOptions) {
     this.binary = options.binary
@@ -119,6 +83,20 @@ export class CodexUpstream {
     this.onMessage = options.onMessage
     this.onAvailabilityChange = options.onAvailabilityChange ?? null
     this.maxRestarts = options.maxRestarts ?? 3
+    this.lifecycle = options.processLifecycle ?? null
+    this.raw = options.onRawMessage
+    this.beforeRequest = options.beforeRequest
+    this.afterInitialize = options.afterInitialize
+    this.downstream = options.mapDownstreamResult
+    this.reserve = new CodexUpstreamReserve(
+      {
+        request: (method, params, timeoutMs) => this.request(method, params, timeoutMs),
+        running: () => this.running,
+        stopping: () => this.stopping,
+        onMessage: this.onMessage,
+      },
+      options.reserveEnabled,
+    )
   }
 
   get pid(): number | null {
@@ -137,10 +115,43 @@ export class CodexUpstream {
     return this.initializeResult
   }
 
+  onChildLifecycle(listener: (event: CodexChildEvent) => void): () => void {
+    this.childListeners.add(listener)
+    return () => {
+      this.childListeners.delete(listener)
+    }
+  }
+
+  async requestForChild(
+    childId: string,
+    method: string,
+    params: unknown,
+    timeoutMs = 10_000,
+  ): Promise<unknown> {
+    this.requireChild(childId)
+    const result = await this.request(method, params, timeoutMs)
+    this.requireChild(childId)
+    return result
+  }
+
   start(): void {
-    if (this.child || this.stopping || this.unavailable) return
+    if (this.child || this.starting || this.stopping || this.unavailable) return
+    assertStartupBinary(this.binary)
     const [command, prefixArgs] = spawnCommandFor(this.binary)
     const args = [...prefixArgs, ...this.args]
+    if (this.lifecycle) {
+      this.starting = this.lifecycle
+        .spawn(command, args, this.env)
+        .then(async (child) => {
+          if (this.stopping) await this.lifecycle?.stop(child)
+          else this.attachChild(child)
+        })
+        .catch((error: Error) => this.markUnavailable(error.message))
+        .finally(() => {
+          this.starting = null
+        })
+      return
+    }
     let child: ChildProcess
     try {
       child = spawn(command, args, {
@@ -151,16 +162,34 @@ export class CodexUpstream {
       this.markUnavailable(error instanceof Error ? error.message : String(error))
       return
     }
+    this.attachChild(child)
+  }
+  private attachChild(child: ChildProcess): void {
     this.child = child
-    debugLog('codex.upstream.spawn', { pid: child.pid ?? null, binary: this.binary, args })
+    this.childIdentity = { child, id: randomUUID(), handshaken: false, ready: false }
+    this.initializedSent = false
+    const closed = new Promise<void>((resolve) => child.once('close', () => resolve()))
+    this.closingChildren.set(child, closed)
+    void closed.then(() => {
+      this.closingChildren.delete(child)
+    })
+    debugLog('codex.upstream.spawn', {
+      pid: (child as ManagedChild).nativePid ?? child.pid ?? null,
+      supervisor: (child as ManagedChild).nativePid ? child.pid : null,
+      binary: this.binary,
+      args: this.args,
+    })
     child.once('error', (error) => {
+      if (this.child !== child) return
       debugLog('codex.upstream.spawnError', { message: error.message })
-      if (this.child === child) this.child = null
+      this.child = null
+      this.exitChild(child)
       this.markUnavailable(error.message)
       this.failPending(`codex upstream failed to start: ${error.message}`)
     })
     const rl = readline.createInterface({ input: child.stdout as NodeJS.ReadableStream })
     rl.on('line', (line) => {
+      if (this.child !== child) return
       const trimmed = line.trim()
       if (!trimmed) return
       let message: WireMessage
@@ -177,24 +206,29 @@ export class CodexUpstream {
     })
     child.once('exit', (code, signal) => {
       debugLog('codex.upstream.exit', { pid: child.pid ?? null, code, signal })
-      if (this.child === child) this.child = null
+      if (this.child !== child) return
+      this.child = null
+      this.exitChild(child)
       this.failPending('codex upstream exited')
       if (this.stopping) return
       this.scheduleRestart()
     })
   }
 
-  // Replays the cached desktop `initialize` (and `initialized`) after a
-  // respawn so the child accepts thread traffic again without the desktop
-  // noticing. Only the first initialize per child reaches the wire; later
-  // peers get the cached result.
-  async initialize(params: unknown): Promise<unknown> {
+  // Replays the cached desktop handshake after a respawn.
+  async initialize(params: unknown, timeoutMs = 30_000): Promise<unknown> {
     this.initializeParams = params
-    const result = await this.request('initialize', params, 30_000)
+    if (this.starting) await this.starting
+    const identity = this.childIdentity
+    const result = await this.request('initialize', params, timeoutMs)
+    if (!identity || identity !== this.childIdentity)
+      throw new Error('codex upstream child changed during initialize')
+    identity.handshaken = true
     this.initializeResult = result
-    // Before the handshake returns, so the desktop's first `account/read`
-    // already sees the right account (see RESERVE_FIRST_READ_TIMEOUT_MS).
-    await this.startReservePolling()
+    await this.afterInitialize?.(this)
+    await this.reserve.start()
+    if (identity !== this.childIdentity)
+      throw new Error('codex upstream child changed during initialize')
     return result
   }
 
@@ -202,56 +236,18 @@ export class CodexUpstream {
     return this.reserve.limited
   }
 
-  // The child only answers account reads once it is initialized, so this starts
-  // after the first handshake and then runs on its own timer. The awaited first
-  // read is capped; the timer's reads are not.
-  private async startReservePolling(): Promise<void> {
-    if (!this.reserve.active || this.reserveTimer || this.stopping) return
-    this.reserveTimer = setInterval(() => {
-      void this.readRateLimits(10_000)
-    }, RESERVE_POLL_MS)
-    this.reserveTimer.unref()
-    // Nothing to announce yet: the desktop drops every message that arrives
-    // before its initialize response, and that response has not been sent.
-    await this.readRateLimits(RESERVE_FIRST_READ_TIMEOUT_MS, false)
-  }
-
-  private async readRateLimits(timeoutMs: number, announce = true): Promise<void> {
-    if (!this.running || this.stopping) return
-    try {
-      const result = await this.request('account/rateLimits/read', {}, timeoutMs)
-      if (this.reserve.observeRead(result, 'poll') && announce) await this.announceAccount()
-    } catch (error) {
-      debugLog('reserve.readFailed', {
-        message: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
-
-  // Tell the desktop the account it should re-read. Without this it would keep
-  // the shape it learned at the last `account/read` until its own next poll.
-  private async announceAccount(): Promise<void> {
-    if (this.reserve.limited) {
-      this.onMessage({ jsonrpc: '2.0', method: 'account/updated', params: RESERVE_ACCOUNT_UPDATED })
-      return
-    }
-    try {
-      const params = accountUpdatedFor(await this.request('account/read', {}, 10_000))
-      if (params) this.onMessage({ jsonrpc: '2.0', method: 'account/updated', params })
-    } catch (error) {
-      debugLog('reserve.announceFailed', {
-        message: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
-
   markInitialized(): void {
-    if (this.initializedSent) return
+    const identity = this.childIdentity
+    if (this.initializedSent || !identity?.handshaken || !this.running || !identity.child.pid)
+      return
+    if (!this.write({ jsonrpc: '2.0', method: 'initialized', params: {} })) return
     this.initializedSent = true
-    this.notify('initialized', {})
+    identity.ready = true
+    this.emitChild({ type: 'ready', childId: identity.id, pid: identity.child.pid })
   }
 
   request(method: string, params: unknown, timeoutMs = 10_000): Promise<unknown> {
+    if (this.starting) return this.starting.then(() => this.request(method, params, timeoutMs))
     return new Promise((resolve, reject) => {
       if (!this.running) {
         reject(new Error('codex upstream unavailable'))
@@ -266,13 +262,20 @@ export class CodexUpstream {
             }, timeoutMs)
           : null
       timer?.unref()
-      this.pending.set(upId, { method, peer: null, downId: null, resolve, reject, timer })
+      const observation = this.beforeRequest?.(method)
+      this.pending.set(upId, {
+        method,
+        peer: null,
+        downId: null,
+        resolve,
+        reject,
+        timer,
+        observation,
+      })
       this.write({ jsonrpc: '2.0', id: upId, method, params })
     })
   }
 
-  // Forward a desktop request verbatim; the child's response is written back
-  // to `peer` under the desktop's own id.
   forwardRequest(peer: RpcPeer, downId: JsonRpcId, method: string, params: unknown): void {
     if (!this.running) {
       peer.send({
@@ -283,7 +286,16 @@ export class CodexUpstream {
       return
     }
     const upId = this.allocateUpId()
-    this.pending.set(upId, { method, peer, downId, resolve: null, reject: null, timer: null })
+    const observation = this.beforeRequest?.(method)
+    this.pending.set(upId, {
+      method,
+      peer,
+      downId,
+      resolve: null,
+      reject: null,
+      timer: null,
+      observation,
+    })
     debugLog('codex.upstream.forward', { method, downId, upId, peerId: peer.id })
     this.write({ jsonrpc: '2.0', id: upId, method, params })
   }
@@ -293,83 +305,54 @@ export class CodexUpstream {
     this.write({ jsonrpc: '2.0', method, params })
   }
 
-  // The desktop answered one of the child's server requests (approval,
-  // user input, token refresh). Translate the id back and hand it over.
   forwardClientResponse(response: JsonRpcResponse): boolean {
-    const key = String(response.id)
-    const entry = this.serverRequests.get(key)
-    if (!entry || entry.answered) return false
-    entry.answered = true
-    this.pruneAnsweredServerRequests()
-    debugLog('codex.upstream.serverRequestAnswered', { downId: response.id, upId: entry.upId })
-    const translated: JsonRpcResponse = { jsonrpc: '2.0', id: entry.upId }
-    if (response.error) translated.error = response.error
-    else translated.result = response.result ?? null
-    this.write(translated)
-    return true
+    return this.serverRequests.answer(response, (translated) => {
+      this.write(translated)
+    })
   }
 
-  // `serverRequest/resolved` carries the child's id; the desktop only knows
-  // the rewritten one. Also drops the table entry (the request is done).
   translateResolvedRequestId(upId: JsonRpcId): JsonRpcId | null {
-    for (const [downId, entry] of this.serverRequests.entries()) {
-      if (String(entry.upId) === String(upId)) {
-        this.serverRequests.delete(downId)
-        return downId
-      }
-    }
-    return null
+    return this.serverRequests.resolved(upId)
   }
 
   async stop(): Promise<void> {
     this.stopping = true
+    if (this.starting) await this.starting
     if (this.restartTimer) {
       clearTimeout(this.restartTimer)
       this.restartTimer = null
     }
-    if (this.reserveTimer) {
-      clearInterval(this.reserveTimer)
-      this.reserveTimer = null
-    }
+    this.reserve.stop()
     const child = this.child
+    if (child) this.exitChild(child)
     this.child = null
     this.failPending('adapter shutting down')
-    if (!child || child.exitCode != null || child.pid == null) return
-    const pid = child.pid
-    const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()))
-    try {
-      child.stdin?.end()
-    } catch {}
-    try {
-      process.kill(pid, 'SIGTERM')
-    } catch {}
-    const result = await Promise.race([
-      exited.then(() => 'exited'),
-      sleep(5_000).then(() => 'timeout'),
-    ])
-    if (result === 'timeout') {
-      try {
-        process.kill(pid, 'SIGKILL')
-      } catch {}
+    if (child) await stopCodexChild(child, this.closingChildren.get(child), this.lifecycle)
+    await this.lifecycle?.stopAll?.()
+    await Promise.all(this.closingChildren.values())
+  }
+
+  async restartForAccounts(): Promise<void> {
+    if (!this.stopping) throw new Error('Account restart requires a stopped child')
+    this.stopping = false
+    this.unavailable = false
+    this.restarts = 0
+    this.start()
+    if (this.initializeParams != null) {
+      await this.initialize(this.initializeParams)
+      this.markInitialized()
     }
-    debugLog('codex.upstream.stopped', { pid, result })
   }
 
   private handleChildMessage(message: WireMessage): void {
     if ('method' in message && message.method) {
-      // Notification or server request from the child. The mux picks the
-      // peer; for server requests it calls rewriteServerRequestId() so the
-      // desktop never sees the child's raw id.
-      if (/rateLimits/i.test(message.method) && 'params' in message) {
-        if (this.reserve.observeUpdate(message.params)) void this.announceAccount()
-        this.onMessage({ ...message, params: this.maskRateLimits(message.params) })
-        return
-      }
-      if (this.reserve.limited && message.method === 'account/updated') {
-        this.onMessage({ ...message, params: RESERVE_ACCOUNT_UPDATED })
-        return
-      }
-      this.onMessage(message)
+      if ('params' in message) this.raw?.(message.method, message.params)
+      const outgoing = this.reserve.notification(message)
+      this.onMessage(
+        this.downstream && 'params' in outgoing
+          ? { ...outgoing, params: this.downstream(message.method, outgoing.params) }
+          : outgoing,
+      )
       return
     }
     if ('id' in message) {
@@ -381,10 +364,14 @@ export class CodexUpstream {
       }
       this.pending.delete(String(response.id))
       if (entry.timer) clearTimeout(entry.timer)
+      if (!response.error) this.raw?.(entry.method, response.result, entry.observation)
       if (entry.peer) {
         const forwarded: JsonRpcResponse = { jsonrpc: '2.0', id: entry.downId }
         if (response.error) forwarded.error = response.error
-        else forwarded.result = this.transformResult(entry.method, response.result ?? null)
+        else {
+          const result = this.reserve.transformResult(entry.method, response.result ?? null)
+          forwarded.result = this.downstream?.(entry.method, result) ?? result
+        }
         debugLog('codex.upstream.response', {
           method: entry.method,
           downId: entry.downId,
@@ -394,65 +381,59 @@ export class CodexUpstream {
         entry.peer.send(forwarded)
         return
       }
-      if (response.error) entry.reject?.(new Error(response.error.message))
+      if (response.error)
+        entry.reject?.(
+          Object.assign(new Error(response.error.message), { rpcError: response.error }),
+        )
       else entry.resolve?.(response.result)
     }
   }
 
-  // The only place the child's answers are rewritten on their way to the
-  // desktop. A rate-limit read decides the reserve state and then loses its
-  // reserve markers; while the limit is reached the account report becomes the
-  // externally-authenticated shape (src/reserve.mts). Everything else is
-  // forwarded verbatim.
-  private transformResult(method: string, result: unknown): unknown {
-    if (/rateLimits/i.test(method)) {
-      this.reserve.observeRead(result, method)
-      return this.maskRateLimits(result)
-    }
-    if (!this.reserve.limited) return result
-    if (method === 'account/read') return RESERVE_ACCOUNT_READ
-    if (method === 'getAuthStatus') return RESERVE_AUTH_STATUS
-    return result
-  }
-
-  private maskRateLimits<T>(value: T): T {
-    if (this.reserve.limited) return stripReserveMarkers(value)
-    return sanitizeRateLimitPayload(value)
-  }
-
-  // Called by the mux once it knows which peer should see a server request.
-  // Allocates the downstream-facing id and records the mapping.
   rewriteServerRequestId(upId: JsonRpcId, peer: RpcPeer): string {
-    const downId = `s${++this.nextServerId}`
-    this.serverRequests.set(downId, { upId, peer, answered: false })
-    return downId
+    return this.serverRequests.rewrite(upId, peer)
   }
-
-  private pruneAnsweredServerRequests(): void {
-    let answered = 0
-    for (const entry of this.serverRequests.values()) if (entry.answered) answered += 1
-    if (answered <= ANSWERED_SERVER_REQUEST_CAP) return
-    for (const [downId, entry] of this.serverRequests.entries()) {
-      if (!entry.answered) continue
-      this.serverRequests.delete(downId)
-      answered -= 1
-      if (answered <= ANSWERED_SERVER_REQUEST_CAP / 2) break
-    }
-  }
-
   private allocateUpId(): string {
     return `u${++this.nextUpId}`
   }
 
-  private write(message: WireMessage): void {
+  private write(message: WireMessage): boolean {
     const stdin = this.child?.stdin
-    if (!stdin?.writable) return
+    if (!stdin?.writable) return false
     try {
       stdin.write(`${JSON.stringify(message)}\n`)
+      return true
     } catch (error) {
       debugLog('codex.upstream.writeError', {
         message: error instanceof Error ? error.message : String(error),
       })
+      return false
+    }
+  }
+
+  private requireChild(childId: string): void {
+    if (
+      !this.childIdentity?.ready ||
+      this.childIdentity.id !== childId ||
+      !this.running ||
+      this.child?.signalCode != null
+    )
+      throw new Error('codex upstream child is no longer ready')
+  }
+
+  private exitChild(child: ChildProcess): void {
+    if (this.childIdentity?.child !== child) return
+    const childId = this.childIdentity.id
+    this.childIdentity = null
+    this.emitChild({ type: 'exit', childId })
+  }
+
+  private emitChild(event: CodexChildEvent): void {
+    for (const listener of this.childListeners) {
+      try {
+        listener(event)
+      } catch {
+        debugLog('codex.upstream.lifecycleListenerFailed', { type: event.type })
+      }
     }
   }
 
@@ -484,10 +465,9 @@ export class CodexUpstream {
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null
       if (this.stopping) return
-      this.initializedSent = false
       this.start()
       if (this.initializeParams != null) {
-        void this.request('initialize', this.initializeParams, 30_000)
+        void this.initialize(this.initializeParams)
           .then((result) => {
             this.initializeResult = result
             this.markInitialized()

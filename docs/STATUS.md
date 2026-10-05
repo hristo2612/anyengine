@@ -1,5 +1,16 @@
 # Status
 
+- **M1, M2 and M3 locally accepted.** Product commit `ad0bdf7` is installed with
+  native routing, Home active, automatic rotation and replay off.
+- **Live acceptance passed:** seven native and seven bridge children with three
+  real Opus children; exact returned results; account continuation; overlapping
+  desktop/translator work; M3-only recovery; full Off/cache cleanup and reinstall.
+  See [M3 acceptance](evidence/m3-accounts-limits.md) and
+  [M2 acceptance](evidence/m2-acceptance.md).
+- **Verification:** full hermetic suite 2,101/2,101 before final narrow fixes;
+  subsequent affected suites and static/build gates passed. Historical TUI and
+  legacy router-only M0 observations remain in [M1 acceptance](evidence/m1-acceptance.md).
+
 - **Shipped:** multi-engine `codex app-server` adapter — Claude over an interactive PTY, Grok over ACP, GPT passed through to the real Codex child, plus the cross-engine `anyengine` MCP bridge and its natural-language model aliases.
 - **Shipped:** the full rebrand to anyengine, with a one-release `CLAUDE_CODEX_*` environment-variable compatibility shim (see CHANGELOG), and the public repository at <https://github.com/hristo2612/anyengine>.
 - **Verified:** `npm ci`, `npm run build`, `npm run check`, `npm run typecheck`, `npm run docs:build` and `cargo test --workspace` on Node 24; `npm test` now terminates in one run — 231 tests, 231 pass, 0 skipped. The inherited hang and the three failures it hid are fixed ([review](review-a2.md)).

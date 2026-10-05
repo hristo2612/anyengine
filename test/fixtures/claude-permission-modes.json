@@ -1,0 +1,54 @@
+{
+  "source": "Claude Code permission modes (code.claude.com/docs/en/permission-modes, Claude Code 2.1.284, read 2026-09-28)",
+  "columns": {
+    "read": "Read, Glob, Grep anywhere",
+    "writeInCwd": "Edit or Write inside the working directory",
+    "writeOutside": "Edit or Write anywhere else, temp directories included",
+    "net": "WebFetch or a shell command that reaches the network",
+    "unbounded": "Bash"
+  },
+  "modes": {
+    "default": {
+      "read": "allow",
+      "writeInCwd": "ask",
+      "writeOutside": "ask",
+      "net": "ask",
+      "unbounded": "ask"
+    },
+    "acceptEdits": {
+      "read": "allow",
+      "writeInCwd": "allow",
+      "writeOutside": "ask",
+      "net": "ask",
+      "unbounded": "ask"
+    },
+    "plan": {
+      "read": "allow",
+      "writeInCwd": "deny",
+      "writeOutside": "deny",
+      "net": "deny",
+      "unbounded": "deny"
+    },
+    "auto": {
+      "read": "allow",
+      "writeInCwd": "allow",
+      "writeOutside": "review",
+      "net": "review",
+      "unbounded": "review"
+    },
+    "dontAsk": {
+      "read": "allow",
+      "writeInCwd": "deny",
+      "writeOutside": "deny",
+      "net": "deny",
+      "unbounded": "deny"
+    },
+    "bypassPermissions": {
+      "read": "allow",
+      "writeInCwd": "allow",
+      "writeOutside": "allow",
+      "net": "allow",
+      "unbounded": "allow"
+    }
+  }
+}

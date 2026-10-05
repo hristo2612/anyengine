@@ -18,6 +18,7 @@
 //   FAKE_GROK_EVENTS_FILE    append one JSON line per client request/notification
 //   FAKE_GROK_SESSION_ID     session id returned by session/new
 //   FAKE_GROK_REPLY          answer text (default "PONG")
+//   FAKE_GROK_TOOL           `web_fetch`: the tool is a fetch grok labels read_only
 //   FAKE_GROK_SLOW_MS        delay before the prompt answers (for cancel tests)
 import fs from 'node:fs'
 import { createInterface } from 'node:readline'
@@ -79,24 +80,22 @@ async function runPrompt(id, params) {
   if (activePrompt?.cancelled) return finishPrompt(id, 'cancelled')
   if (/tool/i.test(text)) {
     const toolCallId = 'call-fake-1'
-    update(sid, {
-      sessionUpdate: 'tool_call',
-      toolCallId,
-      title: 'run_terminal_command',
-      rawInput: { command: 'echo hi', description: 'say hi' },
-      _meta: { 'x.ai/tool': { name: 'run_terminal_command', kind: 'execute', read_only: false } },
-    })
+    const fetch = process.env.FAKE_GROK_TOOL === 'web_fetch'
+    const name = fetch ? 'web_fetch' : 'run_terminal_command'
+    const meta = { 'x.ai/tool': { name, kind: fetch ? 'fetch' : 'execute', read_only: fetch } }
+    const rawInput = fetch
+      ? { url: 'https://example.com' }
+      : { command: 'echo hi', description: 'say hi' }
+    update(sid, { sessionUpdate: 'tool_call', toolCallId, title: name, rawInput, _meta: meta })
     if (!alwaysApprove) {
       const response = await askClient('session/request_permission', {
         sessionId: sid,
         toolCall: {
           toolCallId,
-          kind: 'execute',
-          title: 'Execute `echo hi`',
-          rawInput: { variant: 'Bash', command: 'echo hi', description: 'say hi' },
-          _meta: {
-            'x.ai/tool': { name: 'run_terminal_command', kind: 'execute', read_only: false },
-          },
+          kind: fetch ? 'fetch' : 'execute',
+          title: fetch ? 'Fetch https://example.com' : 'Execute `echo hi`',
+          rawInput: fetch ? rawInput : { variant: 'Bash', ...rawInput },
+          _meta: meta,
         },
         options: [
           { optionId: 'always-allow', name: 'Yes, and do not ask again', kind: 'allow_always' },
@@ -229,3 +228,7 @@ rl.on('line', (line) => {
   }
 })
 rl.on('close', () => process.exit(0))
+// The adapter closes stdin and sends SIGTERM together. Unhandled, a SIGTERM
+// that lands while this process is already exiting cuts its V8 coverage file
+// short, and one truncated file fails the whole coverage run.
+process.on('SIGTERM', () => process.exit(0))

@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import { postureJson, threadEngineFromRow, threadFromRow, turnFromRow } from './store-rows.mjs'
 import type {
   ThreadEngineRecord,
   ThreadItem,
@@ -92,6 +93,9 @@ export class SessionStore {
         updated_at INTEGER NOT NULL
       );
     `)
+    // A bridge sub-agent's parent linkage, which the child never records
+    // (src/upstream-subagents.mts). NULL for every other child thread.
+    this.ensureColumn('native_codex_threads', 'subagent_json', 'TEXT')
     // Mid-thread engine switching (src/rehome.mts). One row per app-facing
     // thread that has been re-homed at least once: which engine owns it now
     // and, when it has ever been served by the real Codex child, the child's
@@ -113,12 +117,13 @@ export class SessionStore {
     // Transcript carried over to a local engine, applied to the prompt of the
     // first turn after the switch and cleared with it.
     this.ensureColumn('threads', 'rehome_prefix', 'TEXT')
+    this.ensureColumn('threads', 'posture_json', 'TEXT')
     this.sanitizeLegacyEnumColumns()
   }
 
   getThreadEngine(threadId: string): ThreadEngineRecord | null {
     const row = this.db.prepare('SELECT * FROM thread_engines WHERE id = ?').get(threadId)
-    return row ? rowToThreadEngine(row) : null
+    return row ? threadEngineFromRow(row) : null
   }
 
   setThreadEngine(record: ThreadEngineRecord): void {
@@ -146,7 +151,7 @@ export class SessionStore {
 
   listThreadEngines(): ThreadEngineRecord[] {
     const rows = this.db.prepare('SELECT * FROM thread_engines').all() as unknown[]
-    return rows.map((row) => rowToThreadEngine(row))
+    return rows.map((row) => threadEngineFromRow(row))
   }
 
   clearThreadEnginePrefix(threadId: string): void {
@@ -176,6 +181,24 @@ export class SessionStore {
 
   deleteNativeCodexThread(threadId: string): void {
     this.db.prepare('DELETE FROM native_codex_threads WHERE id = ?').run(threadId)
+  }
+
+  setNativeCodexSubagent(threadId: string, json: string): void {
+    const now = nowSeconds()
+    this.db
+      .prepare(`
+        INSERT INTO native_codex_threads (id, created_at, updated_at, subagent_json)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET subagent_json=excluded.subagent_json
+      `)
+      .run(threadId, now, now, json)
+  }
+
+  listNativeCodexSubagents(): string[] {
+    const rows = this.db
+      .prepare('SELECT subagent_json FROM native_codex_threads WHERE subagent_json IS NOT NULL')
+      .all() as Array<{ subagent_json: unknown }>
+    return rows.map((row) => String(row.subagent_json))
   }
 
   listNativeCodexThreadIds(): string[] {
@@ -223,8 +246,8 @@ export class SessionStore {
           model_provider, claude_session_id, source, created_at, updated_at, status_json,
           approval_policy, sandbox_mode, permission_profile_id, ephemeral, thread_source, agent_role, agent_nickname,
           base_instructions, developer_instructions, personality, runtime_backend, codex_session_id,
-          rehome_prefix
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          rehome_prefix, posture_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           session_id=excluded.session_id,
           forked_from_id=excluded.forked_from_id,
@@ -251,7 +274,8 @@ export class SessionStore {
           personality=excluded.personality,
           runtime_backend=excluded.runtime_backend,
           codex_session_id=excluded.codex_session_id,
-          rehome_prefix=excluded.rehome_prefix
+          rehome_prefix=excluded.rehome_prefix,
+          posture_json=excluded.posture_json
       `)
       .run(
         thread.id,
@@ -282,12 +306,13 @@ export class SessionStore {
         thread.runtimeBackend,
         thread.codexSessionId,
         thread.rehomePrefix ?? null,
+        postureJson(thread.posture),
       )
   }
 
   getThread(id: string): ThreadRecord | null {
     const row = this.db.prepare('SELECT * FROM threads WHERE id = ?').get(id)
-    return row ? this.rowToThread(row) : null
+    return row ? threadFromRow(row) : null
   }
 
   listThreads(
@@ -393,7 +418,7 @@ export class SessionStore {
         `${cte} SELECT t.* FROM threads t WHERE ${where.join(' AND ')} ORDER BY t.${sortColumn} ${sortDirection}, t.id ${sortDirection} LIMIT ?`,
       )
       .all(...queryArgs, limit)
-    return rows.map((row: unknown) => this.rowToThread(row))
+    return rows.map((row: unknown) => threadFromRow(row))
   }
 
   updateThreadStatus(threadId: string, status: ThreadStatus): void {
@@ -458,14 +483,14 @@ export class SessionStore {
 
   getTurn(id: string): TurnRecord | null {
     const row = this.db.prepare('SELECT * FROM turns WHERE id = ?').get(id)
-    return row ? this.rowToTurn(row) : null
+    return row ? turnFromRow(row) : null
   }
 
   listTurns(threadId: string): TurnRecord[] {
     const rows = this.db
       .prepare('SELECT * FROM turns WHERE thread_id = ? ORDER BY started_at ASC')
       .all(threadId)
-    return rows.map((row: unknown) => this.rowToTurn(row))
+    return rows.map((row: unknown) => turnFromRow(row))
   }
 
   // Used by thread/rollback to drop the N most recent turns from a thread's
@@ -711,64 +736,5 @@ export class SessionStore {
 
   close(): void {
     this.db.close()
-  }
-
-  private rowToThread(row: any): ThreadRecord {
-    return {
-      id: String(row.id),
-      sessionId: String(row.session_id),
-      forkedFromId: row.forked_from_id == null ? null : String(row.forked_from_id),
-      preview: String(row.preview ?? ''),
-      name: row.name == null ? null : String(row.name),
-      archived: Number(row.archived) === 1,
-      cwd: String(row.cwd),
-      model: String(row.model),
-      reasoningEffort: row.reasoning_effort == null ? null : String(row.reasoning_effort),
-      modelProvider: String(row.model_provider),
-      claudeSessionId: row.claude_session_id == null ? null : String(row.claude_session_id),
-      source: String(row.source),
-      createdAt: Number(row.created_at),
-      updatedAt: Number(row.updated_at),
-      status: JSON.parse(String(row.status_json)),
-      approvalPolicy: row.approval_policy == null ? null : String(row.approval_policy),
-      sandboxMode: row.sandbox_mode == null ? null : String(row.sandbox_mode),
-      permissionProfileId:
-        row.permission_profile_id == null ? null : String(row.permission_profile_id),
-      ephemeral: Number(row.ephemeral ?? 0) === 1,
-      threadSource: row.thread_source == null ? null : String(row.thread_source),
-      agentRole: row.agent_role == null ? null : String(row.agent_role),
-      agentNickname: row.agent_nickname == null ? null : String(row.agent_nickname),
-      baseInstructions: row.base_instructions == null ? null : String(row.base_instructions),
-      developerInstructions:
-        row.developer_instructions == null ? null : String(row.developer_instructions),
-      personality: row.personality == null ? null : String(row.personality),
-      runtimeBackend: row.runtime_backend === 'codex' ? 'codex' : 'claude',
-      codexSessionId: row.codex_session_id == null ? null : String(row.codex_session_id),
-      rehomePrefix: row.rehome_prefix == null ? null : String(row.rehome_prefix),
-    }
-  }
-
-  private rowToTurn(row: any): TurnRecord {
-    return {
-      id: String(row.id),
-      threadId: String(row.thread_id),
-      status: String(row.status) as TurnStatus,
-      startedAt: row.started_at == null ? null : Number(row.started_at),
-      completedAt: row.completed_at == null ? null : Number(row.completed_at),
-      durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
-      items: JSON.parse(String(row.items_json)),
-      diff: String(row.diff ?? ''),
-      error: row.error_json == null ? null : JSON.parse(String(row.error_json)),
-    }
-  }
-}
-
-function rowToThreadEngine(row: any): ThreadEngineRecord {
-  return {
-    id: String(row.id),
-    engine: row.engine === 'gpt' ? 'gpt' : row.engine === 'grok' ? 'grok' : 'claude',
-    upstreamThreadId: row.upstream_thread_id == null ? null : String(row.upstream_thread_id),
-    pendingPrefix: row.pending_prefix == null ? null : String(row.pending_prefix),
-    carriedTurnId: row.carried_turn_id == null ? null : String(row.carried_turn_id),
   }
 }

@@ -2,13 +2,6 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, realpathSync } from '
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-// Extended cache TTL for 1-hour prompt caching
-if (!process.env.ANTHROPIC_BETAS) {
-  process.env.ANTHROPIC_BETAS = 'extended-cache-ttl-2025-04-11'
-} else if (!process.env.ANTHROPIC_BETAS.includes('extended-cache-ttl-2025-04-11')) {
-  process.env.ANTHROPIC_BETAS = `${process.env.ANTHROPIC_BETAS},extended-cache-ttl-2025-04-11`
-}
-
 // In-process Claude runtime — replaces the Python sidecar entirely. Talks to
 // @anthropic-ai/claude-agent-sdk directly so we get a single process boundary
 // (Codex App ⇄ adapter), faster cold-starts, and no JSONL bridge to maintain.
@@ -23,7 +16,6 @@ if (!process.env.ANTHROPIC_BETAS) {
 //     ThinkingBlock at end-of-turn even when streamed, same as Python
 //   * ToolUseBlock double-delivery dedup (skip start, take from AssistantMessage)
 //   * StructuredOutput synthetic-tool coercion
-//   * derive_permission_mode mapping for (approvalPolicy, sandbox, planMode)
 //   * multimodal user input (text + base64/url image blocks)
 //
 // What this file no longer needs (vs. Python):
@@ -31,11 +23,13 @@ if (!process.env.ANTHROPIC_BETAS) {
 //   * droppable_in_priority TypeError loop — JS Options is a stable type
 //   * rate_limit_event parse-gap fallback — JS SDK first-class
 //
-// Auth: relies on the host having `claude` CLI auth set up (claude /login or
-// ANTHROPIC_API_KEY). The SDK shells out to the bundled claude-code binary
-// installed via optionalDependencies.
+// Auth: Claude uses its own saved login/configuration. sdkPostureOptions supplies
+// the filtered child environment; inherited provider overrides never select auth.
 
 import type { Query } from '@anthropic-ai/claude-agent-sdk'
+import { reportClaudeLimit } from './limits-claude.mjs'
+import { contextPosture, isUnrestricted } from './posture.mjs'
+import { headlessIsolation, relayDecision, sdkPostureOptions } from './posture-claude.mjs'
 import type {
   ClaudeRuntime,
   PermissionDecision,
@@ -128,13 +122,15 @@ export class NativeClaudeRuntime implements ClaudeRuntime {
   async runTurn(context: RuntimeTurnContext, handlers: RuntimeHandlers): Promise<void> {
     const sdk = await this.loadSdk()
     const abort = new AbortController()
+    const isolation = headlessIsolation(context)
+    if (isolation) await handlers.onEvent({ type: 'notice', level: 'warning', message: isolation })
     return new Promise<void>((resolve, reject) => {
       // The SDK accepts either a plain string prompt OR an AsyncIterable of
       // SDKUserMessage envelopes. Always feed the iterable form so we have
       // room to attach image blocks alongside the text and the door is open
       // for mid-turn steer() calls.
       const promptIterable = this.buildPromptIterable(context)
-      const options = this.buildOptions(sdk, context, abort)
+      const options = this.buildOptions(sdk, context, abort, isolation)
 
       const query = sdk.query({ prompt: promptIterable, options })
       const pending: PendingTurn = {
@@ -270,6 +266,7 @@ export class NativeClaudeRuntime implements ClaudeRuntime {
     sdk: ClaudeSdk,
     context: RuntimeTurnContext,
     abort: AbortController,
+    isolation = headlessIsolation(context),
   ): Record<string, unknown> {
     const opts: Record<string, unknown> = {
       abortController: abort,
@@ -283,24 +280,24 @@ export class NativeClaudeRuntime implements ClaudeRuntime {
     if (resume) opts.resume = resume
     if (resume && context.forkSession) opts.forkSession = true
 
-    // Ensure extended cache TTL is explicitly requested
-    if (!process.env.ANTHROPIC_BETAS) {
-      process.env.ANTHROPIC_BETAS = 'extended-cache-ttl-2025-04-11'
-    }
     if (context.addDirs && context.addDirs.length > 0) opts.additionalDirectories = context.addDirs
     if (context.allowedTools && context.allowedTools.length > 0)
       opts.allowedTools = context.allowedTools
     if (context.mcpServers && typeof context.mcpServers === 'object')
       opts.mcpServers = context.mcpServers
+    // The PTY runtime's rule for project Claude config (src/posture-claude.mts):
+    // user settings alone, and only the MCP servers passed above.
+    if (isolation) {
+      opts.settingSources = ['user']
+      opts.strictMcpConfig = true
+    }
     if (context.outputFormat) opts.outputFormat = context.outputFormat
 
-    // Codex App's pinned policies map onto Claude SDK's permissionMode. plan
-    // mode supersedes everything. Relay rejects the SDK's dangerous bypass
-    // flag outside a recognized container sandbox, so App-level Full Access
-    // stays in default mode and auto-allows through canUseTool below. An
-    // explicit env override can still opt into bypassPermissions.
+    // Full access stays in default mode and auto-allows through canUseTool
+    // below; only an explicit env override opts into bypassPermissions.
     const permissionModeOverride = configuredPermissionMode()
-    const mode = derivePermissionMode(context.approvalPolicy, context.sandboxMode, context.planMode)
+    const posture = contextPosture(context)
+    const mode = derivePermissionMode(posture.plan)
     opts.permissionMode = mode
     if (mode === 'bypassPermissions') opts.allowDangerouslySkipPermissions = true
 
@@ -312,17 +309,14 @@ export class NativeClaudeRuntime implements ClaudeRuntime {
       }
     }
 
-    // Per-tool approval round-trip with Codex App. In App-level Full Access,
-    // the bridge auto-allows every permission request without surfacing a UI
-    // prompt. Explicit SDK bypass omits the callback because Claude never calls
-    // it in that mode.
+    // Per-tool approval round-trip with Codex App; an unrestricted posture
+    // auto-allows. Explicit SDK bypass omits the callback (Claude never calls it).
     if (mode !== 'plan' && mode !== 'bypassPermissions') {
-      const appFullAccess =
-        permissionModeOverride === null &&
-        (context.approvalPolicy === 'never' || context.sandboxMode === 'danger-full-access')
-      const autoAllow = appFullAccess || mode === 'dontAsk'
-      opts.canUseTool = this.makeCanUseTool(context, autoAllow)
+      const unrestricted = permissionModeOverride === null && isUnrestricted(posture)
+      opts.canUseTool = this.makeCanUseTool(context, unrestricted || mode === 'dontAsk')
     }
+    // The posture's deny or ask beats any allow rule; its shell rule beats an override.
+    Object.assign(opts, sdkPostureOptions(context, permissionModeOverride === null))
 
     // Project + developer + personality instructions ride along as a system
     // prompt append, preserving Claude Code's built-in preset.
@@ -384,10 +378,12 @@ export class NativeClaudeRuntime implements ClaudeRuntime {
         }
       }
 
-      // Auto-allow when the App has selected Full Access / bypassPermissions —
-      // matches the previous behaviour of skipping the canUseTool round-trip
-      // entirely for those modes.
+      // An unrestricted posture skips the round trip; otherwise the posture decides
+      // first (the PTY relay's rule) and only what it would ask reaches the app.
       if (autoAllow) return { behavior: 'allow' }
+      const relay = relayDecision(context, toolName, input)
+      if (relay.verdict === 'allow') return { behavior: 'allow', updatedInput: input }
+      if (relay.verdict === 'deny') return { behavior: 'deny', message: relay.reason }
 
       const requestId = `${context.threadId}:${context.turnId}:${toolName}:${toolUseId}`
       // Subagent-aware approval suppression: when Claude is mid-subagent we
@@ -1185,8 +1181,7 @@ export class NativeClaudeRuntime implements ClaudeRuntime {
     message: Record<string, unknown>,
   ): Promise<void> {
     if (type === 'rate_limit' || type === 'rate_limit_event') {
-      const msg = String(message.message ?? 'rate limit')
-      await pending.handlers.onEvent({ type: 'notice', level: 'warning', message: msg })
+      await reportClaudeLimit(message, pending.handlers)
       return
     }
     if (type === 'hook' || type === 'hook_event' || type === 'system_hook_event') {
@@ -1205,21 +1200,13 @@ export class NativeClaudeRuntime implements ClaudeRuntime {
   }
 }
 
-// Codex's (approvalPolicy, sandbox, planMode) tri-state → Claude SDK
-// permissionMode. This preserves the adapter's old sidecar mapping while using
-// the native TS SDK runtime.
+// The SDK's permissionMode: `plan` in plan mode, else `default`, where every
+// non-read tool reaches canUseTool and the posture decides it. `on-failure` is
+// on-request, never acceptEdits (spec 5.6, fix 6). An env override still wins.
 function derivePermissionMode(
-  approvalPolicy: string | null,
-  sandboxMode: string | null,
   planMode: boolean,
 ): 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto' {
-  // Env-level override always wins.
-  const envOverride = configuredPermissionMode()
-  if (envOverride) return envOverride
-  if (planMode) return 'plan'
-  if (sandboxMode === 'danger-full-access' || approvalPolicy === 'never') return 'default'
-  if (approvalPolicy === 'on-failure') return 'acceptEdits'
-  return 'default'
+  return configuredPermissionMode() ?? (planMode ? 'plan' : 'default')
 }
 
 function configuredPermissionMode():

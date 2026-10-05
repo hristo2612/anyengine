@@ -125,12 +125,12 @@ export function platformOs(): string {
 }
 
 // Codex app-server protocol version the adapter advertises (codex --version /
-// initialize userAgent). Bump alongside the generated schema (`npm run
-// generate:schema`). The 0.130 -> 0.142 delta is additive/widening (new
-// optional methods + enum variants), so reporting 0.142 stays compatible with
-// older Codex App builds while satisfying newer ones' minimum-version probe.
+// initialize userAgent) when nothing better is known. The shim passes the
+// bundled codex's own version in ANYENGINE_COMPAT_VERSION at every launch, so
+// this is only the fallback: keep it at the version ChatGPT.app bundles, and
+// move every written pin together with scripts/sync-codex-compat.mjs.
 // Override per host with ANYENGINE_COMPAT_VERSION.
-const DEFAULT_CODEX_COMPAT_VERSION = '0.142.3'
+const DEFAULT_CODEX_COMPAT_VERSION = '0.160.0'
 
 export function codexCompatVersion(): string {
   return (
@@ -590,21 +590,12 @@ export function codexProxyModelOptions(): Array<{
       .map((s) => s.trim())
       .filter(Boolean)
   } else {
-    const catalogCandidates = [
-      '/data00/home/zhengyongchuan/.codex/model_catalog.json',
-      join(homedir(), '.codex/model_catalog.json'),
-    ]
-    for (const p of catalogCandidates) {
-      if (existsSync(p)) {
-        try {
-          const cat = JSON.parse(readFileSync(p, 'utf8'))
-          if (cat && Array.isArray(cat.models)) {
-            ids = cat.models.map((m: any) => m.slug || m.id || m.model).filter(Boolean)
-            break
-          }
-        } catch {}
+    try {
+      const cat = JSON.parse(readFileSync(join(homedir(), '.codex/model_catalog.json'), 'utf8'))
+      if (cat && Array.isArray(cat.models)) {
+        ids = cat.models.map((m: any) => m.slug || m.id || m.model).filter(Boolean)
       }
-    }
+    } catch {}
     if (ids.length === 0) {
       ids = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini']
     }
@@ -632,16 +623,11 @@ export function codexExecRouteEnabled(env: NodeJS.ProcessEnv = process.env): boo
 export function resolveCodexBinary(): string | null {
   const explicit = process.env.CODEX_REAL
   if (explicit && explicit.trim()) return explicit.trim()
-  const knownCandidates = [
-    '/data00/home/zhengyongchuan/.local/node/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex.real',
-    join(
-      homedir(),
-      '.local/node/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex.real',
-    ),
-  ]
-  for (const c of knownCandidates) {
-    if (existsSync(c)) return c
-  }
+  const vendored = join(
+    homedir(),
+    '.local/node/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex.real',
+  )
+  if (existsSync(vendored)) return vendored
   // PATH walk is mostly for dev — production deployments should set
   // CODEX_REAL explicitly in the shim env (~/.zshenv).
   const paths = (process.env.PATH ?? '').split(':').filter(Boolean)

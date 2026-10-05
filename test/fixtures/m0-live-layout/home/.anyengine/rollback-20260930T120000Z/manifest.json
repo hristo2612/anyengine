@@ -1,0 +1,9 @@
+{
+  "entries": [
+    {
+      "target": "@HOME@/.zshrc",
+      "backup": "00-.zshrc.bak",
+      "mode": "0644"
+    }
+  ]
+}

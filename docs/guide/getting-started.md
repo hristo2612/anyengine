@@ -1,66 +1,111 @@
 # Getting started
 
-The anyengine lets the **Codex desktop app** talk to **Claude Code**
-through the native Codex `app-server` protocol. Codex App still runs its normal
-SSH version probe, bootstrap, and `app-server proxy` flow — but `codex
-app-server` is handled by this adapter instead of the real Codex runtime.
+AnyEngine lets you use GPT and Claude from either ChatGPT.app's coding workspace
+or Claude Code. Choose an engine per turn, carry conversation context across
+switches, and run mixed sub-agents. It uses the official vendor clients and your
+existing local logins. Grok remains available through the existing Grok backend.
 
-## How it fits together
+## Before you start
 
-```
-Codex App  ──SSH──▶  login shell  ──▶  codex (shim, earlier in PATH)
-                                          │
-                       app-server calls ──┘──▶  anyengine ──▶ Claude Code
-                       everything else  ──────▶ real Codex CLI (CODEX_REAL)
-```
+You need macOS, Node.js 24 or newer with npm, Git, ChatGPT.app, and the official
+Claude Code CLI. Use zsh or bash as your login shell. Sign in to ChatGPT.app and
+Claude Code through their normal login flows before setup. Grok is optional.
 
-The shim is the only integration point: it intercepts `codex app-server` and
-forwards everything else to the real Codex CLI, so it coexists with normal
-command-line Codex usage.
+M1–M3 have passed local acceptance and are available in this source checkout.
+A packaged release is pending; the package is not currently published to npm.
 
-## Prerequisites
+## Install from a checkout
 
-- **Node.js 24+** — the thread store uses `node:sqlite`, which Node 22 hides
-  behind `--experimental-sqlite`. The adapter does not pass that flag, so it
-  crashes at runtime on 22. Pin a binary with `ANYENGINE_NODE` if needed.
-- **Claude Code auth** — provide your own `ANTHROPIC_API_KEY`, supported
-  cloud-provider credentials, or a local `claude /login` session. Inject
-  credentials through your shell or secret manager; do not commit keys, OAuth
-  state, `.env` files, or acceptance-test transcripts.
-
-## Build
+From a clean AnyEngine Git checkout, run:
 
 ```bash
-npm install
-npm run build        # tsc -> dist/ (production artifact)
+npm run setup
 ```
 
-The only runtime dependency for Claude itself is
-`@anthropic-ai/claude-agent-sdk`, loaded in-process (it ships its own
-`claude-code` native binary per platform).
+Setup installs dependencies, builds and verifies a versioned library outside the
+checkout, then runs the existing activation command with automatic rollback.
+It asks before restarting ChatGPT.app, refuses while managed work is active, and
+checks real GPT and Claude work after activation. These checks use your existing
+plans and usage allowances. A staged app update or failed check can stop setup;
+follow the diagnostic and retained recovery command instead of forcing it.
 
-## Next steps
-
-1. **[Deployment](/guide/deployment)** — install the shim on the remote host and
-   bootstrap a fresh machine without sudo.
-2. **[Using the Codex App](/guide/gui)** — connect the GUI and run a turn.
-3. **[Configuration](/guide/configuration)** — models, effort, MCP, tools,
-   worktrees.
-4. **[Backends](/guide/backends)** — switch the active Claude Code route.
-
-## Local protocol testing
-
-Set `ANYENGINE_MOCK=1` to exercise the protocol without Claude credentials:
+For an unattended restart you have already authorized:
 
 ```bash
-ANYENGINE_MOCK=1 node dist/src/adapter.mjs app-server --listen ws://127.0.0.1:8788
+npm run setup -- --yes
 ```
 
-## Transports / modes
+Open a new terminal after setup. To use the CLI in the current terminal:
 
 ```bash
-node dist/src/adapter.mjs app-server --listen unix://
-node dist/src/adapter.mjs app-server proxy
-node dist/src/adapter.mjs app-server --listen stdio://
-node dist/src/adapter.mjs app-server --listen ws://127.0.0.1:8788
+export PATH="$HOME/.anyengine/bin:$PATH"
+anyengine status
+anyengine doctor
 ```
+
+Fresh installs manage that PATH entry in your shell configuration. Older installs
+keep their existing shell block for rollback compatibility; use the export above
+in each terminal. The control launcher
+lives at `~/.anyengine/bin/anyengine`. For a custom root, set `ANYENGINE_ROOT`
+before setup and use the current-terminal PATH command setup prints.
+
+## Use it
+
+**ChatGPT.app:** open a local coding project or conversation, choose GPT or Claude
+in the model picker, and send a prompt. Switch engines in the same conversation
+when useful. Ask for mixed sub-agents, for example “spawn seven agents, three on
+Opus and four on GPT.” Their results appear in the app's agent view.
+
+A new build starts with the bridge fallback until native fan-out is verified.
+To verify native fan-out for that build, run the following live check, then
+restart when the app is idle:
+
+```bash
+anyengine smoke --paths native-fanout
+anyengine restart
+```
+
+**Claude Code:** start a new `claude` session and use `/model` to select GPT.
+Generated `gpt-*` agents also let a Claude parent delegate to GPT. Select GPT
+for the current session when trying it; saving a default changes future sessions.
+See [GPT in Claude Code](claude-code.md).
+
+## Accounts and limits
+
+Your existing ChatGPT/Codex login is named Home. One account is enough. You can
+add your other accounts through the official login flow:
+
+```bash
+anyengine accounts list
+anyengine limits --refresh
+anyengine accounts add work --label Work
+anyengine accounts use work
+```
+
+Manual switches wait for managed work to finish, then the next message resumes
+on the selected account with context. Automatic rotation and replay start off.
+Enable rotation only when you want it:
+
+```bash
+anyengine accounts rotate on --threshold 100 --replay none
+anyengine accounts rotate off
+```
+
+An unavailable usage reading remains unknown. An account marked “needs login”
+cannot supply usable usage metadata until you sign in again. Ordinary Codex
+processes outside AnyEngine keep their own login. See [Control commands](control.md).
+
+## Turn it off
+
+```bash
+anyengine off
+```
+
+Off restores managed settings, returns managed account traffic to Home, stops
+router jobs and removes AnyEngine model entries from the shared cache. Start a
+new Claude Code session afterward because running sessions retain their environment.
+The existing library and recovery evidence remain available.
+
+For interrupted operations, preserve the recovery command printed during setup.
+[Deployment and recovery](deployment.md) explains staging and retries;
+[Using ChatGPT.app](gui.md) covers the picker and approvals.

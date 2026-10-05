@@ -278,6 +278,27 @@ function getServerConfig(serverName: string): Record<string, unknown> {
   return config as Record<string, unknown>
 }
 
+// An MCP server record as the App hands it over (ANYENGINE_MCP_SERVERS): the
+// record itself, a `{mcpServers}` wrapper, or the path of a file holding either.
+export function mcpServerRecord(base: unknown): Record<string, unknown> {
+  let value = base
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(readFileSync(value, 'utf8'))
+    } catch {
+      return {}
+    }
+  }
+  const record = asRecord(value)
+  if (
+    record.mcpServers &&
+    typeof record.mcpServers === 'object' &&
+    !Array.isArray(record.mcpServers)
+  )
+    return asRecord(record.mcpServers)
+  return record
+}
+
 function parseMcpValue(raw: string): unknown {
   const trimmed = raw.trim()
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {

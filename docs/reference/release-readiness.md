@@ -6,14 +6,20 @@ experimental.
 
 ## Shippable baseline
 
-The production path is still the TypeScript app-server adapter:
+M1–M3 are locally accepted and available in this source checkout. A packaged
+release remains pending. The supported local installation is `npm run setup`.
+See [Getting started](/guide/getting-started) and the
+[acceptance record](/evidence/m3-accounts-limits).
+
+The production path remains the TypeScript adapter and loopback router:
 
 - Node.js 24 runs the adapter, SQLite store, transports, server dispatch, and
   runtime bridge modules.
-- Codex App Remote still enters through the normal SSH, shim, `app-server
-  --listen unix://`, and `app-server proxy` flow.
-- The default runtime path is the Claude Agent SDK sidecar. Other backends remain
-  selectable through documented environment configuration.
+- Local ChatGPT.app uses its managed Codex shim; advanced Remote connections
+  retain the SSH, daemon and proxy flow, with host-specific authentication limits.
+- Installed Claude turns use the official interactive CLI; GPT uses official
+  Codex. Claude Code can also route GPT turns through the local Messages face.
+  Other adapter backends remain selectable through explicit environment overrides.
 
 Rust work is present, but it is opt-in protocol boundary work. It does not
 replace the TypeScript runtime, transport, store, or provider execution path.
@@ -46,7 +52,7 @@ The Rust-first direction is documented in
 - Representative app-server JSON fixtures are checked in.
 - Rust tests parse and re-serialize the covered fixtures.
 - CI runs `cargo test --workspace`.
-- CI runs a pinned fixture drift check against `@openai/codex@0.142.3`.
+- CI runs a pinned fixture drift check against `@openai/codex@0.160.0`.
 
 Not claimed yet:
 

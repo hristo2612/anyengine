@@ -1,0 +1,201 @@
+{
+  "codexVersion": "0.160.0",
+  "protocol": [
+    "initialize",
+    "initialized",
+    "getAuthStatus"
+  ],
+  "homes": [
+    {
+      "home": "empty",
+      "calls": [
+        {
+          "request": {
+            "includeToken": false,
+            "refreshToken": false
+          },
+          "keys": [
+            "authMethod",
+            "authToken",
+            "requiresOpenaiAuth"
+          ],
+          "authMethod": null,
+          "authTokenType": "null",
+          "hasAuthToken": false,
+          "requiresOpenaiAuth": true
+        },
+        {
+          "request": {
+            "includeToken": true,
+            "refreshToken": false
+          },
+          "keys": [
+            "authMethod",
+            "authToken",
+            "requiresOpenaiAuth"
+          ],
+          "authMethod": null,
+          "authTokenType": "null",
+          "hasAuthToken": false,
+          "requiresOpenaiAuth": true
+        },
+        {
+          "request": {
+            "includeToken": true,
+            "refreshToken": true
+          },
+          "keys": [
+            "authMethod",
+            "authToken",
+            "requiresOpenaiAuth"
+          ],
+          "authMethod": null,
+          "authTokenType": "null",
+          "hasAuthToken": false,
+          "requiresOpenaiAuth": true
+        }
+      ],
+      "refreshCalls": 0,
+      "cleanup": {
+        "directChildJoined": true,
+        "processGroupJoined": true
+      }
+    },
+    {
+      "home": "fresh-fake",
+      "calls": [
+        {
+          "request": {
+            "includeToken": false,
+            "refreshToken": false
+          },
+          "keys": [
+            "authMethod",
+            "authToken",
+            "requiresOpenaiAuth"
+          ],
+          "authMethod": "chatgpt",
+          "authTokenType": "null",
+          "hasAuthToken": false,
+          "requiresOpenaiAuth": true
+        },
+        {
+          "request": {
+            "includeToken": true,
+            "refreshToken": false
+          },
+          "keys": [
+            "authMethod",
+            "authToken",
+            "requiresOpenaiAuth"
+          ],
+          "authMethod": "chatgpt",
+          "authTokenType": "string",
+          "hasAuthToken": true,
+          "requiresOpenaiAuth": true
+        },
+        {
+          "request": {
+            "includeToken": true,
+            "refreshToken": true
+          },
+          "keys": [
+            "authMethod",
+            "authToken",
+            "requiresOpenaiAuth"
+          ],
+          "authMethod": "chatgpt",
+          "authTokenType": "string",
+          "hasAuthToken": true,
+          "requiresOpenaiAuth": true
+        }
+      ],
+      "refreshCalls": 1,
+      "refresh": {
+        "calls": [
+          {
+            "initialFakeRefresh": true,
+            "rotatedFakeRefresh": false
+          }
+        ],
+        "rotatedChain": true,
+        "replacementBearer": true,
+        "returnsReplacementBearer": true
+      },
+      "cleanup": {
+        "directChildJoined": true,
+        "processGroupJoined": true
+      }
+    },
+    {
+      "home": "stale-fake",
+      "calls": [
+        {
+          "request": {
+            "includeToken": false,
+            "refreshToken": false
+          },
+          "keys": [
+            "authMethod",
+            "authToken",
+            "requiresOpenaiAuth"
+          ],
+          "authMethod": "chatgpt",
+          "authTokenType": "null",
+          "hasAuthToken": false,
+          "requiresOpenaiAuth": true
+        },
+        {
+          "request": {
+            "includeToken": true,
+            "refreshToken": false
+          },
+          "keys": [
+            "authMethod",
+            "authToken",
+            "requiresOpenaiAuth"
+          ],
+          "authMethod": "chatgpt",
+          "authTokenType": "string",
+          "hasAuthToken": true,
+          "requiresOpenaiAuth": true
+        },
+        {
+          "request": {
+            "includeToken": true,
+            "refreshToken": true
+          },
+          "keys": [
+            "authMethod",
+            "authToken",
+            "requiresOpenaiAuth"
+          ],
+          "authMethod": "chatgpt",
+          "authTokenType": "string",
+          "hasAuthToken": true,
+          "requiresOpenaiAuth": true
+        }
+      ],
+      "refreshCalls": 2,
+      "refresh": {
+        "calls": [
+          {
+            "initialFakeRefresh": true,
+            "rotatedFakeRefresh": false
+          },
+          {
+            "initialFakeRefresh": false,
+            "rotatedFakeRefresh": true
+          }
+        ],
+        "rotatedChain": true,
+        "replacementBearer": true,
+        "returnsReplacementBearer": true
+      },
+      "cleanup": {
+        "directChildJoined": true,
+        "processGroupJoined": true
+      }
+    }
+  ]
+}

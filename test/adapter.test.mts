@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
-import { type ChildProcess, execFileSync, spawn as spawnChild } from 'node:child_process'
+import { type ChildProcess, execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
-import { chmod, mkdir, mkdtemp, readFile, rm as rmPath, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rm as rmPath, writeFile } from 'node:fs/promises'
 import http from 'node:http'
 import net from 'node:net'
 import { tmpdir } from 'node:os'
@@ -12,33 +12,37 @@ import test, { after } from 'node:test'
 import WebSocket from 'ws'
 import type { ProviderLoopConfigProjectionResult } from '../src/provider-loop-config.mjs'
 import { SessionStore } from '../src/store.mjs'
+import { fakeCodexAt } from './helpers/adapter-client.mjs'
+import { killChildren, spawn, stopProcess } from './helpers/children.mjs'
+import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
 
 const adapter = resolve('dist/src/adapter.mjs')
 const shim = resolve('scripts/codex-shim')
 
-// The tests here SIGTERM the adapters they start and move on, which leaves two
+// The tests here SIGTERM the adapters they start and move on, which leaves
 // races on a loaded runner: a child still running its shutdown holds this
-// process's stdio pipes open, so node:test never exits, and it can still be
-// writing into the temp home the test is removing.
-const spawned = new Set<ChildProcess>()
-const spawn: typeof spawnChild = ((...args: Parameters<typeof spawnChild>) => {
-  const child = spawnChild(...args)
-  spawned.add(child)
-  child.once('exit', () => spawned.delete(child))
-  return child
-}) as typeof spawnChild
+// process's stdio pipes open, so node:test never exits, it can still be
+// writing into the temp home the test is removing, and it can still be
+// writing its coverage file when the run reads them. So every child is
+// awaited in after(), and the websocket tests await theirs.
 const rm: typeof rmPath = (path, options) =>
   rmPath(path, { maxRetries: 5, retryDelay: 100, ...options })
 
-after(() => {
-  for (const child of spawned) {
-    try {
-      child.kill('SIGKILL')
-    } catch {}
-    child.stdin?.destroy()
-    child.stdout?.destroy()
-    child.stderr?.destroy()
-  }
+// Unix sockets sit directly in TMPDIR (a path inside a temp home can pass the
+// sockaddr_un limit), and an adapter stopped by a signal leaves its socket
+// file behind: after() removes each one.
+const sockets = new Set<string>()
+
+function testSocket(): string {
+  const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
+  sockets.add(sock)
+  return sock
+}
+
+after(async () => {
+  await killChildren()
+  await removeTempDirs()
+  await Promise.all([...sockets].map((sock) => rm(sock, { force: true })))
 })
 
 test('server dispatch covers current Codex app-server client method surface', async () => {
@@ -156,7 +160,7 @@ test('server dispatch covers current Codex app-server client method surface', as
 })
 
 test('stdio initialize -> thread/start -> turn/start streams mock response', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -224,7 +228,7 @@ test('stdio initialize -> thread/start -> turn/start streams mock response', asy
 })
 
 test('permission profile selection applies full access without legacy sandbox fields', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -295,7 +299,7 @@ test('thread/settings/update is the metadata handler for every shape the app sen
   // 1x approvalPolicy+permissions). All three reach threadMetadataUpdate; the
   // permission-profile handler that used to sit on a second, unreachable arm of
   // the same switch never saw any of them, so removing it changed nothing.
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -310,8 +314,13 @@ test('thread/settings/update is the metadata handler for every shape the app sen
       }),
     )
     await reader.nextResponse(1)
+    // Started on a profile, so a profile id left stale by a later shape shows.
     proc.stdin.write(
-      json({ id: 2, method: 'thread/start', params: { cwd: process.cwd(), model: 'sonnet' } }),
+      json({
+        id: 2,
+        method: 'thread/start',
+        params: { cwd: process.cwd(), model: 'sonnet', permissions: ':read-only' },
+      }),
     )
     const start = await reader.nextResponse(2)
     const threadId = start.result.thread.id
@@ -333,9 +342,9 @@ test('thread/settings/update is the metadata handler for every shape the app sen
     assert.equal(moved.result.model, 'haiku')
     assert.equal(moved.result.reasoningEffort, 'medium')
 
-    // Shape 2: the approvals control. The metadata handler applies the string
-    // `approvalPolicy` and ignores the `sandboxPolicy` object (it reads
-    // `params.sandbox`), which is the shipped behaviour, not an aspiration.
+    // Shape 2: the approvals control. The `sandboxPolicy` struct is applied
+    // with the approval policy (src/posture.mts); ignoring it once kept a
+    // stale, possibly looser posture.
     proc.stdin.write(
       json({
         id: 4,
@@ -350,11 +359,11 @@ test('thread/settings/update is the metadata handler for every shape the app sen
     )
     const approvals = await reader.nextResponse(4)
     assert.equal(approvals.result.approvalPolicy, 'on-request')
-    assert.equal(approvals.result.sandbox.type, 'dangerFullAccess')
+    assert.equal(approvals.result.sandbox.type, 'workspaceWrite')
+    assert.deepEqual(approvals.result.activePermissionProfile, { id: ':workspace', extends: null })
 
-    // Shape 3: the permission-profile variant. `permissions` is NOT read on
-    // this method — only the deleted handler ever did — so the thread keeps
-    // whatever profile its policy and sandbox already imply.
+    // Shape 3: the permission-profile variant. `permissions` is applied here
+    // too, so the thread takes the profile's sandbox.
     proc.stdin.write(
       json({
         id: 5,
@@ -369,7 +378,12 @@ test('thread/settings/update is the metadata handler for every shape the app sen
     )
     const profiled = await reader.nextResponse(5)
     assert.equal(profiled.result.approvalPolicy, 'never')
+    assert.equal(profiled.result.sandbox.type, 'dangerFullAccess')
     assert.equal(profiled.result.permissionProfile, null)
+    assert.deepEqual(profiled.result.activePermissionProfile, {
+      id: ':danger-full-access',
+      extends: null,
+    })
 
     // The deleted handler was the only source of this notification, so it must
     // never appear. Round-trip a cheap request and drain everything before it.
@@ -395,7 +409,7 @@ test('legacy CLAUDE_CODEX_* names still reach a running adapter', async () => {
   // deleting it breaks the shim without failing a single unit test. This test
   // exercises the promise end to end, through a real adapter process, so the
   // import cannot be removed silently again.
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const env = { ...process.env }
   for (const name of Object.keys(env)) if (name.startsWith('ANYENGINE_')) delete env[name]
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
@@ -433,7 +447,7 @@ test('legacy CLAUDE_CODEX_* names still reach a running adapter', async () => {
 })
 
 test('run registry records thread and turn lifecycle without raw prompt or response text', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const runLog = join(home, 'runs.jsonl')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -501,7 +515,7 @@ test('primary turn lifecycle keeps lightweight notLoaded envelopes', async () =>
   // turn/start and turn/started are metadata-only. Primary-thread completion
   // remains item-stream driven here; subagent completion is covered separately
   // because its terminal envelope must carry the final response for review UI.
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -566,7 +580,7 @@ test('primary turn lifecycle keeps lightweight notLoaded envelopes', async () =>
 })
 
 test('thread/turns/list honors default summary and explicit itemsView', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -622,7 +636,7 @@ test('thread/turns/list honors default summary and explicit itemsView', async ()
 })
 
 test('mcpServerStatus/list and startup notifications use conformant Codex v2 shapes', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -680,7 +694,7 @@ test('mcpServerStatus/list and startup notifications use conformant Codex v2 sha
 })
 
 test('thread/start with a gpt-* model marks the thread runtimeBackend=codex', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -726,7 +740,7 @@ test('thread/start with a gpt-* model marks the thread runtimeBackend=codex', as
 })
 
 test('model/list exposes Claude model aliases and Codex-safe reasoning efforts', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -836,12 +850,14 @@ test('model/list exposes Claude model aliases and Codex-safe reasoning efforts',
 })
 
 test('config/read exposes sanitized provider loop selection over stdio', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
       CODEX_HOME: home,
+      ANYENGINE_ROOT: join(home, 'control'),
+      ANYENGINE_REAL_CODEX: fakeCodexAt(home),
       ANYENGINE_PROVIDER: 'codex',
       ANYENGINE_AGENT_LOOP: 'codex-jsonl-proxy',
       ANYENGINE_RUNTIME_TYPE: '',
@@ -893,12 +909,14 @@ test('config/read exposes sanitized provider loop selection over stdio', async (
 })
 
 test('config/read resolves saved provider loop selection without projecting raw keys', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
       CODEX_HOME: home,
+      ANYENGINE_ROOT: join(home, 'control'),
+      ANYENGINE_REAL_CODEX: fakeCodexAt(home),
       ANYENGINE_PROVIDER: '',
       ANYENGINE_AGENT_LOOP: '',
       ANYENGINE_RUNTIME_TYPE: '',
@@ -957,7 +975,7 @@ test('config/read resolves saved provider loop selection without projecting raw 
 })
 
 test('config writes persist across adapter restarts', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   try {
     const first = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -1020,7 +1038,7 @@ test('config writes persist across adapter restarts', async () => {
 })
 
 test('invalid persisted model selections are repaired to a selectable model', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   try {
     const adapterConfigDir = join(home, 'anyengine')
     await mkdir(adapterConfigDir, { recursive: true })
@@ -1072,7 +1090,7 @@ test('invalid persisted model selections are repaired to a selectable model', as
 })
 
 test('Codex++ model and effort selections map into Claude runtime context', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -1138,7 +1156,7 @@ test('Codex++ model and effort selections map into Claude runtime context', asyn
 })
 
 test('Codex app config payload model and effort map into Claude runtime context', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -1196,7 +1214,7 @@ test('Codex app config payload model and effort map into Claude runtime context'
 })
 
 test('Codex app model ids and outputSchema map into Claude runtime context', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -1270,7 +1288,7 @@ test('Codex title-generation turn runs through the runtime instead of a hardcode
   // model would have produced. Now the turn flows through runRuntimeTurn just
   // like any other structured output turn — the model maps to the summary
   // alias (haiku) and the user message is recorded.
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const debugLog = join(home, 'debug.jsonl')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -1372,13 +1390,15 @@ test('Codex title-generation turn runs through the runtime instead of a hardcode
 })
 
 test('stateful HTTP bridge runtimes keep Codex title-generation turns local', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const debugLog = join(home, 'debug.jsonl')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
       CODEX_HOME: home,
+      ANYENGINE_ROOT: join(home, 'control'),
+      ANYENGINE_REAL_CODEX: fakeCodexAt(home),
       ANYENGINE_RUNTIME_TYPE: 'agent-http',
       ANYENGINE_HTTP_BASE_URL: 'http://127.0.0.1:9',
       ANYENGINE_HTTP_MANAGE_BRIDGE: '1',
@@ -1440,7 +1460,7 @@ test('stateful HTTP bridge runtimes keep Codex title-generation turns local', as
 })
 
 test('default runtime tool policy leaves Claude Code tools unrestricted unless env overrides', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -1489,10 +1509,10 @@ test('default runtime tool policy leaves Claude Code tools unrestricted unless e
 })
 
 test('unix websocket app-server accepts initialize', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   // Keep the socket path short — a mkdtemp dir nested under macOS tmpdir blows
   // past the ~104-byte sockaddr_un limit, which surfaced as a bind EINVAL.
-  const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
+  const sock = testSocket()
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -1502,39 +1522,18 @@ test('unix websocket app-server accepts initialize', async () => {
     const ws = new WebSocket('ws://localhost/', {
       createConnection: (() => net.createConnection(sock)) as typeof net.createConnection,
     })
-    await once(ws, 'open')
-    ws.send(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'initialize',
-        params: { clientInfo: { name: 'test', title: 'Test', version: '0' }, capabilities: null },
-      }),
-    )
-    // adapter now also pushes account/updated + mcpServer/startupStatus/updated
-    // notifications after handshake; filter by id rather than grabbing the
-    // first frame off the wire.
-    let response: any = null
-    for (let i = 0; i < 5; i += 1) {
-      const [data] = (await once(ws, 'message')) as [Buffer]
-      const msg = JSON.parse(data.toString('utf8'))
-      if (msg.id === 1) {
-        response = msg
-        break
-      }
-    }
-    assert.equal(response.id, 1)
+    const response = await initializeOver(ws, 'test')
     assert.equal(response.result.codexHome, home)
     ws.close()
   } finally {
-    proc.kill()
+    await stopChild(proc)
     await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
   }
 })
 
 test('unix daemon keeps active turns alive across peer reconnect', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
-  const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
+  const home = await tempDir('anyengine-test-')
+  const sock = testSocket()
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
     env: {
@@ -1611,8 +1610,8 @@ test('unix daemon keeps active turns alive across peer reconnect', async () => {
 })
 
 test('unix daemon recovers stale in-progress turns after process restart', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
-  const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
+  const home = await tempDir('anyengine-test-')
+  const sock = testSocket()
   let proc = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -1691,7 +1690,7 @@ test('unix daemon recovers stale in-progress turns after process restart', async
 })
 
 test('stdio app-server recovers stale in-progress turns after process restart', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   let proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -1754,7 +1753,7 @@ test('stdio app-server recovers stale in-progress turns after process restart', 
 })
 
 test('startup recovery terminalizes persisted in-progress item liveness', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const store = new SessionStore(join(home, 'state.sqlite'))
   const threadId = randomUUID()
   const childThreadId = randomUUID()
@@ -1862,7 +1861,7 @@ test('startup recovery terminalizes persisted in-progress item liveness', async 
 })
 
 test('startup recovery repairs stale items on already-terminal turns and is idempotent', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const store = new SessionStore(join(home, 'state.sqlite'))
   const threadId = randomUUID()
   const turnId = randomUUID()
@@ -1944,7 +1943,7 @@ test('startup recovery repairs stale items on already-terminal turns and is idem
 })
 
 test('startup recovery removes legacy activity markers from completed subagent turns', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const store = new SessionStore(join(home, 'state.sqlite'))
   const threadId = randomUUID()
   const turnId = randomUUID()
@@ -2033,20 +2032,23 @@ test('startup recovery removes legacy activity markers from completed subagent t
 })
 
 test('app-server proxy forwards websocket handshake bytes to unix daemon', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   // Keep the socket path short — a mkdtemp dir nested under macOS tmpdir blows
   // past the ~104-byte sockaddr_un limit, which surfaced as a bind EINVAL.
-  const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
+  const sock = testSocket()
   const daemon = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
-  const proxy = spawn(process.execPath, [adapter, 'app-server', 'proxy', '--sock', sock], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
-  })
+  let proxy: ChildProcess | null = null
   try {
+    // The proxy gives up on a socket that is not there within 10 s: start it
+    // once the daemon listens, not racing a loaded runner.
     await waitForStderr(daemon, /listening on/)
+    proxy = spawn(process.execPath, [adapter, 'app-server', 'proxy', '--sock', sock], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    })
     const stdout = new TextCollector(proxy)
     proxy.stdin?.write(
       [
@@ -2062,134 +2064,87 @@ test('app-server proxy forwards websocket handshake bytes to unix daemon', async
     )
     await stdout.waitFor(/101 Switching Protocols/)
   } finally {
-    proxy.kill()
-    daemon.kill()
+    await stopChild(proxy)
+    await stopChild(daemon)
     await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
   }
 })
 
 test('app-server proxy carries websocket JSON-RPC traffic over stdio', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   // Keep the socket path short — a mkdtemp dir nested under macOS tmpdir blows
   // past the ~104-byte sockaddr_un limit, which surfaced as a bind EINVAL.
-  const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
+  const sock = testSocket()
   const daemon = spawn(process.execPath, [adapter, 'app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
-  const proxy = spawn(process.execPath, [adapter, 'app-server', 'proxy', '--sock', sock], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
-  })
+  let proxy: ChildProcess | null = null
   try {
     await waitForStderr(daemon, /listening on/)
+    proxy = spawn(process.execPath, [adapter, 'app-server', 'proxy', '--sock', sock], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
+    })
     const stream = new ChildProcessDuplex(proxy)
     const ws = new WebSocket('ws://localhost/', {
       createConnection: (() => stream) as unknown as typeof net.createConnection,
     })
-    await once(ws, 'open')
-    ws.send(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'initialize',
-        params: {
-          clientInfo: { name: 'proxy-test', title: 'Proxy Test', version: '0' },
-          capabilities: null,
-        },
-      }),
-    )
-    // adapter pushes notifications post-handshake; filter for the response.
-    let response: any = null
-    for (let i = 0; i < 5; i += 1) {
-      const [data] = (await once(ws, 'message')) as [Buffer]
-      const msg = JSON.parse(data.toString('utf8'))
-      if (msg.id === 1) {
-        response = msg
-        break
-      }
-    }
-    assert.equal(response.id, 1)
+    const response = await initializeOver(ws, 'proxy-test', proxy)
     assert.equal(response.result.codexHome, home)
     ws.close()
   } finally {
-    proxy.kill()
-    daemon.kill()
+    await stopChild(proxy)
+    await stopChild(daemon)
     await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
   }
 })
 
 test('remote shim launches daemon and proxy with Codex-compatible commands', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   // Keep the socket path short — a mkdtemp dir nested under macOS tmpdir blows
   // past the ~104-byte sockaddr_un limit, which surfaced as a bind EINVAL.
-  const sock = join(tmpdir(), `ccx-test-${randomUUID().slice(0, 8)}.sock`)
+  const sock = testSocket()
+  const env = {
+    ...process.env,
+    CODEX_HOME: home,
+    ANYENGINE_ADAPTER: adapter,
+    ANYENGINE_MOCK: '1',
+    NODE_NO_WARNINGS: '1',
+    // Keep the shim hermetic: never source the developer's own runtime.env.
+    ANYENGINE_RUNTIME_ENV: '/dev/null',
+  }
   const daemon = spawn(shim, ['app-server', '--listen', `unix://${sock}`], {
     stdio: ['ignore', 'ignore', 'pipe'],
-    env: {
-      ...process.env,
-      CODEX_HOME: home,
-      ANYENGINE_ADAPTER: adapter,
-      ANYENGINE_MOCK: '1',
-      NODE_NO_WARNINGS: '1',
-      // Keep the shim hermetic: never source the developer's own runtime.env.
-      ANYENGINE_RUNTIME_ENV: '/dev/null',
-    },
+    env,
   })
-  const proxy = spawn(shim, ['app-server', 'proxy', '--sock', sock], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      CODEX_HOME: home,
-      ANYENGINE_ADAPTER: adapter,
-      ANYENGINE_MOCK: '1',
-      NODE_NO_WARNINGS: '1',
-      // Keep the shim hermetic: never source the developer's own runtime.env.
-      ANYENGINE_RUNTIME_ENV: '/dev/null',
-    },
-  })
+  let proxy: ChildProcess | null = null
   try {
     await waitForStderr(daemon, /listening on/)
+    proxy = spawn(shim, ['app-server', 'proxy', '--sock', sock], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env,
+    })
     const stream = new ChildProcessDuplex(proxy)
     const ws = new WebSocket('ws://localhost/', {
       createConnection: (() => stream) as unknown as typeof net.createConnection,
     })
-    await once(ws, 'open')
-    ws.send(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'initialize',
-        params: {
-          clientInfo: { name: 'shim-test', title: 'Shim Test', version: '0' },
-          capabilities: null,
-        },
-      }),
-    )
-    // The adapter now also pushes account/updated + mcpServer/startupStatus/updated
-    // notifications right after handshake; the response can land in any order
-    // relative to those. Filter for the matching id rather than grabbing the
-    // first frame off the wire.
-    let response: any = null
-    for (let i = 0; i < 5; i += 1) {
-      const [data] = (await once(ws, 'message')) as [Buffer]
-      const msg = JSON.parse(data.toString('utf8'))
-      if (msg.id === 1) {
-        response = msg
-        break
-      }
-    }
-    assert.equal(response?.result?.codexHome, home)
+    const response = await initializeOver(ws, 'shim-test', proxy)
+    assert.equal(response.result.codexHome, home)
     ws.close()
   } finally {
-    proxy.kill()
-    daemon.kill()
+    await stopChild(proxy)
+    // The shim backgrounds and disowns the adapter daemon: stop it by pid, or
+    // it idles out after this suite and writes its coverage file then.
+    const pid = Number(await readFile(`${sock}.pid`, 'utf8').catch(() => ''))
+    if (pid > 0) await stopProcess(pid)
+    await stopChild(daemon)
     await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
   }
 })
 
 test('remote utility methods use v2 response shapes', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2235,7 +2190,7 @@ test('remote utility methods use v2 response shapes', async () => {
 })
 
 test('process/spawn supports shell strings, errors, and debug logs terminal lifecycle', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const debugLog = join(home, 'adapter-debug.jsonl')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -2310,7 +2265,7 @@ test('process/spawn supports shell strings, errors, and debug logs terminal life
 })
 
 test('review/start and thread/compact/start emit real turn items', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2383,7 +2338,7 @@ test('review/start and thread/compact/start emit real turn items', async () => {
 })
 
 test('Claude thinking maps to Codex reasoning summary and content deltas', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2431,7 +2386,7 @@ test('Claude thinking maps to Codex reasoning summary and content deltas', async
 })
 
 test('Claude token usage maps to thread/tokenUsage/updated notifications', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2493,7 +2448,7 @@ test('Claude token usage maps to thread/tokenUsage/updated notifications', async
 })
 
 test('baseInstructions / developerInstructions / personality flow into the system prompt addendum', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2546,7 +2501,7 @@ test('baseInstructions / developerInstructions / personality flow into the syste
 })
 
 test('Claude hook events are rendered as Codex hookPrompt ThreadItems', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2594,7 +2549,7 @@ test('Claude hook events are rendered as Codex hookPrompt ThreadItems', async ()
 })
 
 test('thread/compact/start drives Claude (summary model) instead of the local stringified summary', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2655,7 +2610,7 @@ test('thread/compact/start drives Claude (summary model) instead of the local st
 })
 
 test('localImage user input becomes a multimodal Claude prompt + an imageView ThreadItem', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   // Tiny 1x1 PNG to avoid pulling a real image binary.
   const png1x1 = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
@@ -2717,7 +2672,7 @@ test('localImage user input becomes a multimodal Claude prompt + an imageView Th
 })
 
 test('Claude WebSearch tool maps to native Codex webSearch ThreadItem with action', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2773,7 +2728,7 @@ test('Claude WebSearch tool maps to native Codex webSearch ThreadItem with actio
 })
 
 test('modelProvider/capabilities/read advertises webSearch=true unless ANYENGINE_WEBSEARCH=0', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2790,7 +2745,7 @@ test('modelProvider/capabilities/read advertises webSearch=true unless ANYENGINE
 })
 
 test('config/value/write persists arbitrary settings keys across restarts', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const env = { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' }
   // Round 1: write a custom key + a known typed key.
   const proc1 = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
@@ -2850,7 +2805,7 @@ test('config/value/write persists arbitrary settings keys across restarts', asyn
 })
 
 test('thread/inject_items appends a synthetic turn carrying the injected text', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2921,7 +2876,7 @@ test('thread/inject_items appends a synthetic turn carrying the injected text', 
 })
 
 test('turn/start planMode=true flows into Claude SDK permission_mode plan', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -2965,7 +2920,7 @@ test('turn/start planMode=true flows into Claude SDK permission_mode plan', asyn
 })
 
 test('TodoWrite maps to a Codex v2 turn/plan/updated notification, not a timeline item', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3018,7 +2973,7 @@ test('TodoWrite maps to a Codex v2 turn/plan/updated notification, not a timelin
 })
 
 test('Codex App approvalPolicy=never + sandbox=danger-full-access auto-accepts tool calls', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3081,7 +3036,7 @@ test('Codex App approvalPolicy=never + sandbox=danger-full-access auto-accepts t
 })
 
 test('Task subagent emits the canonical activity lifecycle and leaves wait as the terminal display state', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -3606,7 +3561,7 @@ test('ANYENGINE_SUBAGENT_COMPLETED=0 forces the legacy sub-agent presentation ov
   // terminal item for a child that succeeded, so no synthetic `closeAgent`
   // appears here either — that cleanup is kept for failed and orphaned
   // children.
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -3681,7 +3636,7 @@ test('ANYENGINE_SUBAGENT_COMPLETED=0 forces the legacy sub-agent presentation ov
 })
 
 test('Codex cc 26.818 settles subagents without the unsupported completed activity kind', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3792,7 +3747,7 @@ test('Codex cc 26.818 settles subagents without the unsupported completed activi
 })
 
 test('subagent without a terminal result emits interrupted activity and failed wait', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3863,7 +3818,7 @@ test('subagent without a terminal result emits interrupted activity and failed w
 })
 
 test('bare /workflows lists prior workflow runs without invoking the model', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3920,7 +3875,7 @@ test('bare /workflows lists prior workflow runs without invoking the model', asy
 })
 
 test('thread/start picks up effort from config.model_reasoning_effort when top-level effort is absent', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -3976,7 +3931,7 @@ test('thread/start picks up effort from config.model_reasoning_effort when top-l
 })
 
 test('thread/start coerces invalid threadSource / source values so Codex App never sees a non-enum', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4041,7 +3996,7 @@ test('thread/start coerces invalid threadSource / source values so Codex App nev
 
 test('legacy DB rows with invalid thread_source / source are sanitized on startup', async () => {
   const { SessionStore } = await import(resolve('dist/src/store.mjs'))
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-migrate-'))
+  const home = await tempDir('anyengine-migrate-')
   const dbPath = join(home, 'state.sqlite')
   try {
     // First open: create schema, then poison the rows directly via raw SQL
@@ -4100,7 +4055,7 @@ test('legacy DB rows with invalid thread_source / source are sanitized on startu
 })
 
 test('thread/start with ephemeral=true is hidden from thread/list and surfaces threadSource', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4147,7 +4102,7 @@ test('thread/start with ephemeral=true is hidden from thread/list and surfaces t
 
 test('debug.jsonl rotates once it crosses ANYENGINE_DEBUG_LOG_MAX_BYTES', async () => {
   const util = await import(resolve('dist/src/util.mjs'))
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-rotate-'))
+  const home = await tempDir('anyengine-rotate-')
   const logPath = join(home, 'debug.jsonl')
   const prevPath = process.env.ANYENGINE_DEBUG_LOG
   const prevMax = process.env.ANYENGINE_DEBUG_LOG_MAX_BYTES
@@ -4197,16 +4152,16 @@ test('defaultSocketPath stays within the platform sun_path limit', async () => {
 })
 
 test('approval requests round-trip through Codex server requests', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
-    // A bare thread/start defaults to approvalPolicy=never + danger-full-access
-    // (see the default-permissions test below), which auto-approves commands and
-    // emits no requestApproval at all. Ask for the approving policy explicitly.
+    // Ask for an approving policy explicitly: a bare thread/start is read-only.
+    // A command is asked about only where the shell is the engine's own (full
+    // access); a bounded thread's shell is declined without a card.
     proc.stdin.write(
       json({
         id: 1,
@@ -4215,8 +4170,8 @@ test('approval requests round-trip through Codex server requests', async () => {
           cwd: process.cwd(),
           experimentalRawEvents: false,
           persistExtendedHistory: false,
-          approvalPolicy: 'on-request',
-          sandbox: 'workspace-write',
+          approvalPolicy: 'untrusted',
+          sandbox: 'danger-full-access',
         },
       }),
     )
@@ -4274,12 +4229,11 @@ test('approval requests round-trip through Codex server requests', async () => {
   }
 })
 
-// Regression guard for the hang described in docs/review-a2.md: the approval
-// round-trip test above only makes sense while a bare thread/start (no
-// permission params) still defaults to the non-approving policy. If this
-// default ever changes, this test fails instead of the other one hanging.
-test('thread/start without permission params defaults to never + danger-full-access', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+// A bare thread/start gets Codex's own default, read-only asking before
+// anything leaves it, never full access (spec 5.6, fix 1). The approval
+// round-trip tests name their posture explicitly.
+test('thread/start without permission params defaults to on-request + read-only', async () => {
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4294,8 +4248,8 @@ test('thread/start without permission params defaults to never + danger-full-acc
       }),
     )
     const start = await reader.nextResponse(1)
-    assert.equal(start.result.approvalPolicy, 'never')
-    assert.equal(start.result.sandbox.type, 'dangerFullAccess')
+    assert.equal(start.result.approvalPolicy, 'on-request')
+    assert.equal(start.result.sandbox.type, 'readOnly')
   } finally {
     proc.kill()
     await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
@@ -4303,7 +4257,7 @@ test('thread/start without permission params defaults to never + danger-full-acc
 })
 
 test('generic Claude tools complete as Codex mcpToolCall items', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4362,15 +4316,14 @@ test('generic Claude tools complete as Codex mcpToolCall items', async () => {
 })
 
 test('an MCP tool call runs without asking the app for a file-change approval', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
   })
   const reader = new JsonLineReader(proc)
   try {
-    // The approving policy: under never / danger-full-access no approval is
-    // ever requested, so it would prove nothing about the item type.
+    // An approving policy, so a missing card would be visible.
     proc.stdin.write(
       json({
         id: 1,
@@ -4431,7 +4384,7 @@ test('an MCP tool call runs without asking the app for a file-change approval', 
 })
 
 test('turn/steer appends user input to an active Claude turn', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4507,7 +4460,7 @@ test('AskUserQuestion is bridged to Codex item/tool/requestUserInput', async () 
   // card. We bridge them to Codex's native request_user_input reverse RPC
   // so the App pops its structured picker, then route the user's answer
   // back to the model.
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4610,7 +4563,7 @@ test('AskUserQuestion is bridged to Codex item/tool/requestUserInput', async () 
 })
 
 test('compatibility-only UI methods return schema-shaped responses', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4691,7 +4644,7 @@ test('compatibility-only UI methods return schema-shaped responses', async () =>
 })
 
 test('file change approval emits patch and git diff updates', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const repo = join(home, 'repo')
   execFileSync('mkdir', ['-p', repo])
   execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' })
@@ -4709,8 +4662,7 @@ test('file change approval emits patch and git diff updates', async () => {
   })
   const reader = new JsonLineReader(proc)
   try {
-    // Approvals only reach the client under an approving policy; the bare
-    // default is never + danger-full-access (docs/review-a2.md).
+    // A read-only thread: the write leaves its bounds, so the app is asked.
     proc.stdin.write(
       json({
         id: 1,
@@ -4720,7 +4672,7 @@ test('file change approval emits patch and git diff updates', async () => {
           experimentalRawEvents: false,
           persistExtendedHistory: false,
           approvalPolicy: 'on-request',
-          sandbox: 'workspace-write',
+          sandbox: 'read-only',
         },
       }),
     )
@@ -4767,8 +4719,61 @@ test('file change approval emits patch and git diff updates', async () => {
   }
 })
 
+test('a write inside the workspace runs without an approval card', async () => {
+  const home = await tempDir('anyengine-test-')
+  const repo = join(home, 'repo')
+  execFileSync('mkdir', ['-p', repo])
+  execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' })
+  await writeFile(join(repo, 'README.md'), 'hello\n')
+  execFileSync('git', ['add', 'README.md'], { cwd: repo })
+  execFileSync(
+    'git',
+    ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-m', 'init'],
+    { cwd: repo, stdio: 'ignore' },
+  )
+  const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
+  })
+  const reader = new JsonLineReader(proc)
+  try {
+    proc.stdin.write(
+      json({
+        id: 1,
+        method: 'thread/start',
+        params: { cwd: repo, approvalPolicy: 'on-request', sandbox: 'workspace-write' },
+      }),
+    )
+    const start = await reader.nextResponse(1)
+    proc.stdin.write(
+      json({
+        id: 2,
+        method: 'turn/start',
+        params: {
+          threadId: start.result.thread.id,
+          input: [{ type: 'text', text: 'please edit file', text_elements: [] }],
+        },
+      }),
+    )
+    await reader.nextResponse(2)
+    let sawCard = false
+    let diff = ''
+    for (let i = 0; i < 200; i += 1) {
+      const message = await reader.next()
+      if (message.method === 'item/fileChange/requestApproval') sawCard = true
+      if (message.method === 'turn/diff/updated') diff = message.params.diff
+      if (message.method === 'turn/completed') break
+    }
+    assert.equal(sawCard, false, 'the workspace is writable, so no card')
+    assert.match(diff, /changed by mock runtime/)
+  } finally {
+    proc.kill()
+    await rm(home, { recursive: true, force: true, maxRetries: 5, retryDelay: 80 })
+  }
+})
+
 test('gitDiffToRemote includes untracked files for Codex diff review', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const repo = join(home, 'repo')
   execFileSync('mkdir', ['-p', repo])
   execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' })
@@ -4798,7 +4803,7 @@ test('gitDiffToRemote includes untracked files for Codex diff review', async () 
 })
 
 test('thread resume, fork, and interrupt lifecycle methods are stable', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, CODEX_HOME: home, ANYENGINE_MOCK: '1', NODE_NO_WARNINGS: '1' },
@@ -4850,7 +4855,7 @@ test('thread resume, fork, and interrupt lifecycle methods are stable', async ()
 })
 
 test('turn interrupt completes requested in-progress turn after reconnect', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   try {
     execFileSync(
       process.execPath,
@@ -4948,7 +4953,7 @@ test('turn interrupt completes requested in-progress turn after reconnect', asyn
 })
 
 test('runtime settlement cannot overwrite an interrupted turn', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   try {
     execFileSync(
       process.execPath,
@@ -5107,7 +5112,7 @@ test('runtime settlement cannot overwrite an interrupted turn', async () => {
 })
 
 test('subagent watchdog terminalizes a runtime that never returns', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   try {
     execFileSync(
       process.execPath,
@@ -5199,7 +5204,7 @@ test('subagent watchdog terminalizes a runtime that never returns', async () => 
 })
 
 test('workflow watchdog terminalizes a launch that never publishes a result', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   try {
     execFileSync(
       process.execPath,
@@ -5294,7 +5299,7 @@ test('workflow watchdog terminalizes a launch that never publishes a result', as
 })
 
 test('workflow watchdog disarms when the original Workflow tool result arrives', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   try {
     execFileSync(
       process.execPath,
@@ -5378,7 +5383,7 @@ test('workflow watchdog disarms when the original Workflow tool result arrives',
 })
 
 test('server shutdown terminalizes active child turns before closing the store', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const database = join(home, 'state.sqlite')
   try {
     execFileSync(
@@ -5467,11 +5472,12 @@ test('server shutdown terminalizes active child turns before closing the store',
 })
 
 test('interrupt during final git diff cannot overwrite an interrupted turn', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const repo = join(home, 'repo')
   const bin = join(home, 'bin')
   const diffStarted = join(home, 'git-diff-started')
   const diffRelease = join(home, 'git-diff-release')
+  const diffDone = join(home, 'git-diff-done')
   await mkdir(repo, { recursive: true })
   await mkdir(bin, { recursive: true })
   execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' })
@@ -5489,6 +5495,7 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
       '  : > "$ANYENGINE_TEST_GIT_DIFF_STARTED"',
       '  while [ ! -f "$ANYENGINE_TEST_GIT_DIFF_RELEASE" ]; do sleep 0.01; done',
       "  printf 'diff --git a/file b/file\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-old\\n+new\\n'",
+      '  : > "$ANYENGINE_TEST_GIT_DIFF_DONE"',
       '  exit 0',
       'fi',
       'exec "$ANYENGINE_REAL_GIT" "$@"',
@@ -5496,6 +5503,13 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
     ].join('\n'),
   )
   await chmod(fakeGit, 0o755)
+  // Run it once first: macOS checks a new executable on its first exec (up to
+  // 3 s here on a loaded machine), and the server's work-tree probe gives git
+  // 3 s, then treats the cwd as no repository and never diffs it.
+  assert.equal(
+    execFileSync(fakeGit, ['rev-parse', '--is-inside-work-tree'], { encoding: 'utf8' }),
+    'true\n',
+  )
 
   try {
     execFileSync(
@@ -5522,12 +5536,14 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
       const messages = []
       const peer = { id: 'peer', send: (message) => messages.push(message), close() {} }
       const response = (id) => messages.find((message) => 'id' in message && message.id === id)
-      const waitFor = async (condition) => {
-        for (let attempt = 0; attempt < 200; attempt += 1) {
-          if (condition()) return
+      // The fake git is a script written just now: macOS checks it on its
+      // first exec, which took seconds on a loaded machine.
+      const waitFor = async (condition, what) => {
+        const deadline = Date.now() + 30_000
+        while (!condition()) {
+          if (Date.now() > deadline) throw new Error('timed out waiting for ' + what)
           await new Promise((resolve) => setTimeout(resolve, 5))
         }
-        throw new Error('timed out waiting for final git diff')
       }
 
       await server.handle(peer, {
@@ -5545,7 +5561,7 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
         },
       })
       const turnId = response(2).result.turn.id
-      await waitFor(() => existsSync(process.env.ANYENGINE_TEST_GIT_DIFF_STARTED))
+      await waitFor(() => existsSync(process.env.ANYENGINE_TEST_GIT_DIFF_STARTED), 'the final git diff')
 
       await server.handle(peer, {
         id: 3,
@@ -5553,6 +5569,8 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
         params: { threadId, turnId },
       })
       writeFileSync(process.env.ANYENGINE_TEST_GIT_DIFF_RELEASE, 'continue')
+      // The late diff has come back; give the server a moment to act on it.
+      await waitFor(() => existsSync(process.env.ANYENGINE_TEST_GIT_DIFF_DONE), 'git diff to return')
       await new Promise((resolve) => setTimeout(resolve, 50))
 
       assert.equal(store.getTurn(turnId)?.status, 'interrupted')
@@ -5594,6 +5612,7 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
           ANYENGINE_REAL_GIT: realGit,
           ANYENGINE_TEST_GIT_DIFF_STARTED: diffStarted,
           ANYENGINE_TEST_GIT_DIFF_RELEASE: diffRelease,
+          ANYENGINE_TEST_GIT_DIFF_DONE: diffDone,
         },
       },
     )
@@ -5603,7 +5622,7 @@ test('interrupt during final git diff cannot overwrite an interrupted turn', asy
 })
 
 test('mcp status list reflects configured Claude SDK MCP servers', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -5637,7 +5656,7 @@ test('mcp status list reflects configured Claude SDK MCP servers', async () => {
 })
 
 test('direct MCP stdio resource and tool calls work', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const fixture = resolve('test/fixtures/mcp-stdio-server.mjs')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -5681,7 +5700,7 @@ test('direct MCP stdio resource and tool calls work', async () => {
 })
 
 test('mcpServerStatus/list enumerates tools and resources from the server', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const fixture = resolve('test/fixtures/mcp-stdio-server.mjs')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -5713,7 +5732,7 @@ test('mcpServerStatus/list enumerates tools and resources from the server', asyn
 })
 
 test('fuzzyFileSearch session streams updated and completed notifications', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   await writeFile(join(home, 'findme-fixture.txt'), 'x')
   const proc = spawn(process.execPath, [adapter, 'app-server', '--listen', 'stdio://'], {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -5772,7 +5791,7 @@ test('fuzzyFileSearch session streams updated and completed notifications', asyn
 })
 
 test('skills/list and hooks/list surface Claude Code skills and settings hooks', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const workspace = join(home, 'ws')
   await mkdir(join(home, '.claude', 'skills', 'user-skill'), { recursive: true })
   await writeFile(
@@ -5861,7 +5880,7 @@ test('skills/list and hooks/list surface Claude Code skills and settings hooks',
 })
 
 test('direct MCP HTTP tool calls work', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const httpServer = http.createServer((req, res) => {
     let body = ''
     req.setEncoding('utf8')
@@ -5932,7 +5951,7 @@ test('direct MCP HTTP tool calls work', async () => {
 })
 
 test('optional auto worktree binds new threads to isolated git worktrees', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'anyengine-test-'))
+  const home = await tempDir('anyengine-test-')
   const repo = join(home, 'repo')
   const worktrees = join(home, 'worktrees')
   await writeFile(join(home, 'placeholder'), '')
@@ -6063,6 +6082,9 @@ class JsonLineReader {
   }
 }
 
+// Queues every frame as it arrives: ws emits several 'message' events in one
+// tick when frames share a chunk, and a `once(ws, 'message')` loop loses the
+// ones after the first, then waits forever for a reply it already dropped.
 class WebSocketJsonReader {
   private queue: any[] = []
   private waiters: Array<(value: any) => void> = []
@@ -6076,10 +6098,20 @@ class WebSocketJsonReader {
     })
   }
 
-  next(): Promise<any> {
+  next(timeoutMs = 15_000): Promise<any> {
     const existing = this.queue.shift()
     if (existing) return Promise.resolve(existing)
-    return new Promise((resolve) => this.waiters.push(resolve))
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.waiters = this.waiters.filter((waiter) => waiter !== deliver)
+        reject(new Error(`no websocket message within ${timeoutMs}ms`))
+      }, timeoutMs)
+      const deliver = (message: any) => {
+        clearTimeout(timer)
+        resolve(message)
+      }
+      this.waiters.push(deliver)
+    })
   }
 
   async nextResponse(id: number): Promise<any> {
@@ -6173,6 +6205,45 @@ async function waitForExit(proc: ChildProcess, timeoutMs: number): Promise<numbe
     once(proc, 'exit').then(([code]) => code as number | null),
     delay(timeoutMs).then(() => null),
   ])
+}
+
+// Opens `ws` (failing fast if the proxy carrying it exits or it never opens)
+// and answers `initialize`, whatever notifications arrive around the reply.
+async function initializeOver(ws: WebSocket, name: string, proxy?: ChildProcess): Promise<any> {
+  const reader = new WebSocketJsonReader(ws)
+  let timer: NodeJS.Timeout | undefined
+  const failures = [
+    once(ws, 'error').then(([error]) => Promise.reject(error)),
+    new Promise((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('websocket did not open within 15s')), 15_000)
+    }),
+  ]
+  if (proxy) {
+    failures.push(
+      once(proxy, 'exit').then(([code]) => Promise.reject(new Error(`proxy exited (${code})`))),
+    )
+  }
+  await Promise.race([once(ws, 'open'), ...failures]).finally(() => clearTimeout(timer))
+  ws.send(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { clientInfo: { name, title: name, version: '0' }, capabilities: null },
+    }),
+  )
+  return reader.nextResponse(1)
+}
+
+// SIGTERM, then wait for the exit: an adapter writes its coverage file on the
+// way out, and one still writing when the run reads the files fails it.
+async function stopChild(proc: ChildProcess | null): Promise<void> {
+  if (!proc || proc.exitCode !== null || proc.signalCode !== null) return
+  const exited = once(proc, 'exit').then(() => true)
+  proc.kill()
+  if (await Promise.race([exited, delay(5_000).then(() => false)])) return
+  proc.kill('SIGKILL')
+  await Promise.race([exited, delay(5_000)])
 }
 
 async function waitForStderr(proc: ChildProcess, pattern: RegExp): Promise<void> {

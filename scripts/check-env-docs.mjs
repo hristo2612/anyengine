@@ -15,8 +15,8 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const docsPath = join(root, 'docs', 'guide', 'configuration.md')
 
-// Names that exist only as a prefix or a doc example, never as a real setting.
-const NOT_SETTINGS = new Set(['ANYENGINE_X'])
+// Names used as a doc example or a catalog marker constant, never as a setting.
+const NOT_SETTINGS = new Set(['ANYENGINE_X', 'ANYENGINE_MARKER'])
 
 function walk(dir) {
   const out = []

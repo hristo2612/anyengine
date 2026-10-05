@@ -1,0 +1,7 @@
+export PATH="$HOME/.local/bin:$PATH"
+
+# ChatGPT.app (Codex desktop) local host -> adapter. The app imports
+# the login-shell env at startup with CODEX_SHELL=1, so only the app sees this.
+# if [[ -n "$CODEX_SHELL" ]]; then
+#   export CODEX_CLI_PATH="$HOME/bin/codex"
+# fi

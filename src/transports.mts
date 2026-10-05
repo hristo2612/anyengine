@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto'
 import { existsSync, rmSync } from 'node:fs'
 import http from 'node:http'
 import net from 'node:net'
@@ -95,7 +96,21 @@ export async function startWebSocketTransport(
 ): Promise<RunningTransport> {
   const parsed = parseListenUrl(listenUrl)
   const server = http.createServer()
-  const wss = new WebSocketServer({ server })
+  const token = process.env.ANYENGINE_WS_TOKEN
+  const wss = new WebSocketServer({
+    server,
+    verifyClient: (info, done) => {
+      if (Object.hasOwn(info.req.headers, 'origin')) return done(false, 403, 'Forbidden')
+      if (token === undefined) return done(true)
+      const given = Buffer.from(info.req.headers.authorization ?? '')
+      const wanted = Buffer.from(`Bearer ${token}`)
+      done(
+        token.length > 0 && given.length === wanted.length && timingSafeEqual(given, wanted),
+        401,
+        'Unauthorized',
+      )
+    },
+  })
 
   wss.on('connection', (ws) => {
     const peer = new WebSocketPeer(ws)
@@ -116,11 +131,15 @@ export async function startWebSocketTransport(
   })
 
   await new Promise<void>((resolve, reject) => {
+    // ws re-emits the server's errors, and with nobody listening a failed bind
+    // (EADDRINUSE on a path that is not ours) would throw instead of reject.
+    wss.once('error', reject)
     server.once('error', reject)
     server.once('listening', resolve)
     if (parsed.kind === 'unix') {
+      // ensureSingleUnixDaemon (src/adapter.mts) removed the path if it was a
+      // socket nothing answers on; anything still there is not ours to delete.
       ensureParent(parsed.path)
-      if (existsSync(parsed.path)) rmSync(parsed.path, { force: true })
       server.listen(parsed.path)
     } else {
       server.listen(parsed.port, parsed.host)
@@ -130,11 +149,13 @@ export async function startWebSocketTransport(
   if (parsed.kind === 'unix') {
     process.stderr.write(`[anyengine] listening on ${parsed.path}\n`)
   } else {
-    process.stderr.write(`[anyengine] listening on ws://${parsed.host}:${parsed.port}\n`)
+    const address = server.address() as net.AddressInfo
+    process.stderr.write(`[anyengine] listening on ws://${parsed.host}:${address.port}\n`)
   }
 
   return {
     async close() {
+      for (const client of wss.clients) client.terminate()
       await new Promise<void>((resolve) => {
         wss.close(() => {
           server.close(() => resolve())

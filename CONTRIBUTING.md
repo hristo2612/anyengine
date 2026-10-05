@@ -26,7 +26,7 @@ npm test                    # build + node --test, with the coverage floor
 
 - **KISS.** The simplest thing that works and can be read six months later.
   Delete before you add. Do not build a framework for one caller.
-- **Files never grow past their baseline.** `src/**/*.mts` is capped at 800
+- **Files never grow past their baseline.** `src/**/*.mts` is capped at 500
   lines; the modules already over it are frozen at today's length in
   `scripts/size-baseline.json`. **To add behaviour to `src/server.mts`, extract
   a module first** — move a cohesive slice into a new `src/*.mts` file with its
@@ -39,9 +39,9 @@ npm test                    # build + node --test, with the coverage floor
 - **Tests live beside the behaviour they cover.** `test/<module>.test.mts`,
   `node:test`, asserting real observable output. New behaviour ships with a
   test in the same commit; coverage may not drop below the floor.
-- **Complexity is visible, not blocking.** Biome warns past a cognitive
-  complexity of 30. Warnings do not fail the build; growing the count is still
-  a review comment.
+- **Complexity is ratcheted.** Biome warns past a cognitive complexity of 30.
+  `scripts/check-complexity.mjs` prevents the worst score or the count of hot
+  spots from growing; commit any smaller baseline with the change.
 - **Verify in the real app.** Protocol or runtime changes are not done because
   the suite is green. Run the relevant `npm run smoke:*` script against the real
   CLI, and for anything the desktop app can see, drive ChatGPT.app and put the

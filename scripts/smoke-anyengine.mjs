@@ -1,19 +1,37 @@
 #!/usr/bin/env node
 // Real-Claude smoke for the anyengine runtime: boots the adapter on a WebSocket
-// listener with ANYENGINE_RUNTIME_TYPE=anyengine, runs a text-only turn, then
-// a Bash turn and asserts the App-side approval round-trips. Needs a logged-in
-// `claude` CLI (subscription). Usage: npm run smoke:anyengine
+// listener with ANYENGINE_RUNTIME_TYPE=anyengine and no codex child (so no
+// sandbox), runs a text-only turn, then a write outside the workspace whose
+// App-side approval round-trips (declined, so nothing is written), then a
+// shell turn that must get no shell: no approval card, no command run, and
+// the thread says why. Needs a logged-in `claude` CLI (subscription).
+// Usage: npm run smoke:anyengine -- --project DIR
+//   --project  the one fixed folder the smoke's Claude works in, or
+//              ANYENGINE_SMOKE_PROJECT when the flag is not given; with
+//              neither the smoke stops (exit 2). It is created if missing and
+//              never removed: one stable folder, so runs do not each add a new
+//              Claude project entry. The adapter's state, the relay's settings
+//              included, goes in a scratch folder next to it, outside TMPDIR
+//              and /tmp (scripts/lib/claude-scratch.mjs), never ~/.anyengine;
+//              it is removed after a pass and kept for inspection otherwise.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { existsSync, mkdirSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import WebSocket from 'ws'
+import { projectFromArgs, scratchNextTo } from './lib/claude-scratch.mjs'
 
-const root = resolve(process.env.ANYENGINE_SMOKE_ROOT ?? tmpdir())
-const home = await mkdtemp(join(root, 'anyengine-smoke-'))
-const workspace = join(home, 'workspace')
-await import('node:fs/promises').then((fs) => fs.mkdir(workspace, { recursive: true }))
+const USAGE = [
+  'usage: node scripts/smoke-anyengine.mjs --project DIR  (or ANYENGINE_SMOKE_PROJECT=DIR)',
+  '  DIR is the one stable folder Claude works in on every run, created if missing and',
+  '  never removed: a new folder per run would add a new Claude project entry each time.',
+].join('\n')
+const workspace = projectFromArgs(process.argv.slice(2), process.env.ANYENGINE_SMOKE_PROJECT, USAGE)
+mkdirSync(workspace, { recursive: true })
+const home = scratchNextTo(workspace, 'anyengine-smoke.', 'smoke-anyengine')
+mkdirSync(join(home, 'codex-home'))
 const port = Number(process.env.ANYENGINE_SMOKE_PORT ?? 8791)
 const listen = `ws://127.0.0.1:${port}`
 
@@ -28,6 +46,11 @@ const adapter = spawn(
       ANYENGINE_HOME: join(home, 'adapter-home'),
       CODEX_HOME: join(home, 'codex-home'),
       ANYENGINE_DEBUG_LOG: join(home, 'debug.jsonl'),
+      // The relay's hooks and MCP config, which default to ~/.anyengine/pty.
+      ANYENGINE_PTY_STATE_DIR: join(home, 'pty'),
+      // No codex child, so nothing sandboxes a shell command: the case where
+      // Claude's shell must fail closed (docs/guide/bridge.md, "Shell").
+      ANYENGINE_NATIVE_CODEX: '0',
       NODE_NO_WARNINGS: '1',
     },
   },
@@ -108,7 +131,7 @@ class Rpc {
   }
 }
 
-async function runTurn(rpc, threadId, text) {
+async function runTurn(rpc, threadId, text, decision = 'accept') {
   const started = await rpc.request('turn/start', {
     threadId,
     input: [{ type: 'text', text, text_elements: [] }],
@@ -126,12 +149,13 @@ async function runTurn(rpc, threadId, text) {
     }
     if (message.method === 'item/commandExecution/requestApproval') {
       result.approvals.push(message.params.command)
-      log(`approval requested for: ${message.params.command} -> accept`)
-      rpc.respond(message.id, { decision: 'accept' })
+      log(`approval requested for: ${message.params.command} -> ${decision}`)
+      rpc.respond(message.id, { decision })
     }
     if (message.method === 'item/fileChange/requestApproval') {
       result.approvals.push('<fileChange>')
-      rpc.respond(message.id, { decision: 'accept' })
+      log(`file-change approval requested -> ${decision}`)
+      rpc.respond(message.id, { decision })
     }
     if (message.method === 'error') throw new Error(JSON.stringify(message.params))
     if (message.method === 'turn/completed') result.turn = message.params.turn
@@ -146,8 +170,8 @@ try {
     clientInfo: { name: 'smoke-anyengine', title: 'Smoke', version: '0' },
     capabilities: null,
   })
-  // Omitting the policy defaults the thread to full access (no approvals);
-  // ask for on-request approvals the way the Codex App does.
+  // Omitting the policy gives the read-only default; ask for workspace-write
+  // with on-request approvals the way the Codex App does.
   const started = await rpc.request('thread/start', {
     cwd: workspace,
     approvalPolicy: 'on-request',
@@ -165,20 +189,37 @@ try {
   assert.equal(first.turn.status, 'completed')
   assert.match(first.text, /PONG/)
 
+  // The thread's first launch says the shell is off.
+  assert.match(first.text, /Shell commands are off in this thread/)
+
+  // A write outside the workspace (and outside TMPDIR and /tmp) asks the App;
+  // the smoke declines, so nothing lands in the home directory.
+  const outside = join(homedir(), `anyengine-smoke-${process.pid}.txt`)
   const second = await runTurn(
+    rpc,
+    threadId,
+    `Use the Write tool to create the file ${outside} containing exactly: hi. Then reply DONE.`,
+    'decline',
+  )
+  log(
+    `turn 2 status=${second.turn.status} approvals=${JSON.stringify(second.approvals)} text=${JSON.stringify(second.text.trim())}`,
+  )
+  assert.equal(second.turn.status, 'completed')
+  assert.ok(second.approvals.includes('<fileChange>'), 'file-change approval round-tripped')
+  assert.equal(existsSync(outside), false, 'the declined write did not happen')
+
+  // No sandbox bounds a shell here: no card, no command runs.
+  const third = await runTurn(
     rpc,
     threadId,
     'Use the Bash tool to run exactly this command: echo hi. Then reply with only the command output.',
   )
   log(
-    `turn 2 status=${second.turn.status} approvals=${JSON.stringify(second.approvals)} commands=${JSON.stringify(second.commands)} text=${JSON.stringify(second.text.trim())}`,
+    `turn 3 status=${third.turn.status} approvals=${JSON.stringify(third.approvals)} commands=${JSON.stringify(third.commands)} text=${JSON.stringify(third.text.trim())}`,
   )
-  assert.equal(second.turn.status, 'completed')
-  assert.ok(
-    second.approvals.some((command) => /echo hi/.test(command)),
-    'Bash approval round-tripped',
-  )
-  assert.match(second.text, /hi/)
+  assert.equal(third.turn.status, 'completed')
+  assert.deepEqual(third.approvals, [], 'no approval card for a shell no sandbox bounds')
+  assert.deepEqual(third.commands, [], 'no shell command ran')
 
   const read = await rpc.request('thread/read', { threadId, includeTurns: true })
   log(`thread/read turns=${read.thread?.turns?.length ?? 'n/a'}`)

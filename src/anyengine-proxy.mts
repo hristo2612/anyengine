@@ -1,6 +1,7 @@
 import http from 'node:http'
 import https from 'node:https'
 import { StringDecoder } from 'node:string_decoder'
+import type { StreamTag } from './anyengine-turn-lifecycle.mjs'
 import { debugLog } from './util.mjs'
 
 // Kill an upstream connection that goes silent this long (no bytes).
@@ -32,6 +33,21 @@ type UpstreamRequestFn = (
 export interface SseStreamInfo {
   startedAt: number
   tag: unknown
+}
+// Prompt acceptance is the stream epoch; stopped or earlier streams are stale.
+export function streamIsCurrent(
+  stream: SseStreamInfo,
+  turnId: string,
+  acceptedAt: number | null,
+): boolean {
+  const tag = stream.tag as StreamTag | null | undefined
+  return (
+    !!tag &&
+    tag.turnId === turnId &&
+    acceptedAt !== null &&
+    tag.acceptedAt === acceptedAt &&
+    stream.startedAt >= acceptedAt
+  )
 }
 
 export type SseEventHandler = (event: SseDataEvent, stream: SseStreamInfo) => void
