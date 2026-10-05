@@ -204,6 +204,8 @@ function fakeTool(home: string, name: string): string {
   const path = join(home, `fake-${name}`)
   writeFileSync(path, `#!/bin/sh\necho "${name === 'codex' ? 'codex-cli' : name} 1.0.0"\n`)
   chmodSync(path, 0o755)
+  // macOS can delay a new executable's first launch beyond the probe deadline.
+  execFileSync(path, ['--version'], { timeout: 30_000, stdio: 'pipe' })
   return path
 }
 

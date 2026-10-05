@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import test, { after } from 'node:test'
@@ -19,7 +27,7 @@ test('fresh Claude face supports last-good update recovery, full off, and failed
   const s = await setup()
   for (const name of readdirSync(s.root))
     if (name.startsWith('rollback-')) rmSync(join(s.root, name), { recursive: true })
-  rmSync(join(s.root, 'lib/current'))
+  unlinkSync(join(s.root, 'lib/current'))
   rmSync(join(s.home, 'bin/codex'))
   const original = 'export KEEP=yes\n'
   writeFileSync(join(s.home, '.zshrc'), original)

@@ -9,6 +9,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { basename, join } from 'node:path'
@@ -296,7 +297,7 @@ test('terminal recovery refuses a superseding installation without mutating it',
   s.api.prepare(s.system, s.root, s.plan)
   activate(s)
   assert.equal(run(s, '--no-restart').status, 0)
-  rmSync(join(s.root, 'lib/current'))
+  unlinkSync(join(s.root, 'lib/current'))
   symlinkSync(s.m2Lib, join(s.root, 'lib/current'))
   const before = snapshot(s.control.concat(join(s.root, 'lib/current')))
   const result = run(s, '--no-restart')
