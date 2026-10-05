@@ -14,7 +14,7 @@ npm test           # build + node --test + coverage floor
 
 The full Node suite runs on macOS, including the sandboxed Codex schema probes,
 launchd installation and BSD shell recovery checks. Portable Rust protocol tests
-run on both macOS and Linux.
+run on both macOS and Linux. The Node job has a 30-minute budget for hosted Macs.
 
 `scripts/setup-hooks.sh` wires the same set into a `pre-push` hook (plus
 `gitleaks protect --staged`). No husky, no lint-staged — one `core.hooksPath`
@@ -111,9 +111,10 @@ CODEX_HOME, CLAUDE_CONFIG_DIR and ANYENGINE_DEBUG_LOG point into one
 throwaway directory, inherited `ANYENGINE_*`, `CODEX_*`, `CLAUDE_*`,
 `ANTHROPIC_*`, `OPENAI_*`, `GROK_*` and `GIT_*` settings are dropped, and PATH
 holds only the running node and the system directories, so no real `codex`,
-`claude` or `grok` can be found. `test/hermetic.test.mts` fails any run that is
-not set up this way. A test run once wrote into the live debug log; this is the
-gate that stops it happening again.
+`claude` or `grok` can be found. SHELL defaults to `/bin/zsh` for the fixture
+homes; other-shell cases override it explicitly. `test/hermetic.test.mts` fails
+any run that is not set up this way. A test run once wrote into the live debug
+log; this is the gate that stops it happening again.
 
 The runner also points TMPDIR into the throwaway directory and fails a run
 that leaves anything there, or that adds `anyengine-*` entries to the real temp

@@ -11,7 +11,8 @@ jobs:
   check:
     name: node (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # Installation/recovery cases keep running after 15 minutes on hosted Macs.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

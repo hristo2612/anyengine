@@ -85,6 +85,8 @@ for (const [key, value] of Object.entries(process.env)) {
 }
 Object.assign(env, {
   HOME: home,
+  // Fixture homes model a zsh Mac; other-shell cases override this explicitly.
+  SHELL: '/bin/zsh',
   CODEX_HOME: join(home, '.codex'),
   CLAUDE_CONFIG_DIR: join(home, '.claude'),
   ANYENGINE_DEBUG_LOG: join(root, 'debug.jsonl'),
