@@ -4,7 +4,12 @@
 import { mkdirSync } from 'node:fs'
 import type { ServerResponse } from 'node:http'
 import { join } from 'node:path'
-import { type Query, query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import {
+  type Options,
+  type Query,
+  query,
+  type SDKUserMessage,
+} from '@anthropic-ai/claude-agent-sdk'
 import type { ClaudeModelEntry } from './anyengine-config.mjs'
 import { claudeEnvironment } from './claude-environment.mjs'
 import { createGptOutput as createMessagesOutput } from './claude-gpt-output.mjs'
@@ -21,6 +26,29 @@ function systemText(body: Obj): string {
         : '',
     )
     .join('\n')
+}
+function reasoningOptions(body: Obj): Pick<Options, 'effort' | 'thinking'> {
+  const result: Pick<Options, 'effort' | 'thinking'> = {}
+  const config = body.output_config as Obj | undefined
+  if (config?.effort !== undefined) {
+    if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(String(config.effort)))
+      throw new Error('Invalid Desktop effort')
+    result.effort = config.effort as NonNullable<Options['effort']>
+  }
+  if (body.thinking === undefined) return result
+  const thinking = body.thinking as Obj
+  if (thinking?.type === 'adaptive' || thinking?.type === 'disabled')
+    result.thinking = { type: thinking.type }
+  else if (
+    thinking?.type === 'enabled' &&
+    typeof thinking.budget_tokens === 'number' &&
+    Number.isSafeInteger(thinking.budget_tokens) &&
+    thinking.budget_tokens >= 1024 &&
+    thinking.budget_tokens <= 128000
+  )
+    result.thinking = { type: 'enabled', budgetTokens: thinking.budget_tokens }
+  else throw new Error('Invalid Desktop thinking configuration')
+  return result
 }
 export function desktopEvent(value: unknown, model: string, names: ReadonlySet<unknown>): Obj {
   const event = structuredClone(value) as Obj
@@ -134,6 +162,7 @@ export class DesktopClaudeRuntime {
           cwd,
           env: claudeEnvironment(),
           model: input.model.claudeModel,
+          ...reasoningOptions(input.body),
           ...(input.cli ? { pathToClaudeCodeExecutable: input.cli } : {}),
           abortController: abort,
           includePartialMessages: true,

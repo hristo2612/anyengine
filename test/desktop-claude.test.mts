@@ -136,7 +136,7 @@ test('Claude tool catalog requires its private bearer and never executes Desktop
   await assert.rejects(desktopTools([tool, tool]), /Invalid/)
 })
 
-async function runtimeFixture(events: Record<string, unknown>[]) {
+async function runtimeFixture(events: Record<string, unknown>[], requestBody = body) {
   const root = await tempDir('desktop-claude-')
   let options: Parameters<typeof query>[0] | undefined
   let closed = 0
@@ -156,7 +156,7 @@ async function runtimeFixture(events: Record<string, unknown>[]) {
   const server = http.createServer(async (_req, res) => {
     await runtime.run({
       root,
-      body,
+      body: requestBody,
       model: {
         id: 'haiku',
         displayName: 'Claude Haiku',
@@ -252,4 +252,37 @@ test('incomplete Claude streams report failure rather than a successful empty tu
   assert.equal(f.status, 503)
   assert.equal(f.answer.error.code, 'claude_unavailable')
   assert.equal(f.closed, 1)
+})
+
+test('Claude receives Desktop effort and thinking controls rather than CLI defaults', async () => {
+  const events = [
+    start,
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'OK' } },
+    { type: 'content_block_stop', index: 0 },
+    ...end('end_turn'),
+  ]
+  for (const [thinking, expected] of [
+    [{ type: 'adaptive' }, { type: 'adaptive' }],
+    [{ type: 'disabled' }, { type: 'disabled' }],
+    [
+      { type: 'enabled', budget_tokens: 2048 },
+      { type: 'enabled', budgetTokens: 2048 },
+    ],
+  ]) {
+    const f = await runtimeFixture(events, {
+      ...body,
+      output_config: { effort: 'high' },
+      thinking,
+    } as typeof body)
+    assert.equal(f.status, 200)
+    assert.equal(f.options?.effort, 'high')
+    assert.deepEqual(f.options?.thinking, expected)
+  }
+  const invalid = await runtimeFixture(events, {
+    ...body,
+    output_config: { effort: 'unsupported' },
+  } as typeof body)
+  assert.equal(invalid.status, 503)
+  assert.equal(invalid.options, undefined)
 })
