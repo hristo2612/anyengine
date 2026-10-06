@@ -1,10 +1,11 @@
-# GPT in Claude Desktop
+# Claude and GPT in Claude Desktop
 
-AnyEngine offers two independent options: select GPT as the conversation model,
-or let Claude consult GPT as a tool. Both use your existing Codex/ChatGPT login.
+AnyEngine offers two independent options: Claude and GPT together in the model
+picker, or GPT tool consultation while keeping Claude's ordinary cloud mode.
 
-## Native GPT model picker
+## Combined model picker
 
+You need a signed-in Claude Code subscription and a working Codex/ChatGPT login.
 After installing and enabling AnyEngine:
 
 ```bash
@@ -14,38 +15,44 @@ anyengine desktop picker status --json
 ```
 
 If Claude is running, AnyEngine quits and reopens it to apply the profile.
-Otherwise, open Claude after the command. Choose a GPT model in the app's normal
-model menu, then send your message. GPT answers directly; Claude does not mediate
-the answer or make an `ask_gpt` tool call. Available models come from your selected
-Codex account when you enable the option. To refresh that list, switch the option
-off and on again.
+Otherwise, open Claude after the command. The normal model menu contains your
+configured Claude models (Opus, Sonnet and Haiku by default) plus the GPT models
+available to your selected Codex account. Choose either provider and send a
+message. You can switch providers in an existing conversation; the conversation
+and tool results are supplied to the next model as context.
+
+Claude runs through the **official Claude Code client and its saved subscription
+login**. AnyEngine does not extract or proxy Claude OAuth credentials. GPT runs
+through the existing Codex subscription route. In local Code, Desktop executes
+the tools and handles approvals for both providers; the nested Claude client has
+its own built-in tools, user hooks and project settings disabled.
 
 This uses Desktop's [gateway mode](https://claude.com/docs/third-party/claude-desktop/gateway).
-The app requires Claude-compatible gateway identifiers. AnyEngine gives those
-routes the actual GPT display names and resolves them only to the exact available
-GPT model. It does not patch the app or send Desktop credentials to GPT.
+The ordinary signed-in mode does not expose a supplemental-provider model setting.
+The app requires Claude-compatible gateway identifiers; AnyEngine displays the
+actual model labels and routes each identifier to its configured provider. No app
+bundle patch, paid API key or additional daemon is needed.
 
-Gateway mode has its own **local conversation history**. Your normal Claude
-history and login remain saved in their original location. Native Claude models
-are available again when you return to ordinary mode:
+Gateway mode has separate **local conversation history**. Your original Claude
+cloud history and login remain saved. This is a subscription-backed combined
+picker, with different history and service availability from ordinary cloud mode.
+Cowork and every Desktop tool have not been verified. SSH/cloud Code environments
+and Remote Control are unavailable in gateway mode. Images and documents are
+forwarded to Claude as native attachment blocks; full multimodal parity has not
+been verified. Existing optional session sync controls remain independent.
+
+To return to your original mode:
 
 ```bash
 anyengine desktop picker off
 ```
 
-This restores the previous Desktop mode and inference profile. If the previous
-mode was a different gateway, that gateway is restored. Other profiles, preferences,
-and connectors survive. An edited AnyEngine profile or foreign profile selection
-is retained and reported as a conflict. Recovery intent is saved before changing
-settings, so interrupted enable can be retried or undone. Installation and launch
-failures restore the prior selection automatically; retained recovery handles any
-failed restoration. No login reset, API purchase, or additional daemon is needed.
-
-Chat and local Code were live-tested on Claude Desktop 2.19675.1. Code retains
-its own tools and approval flow. Desktop's gateway mode removes SSH/cloud Code
-environments and Remote Control. Cowork, images, and every Desktop tool have not
-been separately verified. Existing session sync options remain independent;
-this does not copy your cloud Claude history into the gateway history.
+The previous mode and inference profile are restored. Other profiles, preferences
+and connectors survive. An edited AnyEngine profile or foreign selection is
+retained and reported as a conflict. Recovery intent is saved before settings
+change; interrupted enable can be retried or undone, and install/launch failures
+restore the prior selection automatically. Existing GPT-only installations upgrade
+when you rerun `picker on`. Refresh model lists by switching the option off/on.
 
 ## Optional GPT tool consultation
 

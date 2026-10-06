@@ -6,7 +6,8 @@ import { brotliCompressSync, gzipSync } from 'node:zlib'
 import type { AccountAdmission, BrokerLease, TokenBroker } from '../src/broker-types.mjs'
 import type { GptCatalogs } from '../src/claude-catalog.mjs'
 import type { GptModel } from '../src/claude-models.mjs'
-import { DESKTOP_MODEL_PREFIX, desktopModelId } from '../src/desktop-models.mjs'
+import type { DesktopClaudeRuntime } from '../src/desktop-claude-runtime.mjs'
+import { DESKTOP_MODEL_PREFIX, desktopClaudeId, desktopModelId } from '../src/desktop-models.mjs'
 import { MAX_BODY_BYTES } from '../src/router-relay.mjs'
 import { type RunningRouter, startRouter } from '../src/router-server.mjs'
 import { type FakeBackend, startFakeBackend } from './helpers/fake-backend.mjs'
@@ -124,7 +125,7 @@ function success(res: ServerResponse) {
   res.end(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''))
 }
 
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, desktopRuntime?: Pick<DesktopClaudeRuntime, 'run'>) {
   const { messagesHook } = await load()
   const root = await tempDir('rm-')
   let router: RunningRouter | null = null
@@ -228,7 +229,14 @@ async function fixture(t: TestContext) {
   const anthropicOrigin = `http://127.0.0.1:${address.port}`
   gpt = await startFakeBackend()
   gpt.respond = (_request, response) => success(response)
-  const deps = { broker, admission, catalogs, anthropicOrigin, gptOrigin: new URL(gpt.url).origin }
+  const deps = {
+    broker,
+    admission,
+    catalogs,
+    anthropicOrigin,
+    gptOrigin: new URL(gpt.url).origin,
+    ...(desktopRuntime ? { desktopClaude: { runtime: desktopRuntime, root } } : {}),
+  }
   const hooks = {
     messages: messagesHook(deps),
     observeGptBody: () => {
@@ -867,4 +875,60 @@ test('the control client rejects foreign destinations and pre-aborted reads with
   assert.equal(f.state.gets, 0)
   assert.equal(f.captured.length, 0)
   assert.equal(f.gpt.requests.length, 0)
+})
+
+test('Desktop Claude uses only the subscription client; local counts, unknown models and wrong credentials never infer', async (t) => {
+  let turns = 0
+  const f = await fixture(t, {
+    run: async (input) => {
+      turns++
+      assert.equal(input.model.claudeModel, 'haiku')
+      assert.equal(input.body.model, desktopClaudeId('haiku'))
+      assert.equal(input.signal.aborted, false)
+      input.res.writeHead(200, { 'content-type': 'application/json' })
+      input.res.end(
+        JSON.stringify({ type: 'message', content: [{ type: 'text', text: 'CLAUDE_SUB_OK' }] }),
+      )
+    },
+  })
+  const body = Buffer.from(
+    JSON.stringify({
+      model: desktopClaudeId('haiku'),
+      messages: [{ role: 'user', content: 'hello' }],
+    }),
+  )
+  const localHeaders = {
+    'content-type': 'application/json',
+    authorization: 'Bearer anyengine-local',
+  }
+  assert.equal((await wire(f.origin, { body, headers: localHeaders })).status, 200)
+  assert.equal(turns, 1)
+  assert.equal(
+    (
+      await wire(f.origin, {
+        path: '/v1/messages/count_tokens?beta=true',
+        body,
+        headers: localHeaders,
+      })
+    ).status,
+    200,
+  )
+  assert.equal((await wire(f.origin, { body })).status, 400)
+  assert.equal(
+    (
+      await wire(f.origin, {
+        body: Buffer.from(JSON.stringify({ model: desktopClaudeId('missing'), messages: [] })),
+        headers: localHeaders,
+      })
+    ).status,
+    400,
+  )
+  assert.equal(
+    (await wire(f.origin, { path: '/v1/unrelated', body, headers: localHeaders })).status,
+    400,
+  )
+  assert.equal(turns, 1)
+  assert.equal(f.state.gets, 0)
+  assert.equal(f.gpt.requests.length, 0)
+  assert.equal(f.captured.length, 0)
 })

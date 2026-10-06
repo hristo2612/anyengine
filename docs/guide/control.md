@@ -687,10 +687,12 @@ anyengine desktop status [--json]
 anyengine desktop off
 ```
 
-`desktop picker on` enables direct GPT selection in Desktop's native Chat and
-local Code model menus. It switches to a local gateway profile with separate
-history; `picker off` restores the previous mode and saved Claude login. A running
-Claude app is restarted. Settings changes and launch failures roll back automatically.
+`desktop picker on` puts Claude and GPT together in Desktop's native Chat and
+local Code model menus. Claude uses the official Claude Code client with its saved
+subscription login; GPT uses the selected Codex account. Model switching keeps the
+conversation context. Gateway history is local and separate from Claude cloud history;
+`picker off` restores the previous mode and saved login. A running app is restarted
+on enable/disable. Settings and launch failures roll back automatically.
 
 The separate `desktop on` option enables GPT tool consultation while staying in
 ordinary Claude mode. Quit and reopen Claude after connector changes. Disable

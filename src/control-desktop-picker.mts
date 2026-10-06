@@ -4,11 +4,12 @@ import { mkdirSync, rmSync } from 'node:fs'
 import http from 'node:http'
 import { dirname, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import { readConfig } from './anyengine-config.mjs'
+import { type ClaudeModelEntry, DEFAULT_CONFIG, readConfig } from './anyengine-config.mjs'
+import { PARSERS } from './anyengine-config-rules.mjs'
 import type { GptModel } from './claude-models.mjs'
 import type { Command } from './control-cli.mjs'
 import { atomicFile, jsonAt, object } from './control-layer-state.mjs'
-import { desktopModelId, desktopProfile } from './desktop-models.mjs'
+import { desktopClaudeId, desktopModelId, desktopProfile } from './desktop-models.mjs'
 import { withFileLock } from './file-lock.mjs'
 import { fetchGptSettingsView, settingsView } from './router-messages.mjs'
 
@@ -60,17 +61,18 @@ async function checkRoute(port: number, model: string): Promise<void> {
     request.on('error', () => reject(failure()))
     request.end(
       JSON.stringify({
-        model: desktopModelId(model),
+        model,
         messages: [{ role: 'user', content: 'check' }],
       }),
     )
   })
 }
 interface Receipt {
-  version: 1
+  version: 1 | 2
   id: string
   port: number
   models: GptModel[]
+  claudeModels?: ClaudeModelEntry[]
   beforeApplied?: string | undefined
   beforeMode?: '1p' | '3p' | undefined
   metaAbsent: boolean
@@ -100,7 +102,7 @@ function receiptAt(path: string): Receipt | undefined {
   const value = read(path)
   if (value === undefined) return undefined
   if (
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     typeof value.id !== 'string' ||
     !ID.test(value.id) ||
     !Number.isInteger(value.port) ||
@@ -115,8 +117,18 @@ function receiptAt(path: string): Receipt | undefined {
     throw new Error('Invalid Desktop picker recovery receipt; existing settings retained.')
   const models = settingsView({ generation: 0, fetchedAt: 0, models: value.models }).models
   if (!models.length) throw new Error('Desktop picker recovery has no models.')
-  return { ...value, models: [...models] } as unknown as Receipt
+  const claudeModels =
+    value.version === 2
+      ? (PARSERS['claude.models']?.(value.claudeModels, DEFAULT_CONFIG) as ClaudeModelEntry[])
+      : undefined
+  return {
+    ...value,
+    models: [...models],
+    ...(claudeModels ? { claudeModels } : {}),
+  } as unknown as Receipt
 }
+const profileOf = (receipt: Receipt) =>
+  desktopProfile(receipt.port, receipt.models, receipt.claudeModels)
 function metadata(path: string): Record<string, unknown> & { entries: Record<string, unknown>[] } {
   const value = read(path) ?? { entries: [] }
   if (
@@ -137,8 +149,7 @@ function owned(p: ReturnType<typeof paths>, receipt: Receipt): void {
   const entry = meta.entries.filter((row) => row.id === receipt.id)
   const mode = read(p.mode)?.deploymentMode
   if (
-    (profile !== undefined &&
-      !isDeepStrictEqual(profile, desktopProfile(receipt.port, receipt.models))) ||
+    (profile !== undefined && !isDeepStrictEqual(profile, profileOf(receipt))) ||
     entry.length > 1 ||
     (entry.length === 1 && !isDeepStrictEqual(entry[0], entryOf(receipt))) ||
     (meta.appliedId !== undefined &&
@@ -187,12 +198,20 @@ export function desktopPickerStatus(home: string, root: string) {
       read(p.mode)?.deploymentMode === '3p' &&
       metadata(p.meta).appliedId === receipt.id &&
       metadata(p.meta).entries.some((entry) => isDeepStrictEqual(entry, entryOf(receipt))) &&
-      isDeepStrictEqual(read(p.profile(receipt.id)), desktopProfile(receipt.port, receipt.models)),
+      isDeepStrictEqual(read(p.profile(receipt.id)), profileOf(receipt)),
     conflict: false,
-    models: receipt.models.map((model) => model.id),
+    models: [
+      ...(receipt.claudeModels ?? []).map((model) => model.id),
+      ...receipt.models.map((model) => model.id),
+    ],
   }
 }
-function prepareReceipt(p: ReturnType<typeof paths>, port: number, models: GptModel[]): Receipt {
+function prepareReceipt(
+  p: ReturnType<typeof paths>,
+  port: number,
+  models: GptModel[],
+  claudeModels: ClaudeModelEntry[],
+): Receipt {
   const meta = metadata(p.meta)
   const mode = read(p.mode) ?? {}
   if (meta.hybridPointer !== undefined)
@@ -200,10 +219,11 @@ function prepareReceipt(p: ReturnType<typeof paths>, port: number, models: GptMo
   if (mode.deploymentMode !== undefined && !['1p', '3p'].includes(String(mode.deploymentMode)))
     throw new Error('Invalid Desktop mode; existing settings retained.')
   const receipt: Receipt = {
-    version: 1,
+    version: 2,
     id: randomUUID(),
     port,
     models,
+    claudeModels,
     beforeApplied: meta.appliedId as string | undefined,
     beforeMode: mode.deploymentMode as Receipt['beforeMode'],
     metaAbsent: read(p.meta) === undefined,
@@ -214,7 +234,7 @@ function prepareReceipt(p: ReturnType<typeof paths>, port: number, models: GptMo
 }
 function applyProfile(p: ReturnType<typeof paths>, receipt: Receipt): void {
   const meta = metadata(p.meta)
-  save(p.profile(receipt.id), desktopProfile(receipt.port, receipt.models))
+  save(p.profile(receipt.id), profileOf(receipt))
   meta.entries = [...meta.entries.filter((row) => row.id !== receipt.id), entryOf(receipt)]
   meta.appliedId = receipt.id
   save(p.meta, meta)
@@ -235,7 +255,7 @@ export const desktopPickerCommand: Command = async (args, system, root, say) => 
     say(
       flag
         ? `${JSON.stringify(status)}\n`
-        : `Claude Desktop native GPT picker: ${status.enabled ? 'on' : status.conflict ? 'conflict (settings retained)' : 'off'}\n`,
+        : `Claude Desktop Claude + GPT picker: ${status.enabled ? 'on' : status.conflict ? 'conflict (settings retained)' : 'off'}\n`,
     )
     return status.conflict ? 1 : 0
   }
@@ -257,7 +277,9 @@ export const desktopPickerCommand: Command = async (args, system, root, say) => 
   if (verb === 'on') {
     const first = models[0]
     if (!first) throw new Error('No GPT models are available; existing Desktop mode retained.')
-    await checkRoute(config.router.port, first.id)
+    await checkRoute(config.router.port, desktopModelId(first.id))
+    for (const model of config.claude.models)
+      await checkRoute(config.router.port, desktopClaudeId(model.id))
   }
   mkdirSync(dirname(p.receipt), { recursive: true, mode: 0o700 })
   withFileLock(`${p.receipt}.lock`, () => {
@@ -267,8 +289,8 @@ export const desktopPickerCommand: Command = async (args, system, root, say) => 
       say('Claude Desktop native GPT picker is already off.\n')
       return
     }
-    if (verb === 'on' && desktopPickerStatus(system.home, root).enabled) {
-      say('Claude Desktop native GPT picker is already on.\n')
+    if (verb === 'on' && receipt?.version === 2 && desktopPickerStatus(system.home, root).enabled) {
+      say('Claude Desktop Claude + GPT picker is already on.\n')
       return
     }
     const wasRunning = system.appRunning()
@@ -277,7 +299,11 @@ export const desktopPickerCommand: Command = async (args, system, root, say) => 
     try {
       if (verb === 'off' && receipt) restore(p, receipt)
       else {
-        receipt ??= prepareReceipt(p, config.router.port, models)
+        if (receipt?.version === 1) {
+          restore(p, receipt)
+          receipt = undefined
+        }
+        receipt ??= prepareReceipt(p, config.router.port, models, config.claude.models)
         applyProfile(p, receipt)
       }
       if (wasRunning) system.openApp()
@@ -287,7 +313,7 @@ export const desktopPickerCommand: Command = async (args, system, root, say) => 
       throw error
     }
     say(
-      `Claude Desktop native GPT picker ${verb}. ${verb === 'on' ? 'Select GPT in the app’s model menu. Gateway mode has separate local history; use picker off to return to your saved Claude login.' : 'Previous Desktop mode restored.'}\n`,
+      `Claude Desktop Claude + GPT picker ${verb}. ${verb === 'on' ? 'Select Claude (Claude Code subscription) or GPT (Codex subscription) in the app’s model menu. Gateway history is local; picker off restores Claude cloud mode.' : 'Previous Desktop mode restored.'}\n`,
     )
   })
   return 0

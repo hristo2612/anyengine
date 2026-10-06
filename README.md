@@ -75,7 +75,7 @@ API keys, OAuth or session data, `.env` files, or acceptance logs.
 
 ## Optional Claude Desktop model picker
 
-Select GPT directly in Claude Desktop's native model menu, in Chat or local Code:
+Select Claude or GPT in the same Claude Desktop model menu, in Chat or local Code:
 
 ```bash
 anyengine desktop picker on
@@ -83,9 +83,10 @@ anyengine desktop picker status
 anyengine desktop picker off
 ```
 
-This uses your Codex subscription through Desktop's local gateway mode. It has
-separate local history; `picker off` returns to your saved Claude login and regular
-Claude picker. A running Claude app is restarted when switching modes.
+Claude uses your signed-in Claude Code subscription; GPT uses your Codex/ChatGPT
+subscription. Both appear together, and you can switch models within a conversation.
+This uses Desktop's gateway mode with separate local history; `picker off` restores
+Claude's cloud mode and saved login. A running Claude app is restarted on enable/disable.
 
 ## Optional Claude Desktop tool connector
 

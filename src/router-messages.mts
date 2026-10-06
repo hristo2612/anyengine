@@ -6,7 +6,8 @@ import type { AccountAdmission, TokenBroker } from './broker-types.mjs'
 import { type GptCatalogs, readGptSettingsView } from './claude-catalog.mjs'
 import { serveGpt } from './claude-gpt.mjs'
 import { type GptModel, type GptSettingsView, resolveGptModel } from './claude-models.mjs'
-import { DESKTOP_MODEL_PREFIX, desktopGptModel } from './desktop-models.mjs'
+import type { DesktopClaudeRuntime } from './desktop-claude-runtime.mjs'
+import { DESKTOP_CLAUDE_PREFIX, DESKTOP_MODEL_PREFIX, desktopGptModel } from './desktop-models.mjs'
 import {
   carriesBody,
   decodeBody,
@@ -33,6 +34,7 @@ interface MessagesDependencies {
   catalogs: GptCatalogs
   anthropicOrigin?: string
   gptOrigin?: string
+  desktopClaude?: { runtime: Pick<DesktopClaudeRuntime, 'run'>; root: string }
 }
 
 const MAX_DECODED_BYTES = 256 * 1024 * 1024
@@ -258,6 +260,10 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
       }
     }
     const requested = typeof parsed?.model === 'string' ? parsed.model : ''
+    if (requested.startsWith(DESKTOP_CLAUDE_PREFIX)) {
+      await desktopClaude(ctx, req, res, path, parsed as Obj, requested)
+      return
+    }
     const desktop = requested.startsWith(DESKTOP_MODEL_PREFIX)
     const model = desktop ? desktopGptModel(requested) : requested
     if (desktop && !model) {
@@ -270,6 +276,47 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
       return
     }
     await gptMessages(ctx, req, res, path, { ...parsed, model } as Obj, model)
+  }
+  async function desktopClaude(
+    ctx: RouterContext,
+    req: IncomingMessage,
+    res: ServerResponse,
+    path: string,
+    body: Obj,
+    requested: string,
+  ): Promise<void> {
+    const model = ctx
+      .config()
+      .claude.models.find((entry) => requested === `${DESKTOP_CLAUDE_PREFIX}${entry.id}`)
+    if (!model || !deps.desktopClaude || req.headers.authorization !== 'Bearer anyengine-local') {
+      error(res, 400, 'unsupported_model', 'The requested Desktop Claude model is unavailable')
+      return
+    }
+    if (path === '/v1/messages/count_tokens') {
+      sendJson(res, 200, { input_tokens: estimatedTokens(body) })
+      return
+    }
+    if (path !== '/v1/messages') {
+      error(res, 400, 'unsupported_endpoint', 'Desktop Claude requires the Messages endpoint')
+      return
+    }
+    const caller = callerSignal(req, res)
+    inflight(ctx, res, 'claude')
+    try {
+      await deps.desktopClaude.runtime.run({
+        root: deps.desktopClaude.root,
+        body,
+        model,
+        cli: ctx.config().claude.cli,
+        res,
+        signal: caller.signal,
+      })
+    } catch {
+      if (!caller.signal.aborted && !res.headersSent)
+        error(res, 503, 'claude_unavailable', 'Claude Desktop is busy; try again')
+    } finally {
+      caller.detach()
+    }
   }
   return async (ctx, req, res) => {
     const target = targetOf(req.url)

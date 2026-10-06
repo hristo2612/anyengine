@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import http from 'node:http'
 import { dirname, join } from 'node:path'
 import { after, type TestContext, test } from 'node:test'
-import { setConfigValue } from '../src/anyengine-config.mjs'
+import { DEFAULT_CONFIG, setConfigValue } from '../src/anyengine-config.mjs'
 import { desktopPickerCommand, desktopPickerStatus } from '../src/control-desktop-picker.mjs'
 import {
   DESKTOP_MODEL_PREFIX,
@@ -115,6 +115,14 @@ test('picker install/retry/removal preserves native login, unrelated settings an
   await f.run('on')
   const receipt = read(f.receipt)
   assert.equal(desktopPickerStatus(f.home, f.root).enabled, true)
+  assert.deepEqual(desktopPickerStatus(f.home, f.root).models, [
+    'opus',
+    'sonnet',
+    'haiku',
+    model.id,
+  ])
+  assert.equal(receipt.version, 2)
+  assert.deepEqual(receipt.claudeModels, DEFAULT_CONFIG.claude.models)
   assert.deepEqual(f.system.calls, ['quitApp', 'openApp'])
   await f.run('on')
   assert.deepEqual(f.system.calls, ['quitApp', 'openApp'])
@@ -163,7 +171,7 @@ test('picker refuses edited profiles or foreign selections and leaves them intac
   assert.equal(desktopPickerStatus(f.home, f.root).conflict, true)
   await assert.rejects(f.run('off'), /edited/)
   assert.deepEqual(read(f.profile(receipt.id)), changed)
-  write(f.profile(receipt.id), desktopProfile(f.port, [model]))
+  write(f.profile(receipt.id), desktopProfile(f.port, [model], receipt.claudeModels))
   write(f.meta, { ...read(f.meta), appliedId: '33333333-3333-4333-8333-333333333333' })
   await assert.rejects(f.run('on'), /edited/)
   assert.equal(read(f.meta).appliedId, '33333333-3333-4333-8333-333333333333')
@@ -196,4 +204,27 @@ test('an old router cannot switch Desktop into an unsupported native route', asy
   assert.equal(existsSync(f.receipt), false)
   assert.equal(existsSync(f.meta), false)
   assert.deepEqual(f.system.calls, [])
+})
+
+test('existing GPT-only installs upgrade to both subscriptions and keep their original rollback', async (t) => {
+  const f = await fixture(t)
+  write(f.mode, { deploymentMode: '1p', keep: 'native' })
+  await f.run('on')
+  const receipt = read(f.receipt)
+  delete receipt.claudeModels
+  receipt.version = 1
+  write(f.receipt, receipt)
+  write(f.profile(receipt.id), desktopProfile(f.port, [model]))
+  await f.run('on')
+  const next = read(f.receipt)
+  assert.equal(next.version, 2)
+  assert.deepEqual(desktopPickerStatus(f.home, f.root).models, [
+    'opus',
+    'sonnet',
+    'haiku',
+    model.id,
+  ])
+  assert.equal(existsSync(f.profile(receipt.id)), false)
+  await f.run('off')
+  assert.deepEqual(read(f.mode), { deploymentMode: '1p', keep: 'native' })
 })

@@ -6,6 +6,7 @@ import { enginePaths, loadConfig } from './anyengine-config.mjs'
 import { createRouterBroker } from './broker-runtime.mjs'
 import { createGptCatalogs, type GptCatalogs } from './claude-catalog.mjs'
 import { proofKey } from './degraded.mjs'
+import { DesktopClaudeRuntime } from './desktop-claude-runtime.mjs'
 import { CatalogCache, modelsHook } from './router-catalog.mjs'
 import {
   AgentClaudeTurns,
@@ -49,6 +50,7 @@ export function buildRouterRuntime(root: string, log: RouterLog): RouterRuntime 
   const cache = new CatalogCache(join(enginePaths(root).router, 'catalogs.json'))
   const runDir = enginePaths(root).run
   const model = new ModelClaudeTurns(root, log)
+  const desktopClaude = new DesktopClaudeRuntime()
   const gpt = createRouterBroker({ root })
   const gptCatalogs = createGptCatalogs({
     root,
@@ -82,12 +84,14 @@ export function buildRouterRuntime(root: string, log: RouterLog): RouterRuntime 
         gptCatalogs.invalidate()
         await gpt.close()
         await model.close()
+        await desktopClaude.close()
       },
       models: modelsHook(cache, fanout),
       messages: messagesHook({
         broker: gpt.broker,
         admission: gpt.admission,
         catalogs: gptCatalogs,
+        desktopClaude: { runtime: desktopClaude, root },
       }),
       upgrade: wsUpgradeHook({ fanout, turns }),
       claudeHttp: claudeHttpHook(turns),
