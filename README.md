@@ -73,6 +73,22 @@ command above for setup and updates even when the installed controls are on PATH
 Provide credentials only through your own shell or secret manager. Never commit
 API keys, OAuth or session data, `.env` files, or acceptance logs.
 
+## Optional Claude Desktop connector
+
+Claude Desktop can consult GPT in its Chat and local Code tabs through an
+optional connector. Claude stays the main model; GPT's answer arrives as a tool
+result. This does not change Desktop's native model picker.
+
+```bash
+anyengine desktop on
+# Quit and reopen Claude, then ask it to consult GPT through AnyEngine.
+anyengine desktop status
+anyengine desktop off
+```
+
+Your existing logins stay intact, and session sync remains a separate option.
+See [Claude Desktop](docs/guide/claude-desktop.md) for tools, scope and recovery.
+
 ## Optional conversation history
 
 Browse and search Claude Code and Codex/ChatGPT coding conversations together,

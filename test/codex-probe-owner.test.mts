@@ -46,9 +46,9 @@ for (const [signal, changedHome] of [
     const fake = join(root, 'fake.mjs')
     writeFileSync(
       fake,
-      `import {writeFileSync} from 'node:fs';import {spawn} from 'node:child_process';
+      `import {writeFileSync,renameSync} from 'node:fs';import {spawn} from 'node:child_process';
       const child=spawn(process.execPath,['-e','process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'],{stdio:'ignore'});
-      writeFileSync('owner.json',JSON.stringify({pid:process.pid,group:process.ppid,descendant:child.pid}));setInterval(()=>{},1000);`,
+      writeFileSync('owner.json.tmp',JSON.stringify({pid:process.pid,group:process.ppid,descendant:child.pid}));renameSync('owner.json.tmp','owner.json');setInterval(()=>{},1000);`,
     )
     const caller = spawn(
       process.execPath,

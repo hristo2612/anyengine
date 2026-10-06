@@ -32,6 +32,7 @@ export const CONTROL_COMMANDS: ReadonlySet<string> = new Set([
   'accounts',
   'limits',
   'sessions',
+  'desktop',
 ])
 const USAGE = `usage: anyengine <command>
   status [--json]
@@ -42,6 +43,7 @@ const USAGE = `usage: anyengine <command>
   accounts add|list|use|rotate|recover
   limits [--json] [--refresh]
   sessions on|off|status|list|search|show|open|sync
+  desktop on|off|status
   on | off | restart | doctor | smoke | codex (require their registered implementation)
 `
 const SETTINGS_NOTE =

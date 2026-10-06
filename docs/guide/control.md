@@ -674,3 +674,16 @@ mode; `--project DIR` chooses a fixed canonical Claude project outside temporary
 directories. The default is `~/.anyengine/smoke/claude-project`. Run-owned state
 sits beside that project and is retained if cleanup cannot be proved. This probe
 performs real model calls; installed/live acceptance is a separate check.
+
+## Optional Claude Desktop connector
+
+```bash
+anyengine desktop on
+anyengine desktop status [--json]
+anyengine desktop off
+```
+
+Opt in to GPT consultation in Claude Desktop's Chat and local Code tabs. Quit
+and reopen Claude after a change. This is tool delegation; the native model
+picker is unchanged. Disable this separate option before turning the router off.
+See [Claude Desktop](claude-desktop.md).

@@ -10,6 +10,7 @@ import { runCodexRemote } from './codex-remote.mjs'
 import { accountsCommand, limitsCommand } from './control-accounts.mjs'
 import { type UpdateCapture, verifyClaudeCodeUpdate } from './control-claude-update.mjs'
 import { registerCommand } from './control-cli.mjs'
+import { desktopCommand } from './control-desktop.mjs'
 import { executingLib } from './control-flip-options.mjs'
 import { flipCommand } from './control-flip-run.mjs'
 import { jsonAt, statAt } from './control-layer-state.mjs'
@@ -36,6 +37,7 @@ for (const op of ['on', 'off', 'restart'] as const) registerCommand(op, flipComm
 registerCommand('accounts', accountsCommand)
 registerCommand('limits', limitsCommand)
 registerCommand('sessions', sessionsCommand)
+registerCommand('desktop', desktopCommand)
 registerCommand('rollback', async (args, system, root, say) => {
   if (
     !['m2', 'm3'].includes(args[0] ?? '') ||

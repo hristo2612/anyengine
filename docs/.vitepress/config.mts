@@ -34,6 +34,7 @@ export default defineConfig({
             { text: 'Session browsing and cross-open', link: '/guide/sessions' },
             { text: 'Router', link: '/guide/router' },
             { text: 'GPT in Claude Code', link: '/guide/claude-code' },
+            { text: 'Claude Desktop connector', link: '/guide/claude-desktop' },
             { text: 'Control commands', link: '/guide/control' },
           ],
         },

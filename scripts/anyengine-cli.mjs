@@ -16,7 +16,7 @@ const help = `Usage: anyengine <command>
   status | doctor              Inspect the installed runtime
   on | off | restart | rollback
   config | mode | cache | smoke | codex
-  accounts | limits | sessions
+  accounts | limits | sessions | desktop
   --version                    Show the npm package version
 
 Install or update: npx anyengine-cli@latest setup
