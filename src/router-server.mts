@@ -120,11 +120,23 @@ const LOOPBACK_BINDS = new Set(['127.0.0.1', '::1'])
 // Origin, a Sec-Fetch-Site or Sec-Fetch-Dest header (none of which a page can
 // remove) or a Host that is not a loopback name. Codex sends none of them (it
 // sends `originator`, test/fixtures/codex-wire-0.159.0.json), nor does Node's
-// fetch (Sec-Fetch-Mode only).
+// fetch (Sec-Fetch-Mode only). Desktop's main-process gateway client sends
+// none/empty/no-cors without Origin. A page's fetch cannot claim that metadata.
 export function localOnly(req: IncomingMessage): string | null {
   if (!LOOPBACK_PEERS.has(req.socket.remoteAddress ?? '')) return 'not loopback'
   if (req.headers.origin !== undefined) return 'browser origin'
-  if (req.headers['sec-fetch-site'] !== undefined || req.headers['sec-fetch-dest'] !== undefined)
+  const desktop =
+    req.method === 'POST' &&
+    /^\/v1\/messages(?:\/count_tokens)?(?:\?|$)/.test(req.url ?? '') &&
+    req.headers.authorization === 'Bearer anyengine-local' &&
+    req.headers.referer === undefined &&
+    req.headers['sec-fetch-site'] === 'none' &&
+    req.headers['sec-fetch-dest'] === 'empty' &&
+    req.headers['sec-fetch-mode'] === 'no-cors'
+  if (
+    !desktop &&
+    (req.headers['sec-fetch-site'] !== undefined || req.headers['sec-fetch-dest'] !== undefined)
+  )
     return 'browser request'
   const host = String(req.headers.host ?? '')
     .toLowerCase()

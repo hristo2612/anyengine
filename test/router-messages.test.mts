@@ -544,6 +544,13 @@ test('unknown GPT is a local invalid request, while broker degradation leaves Cl
 
 test('Desktop selection routes the exact GPT model without sending local credentials upstream', async (t) => {
   const f = await fixture(t)
+  const desktop = {
+    ...headers,
+    authorization: 'Bearer anyengine-local',
+    'sec-fetch-site': 'none',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'no-cors',
+  }
   const answer = await wire(f.origin, {
     path: '/v1/messages?beta=true',
     body: Buffer.from(
@@ -554,7 +561,7 @@ test('Desktop selection routes the exact GPT model without sending local credent
         messages: [{ role: 'user', content: 'hello' }],
       }),
     ),
-    headers: { ...headers, authorization: 'Bearer anyengine-local' },
+    headers: desktop,
   })
   assert.equal(answer.status, 200)
   assert.ok(answer.body.includes(Buffer.from('PONG')))
@@ -564,6 +571,37 @@ test('Desktop selection routes the exact GPT model without sending local credent
   assert.equal(JSON.parse(request.raw.toString()).model, model.id)
   assert.equal(request.headers.authorization, `Bearer ${GPT_AUTH}`)
   assert.equal(request.headers['x-api-key'], undefined)
+  for (const change of [
+    { origin: 'https://evil.example' },
+    { origin: 'null' },
+    { referer: 'https://evil.example/' },
+    { host: 'evil.example' },
+    { 'sec-fetch-site': 'cross-site' },
+    { 'sec-fetch-site': 'same-site' },
+    { 'sec-fetch-site': 'same-origin' },
+    { 'sec-fetch-dest': 'document' },
+    { 'sec-fetch-mode': 'cors' },
+    { authorization: 'Bearer unowned' },
+  ]) {
+    const refused = await wire(f.origin, {
+      headers: { ...desktop, ...change } as Record<string, string>,
+      body: Buffer.from(JSON.stringify({ model: desktopModelId(model.id) })),
+    })
+    assert.equal(refused.status, 403)
+  }
+  for (const input of [
+    { path: '/control/claude-code/models', method: 'GET' },
+    { path: '/backend-api/codex/responses' },
+    { path: '/v1/messages', method: 'GET' },
+  ]) {
+    assert.equal((await wire(f.origin, { ...input, headers: desktop })).status, 403)
+  }
+  const counted = await wire(f.origin, {
+    path: '/v1/messages/count_tokens?beta=true',
+    headers: desktop,
+    body: Buffer.from(JSON.stringify({ model: desktopModelId(model.id), messages: [] })),
+  })
+  assert.equal(counted.status, 200)
   for (const id of [
     `${DESKTOP_MODEL_PREFIX}bad`,
     desktopModelId('claude-opus-5'),
