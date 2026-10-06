@@ -27,7 +27,13 @@ async function checkRoute(port: number, model: string): Promise<void> {
         method: 'POST',
         agent: false,
         signal: AbortSignal.timeout(8_000),
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'Bearer anyengine-local',
+          'sec-fetch-site': 'none',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'no-cors',
+        },
         maxHeaderSize: 8192,
       },
       (response) => {

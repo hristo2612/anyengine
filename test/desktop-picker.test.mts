@@ -37,7 +37,12 @@ async function fixture(t: TestContext) {
   let compatible = true
   const server = http.createServer((req, res) => {
     if (req.url === '/v1/messages/count_tokens') {
-      res.writeHead(compatible ? 200 : 400, { 'content-type': 'application/json' })
+      const desktop =
+        req.headers.authorization === 'Bearer anyengine-local' &&
+        req.headers['sec-fetch-site'] === 'none' &&
+        req.headers['sec-fetch-dest'] === 'empty' &&
+        req.headers['sec-fetch-mode'] === 'no-cors'
+      res.writeHead(compatible && desktop ? 200 : 400, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ input_tokens: 1 }))
       return
     }
