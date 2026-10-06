@@ -44,6 +44,7 @@ const USAGE = `usage: anyengine <command>
   limits [--json] [--refresh]
   sessions on|off|status|list|search|show|open|sync
   desktop on|off|status
+  desktop picker on|off|status
   on | off | restart | doctor | smoke | codex (require their registered implementation)
 `
 const SETTINGS_NOTE =

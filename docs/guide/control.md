@@ -675,15 +675,24 @@ directories. The default is `~/.anyengine/smoke/claude-project`. Run-owned state
 sits beside that project and is retained if cleanup cannot be proved. This probe
 performs real model calls; installed/live acceptance is a separate check.
 
-## Optional Claude Desktop connector
+## Optional Claude Desktop picker and connector
 
 ```bash
+anyengine desktop picker on
+anyengine desktop picker status [--json]
+anyengine desktop picker off
+
 anyengine desktop on
 anyengine desktop status [--json]
 anyengine desktop off
 ```
 
-Opt in to GPT consultation in Claude Desktop's Chat and local Code tabs. Quit
-and reopen Claude after a change. This is tool delegation; the native model
-picker is unchanged. Disable this separate option before turning the router off.
+`desktop picker on` enables direct GPT selection in Desktop's native Chat and
+local Code model menus. It switches to a local gateway profile with separate
+history; `picker off` restores the previous mode and saved Claude login. A running
+Claude app is restarted. Settings changes and launch failures roll back automatically.
+
+The separate `desktop on` option enables GPT tool consultation while staying in
+ordinary Claude mode. Quit and reopen Claude after connector changes. Disable
+these optional integrations before turning the router off.
 See [Claude Desktop](claude-desktop.md).

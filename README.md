@@ -73,7 +73,21 @@ command above for setup and updates even when the installed controls are on PATH
 Provide credentials only through your own shell or secret manager. Never commit
 API keys, OAuth or session data, `.env` files, or acceptance logs.
 
-## Optional Claude Desktop connector
+## Optional Claude Desktop model picker
+
+Select GPT directly in Claude Desktop's native model menu, in Chat or local Code:
+
+```bash
+anyengine desktop picker on
+anyengine desktop picker status
+anyengine desktop picker off
+```
+
+This uses your Codex subscription through Desktop's local gateway mode. It has
+separate local history; `picker off` returns to your saved Claude login and regular
+Claude picker. A running Claude app is restarted when switching modes.
+
+## Optional Claude Desktop tool connector
 
 Claude Desktop can consult GPT in its Chat and local Code tabs through an
 optional connector. Claude stays the main model; GPT's answer arrives as a tool

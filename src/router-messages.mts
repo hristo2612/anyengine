@@ -6,6 +6,7 @@ import type { AccountAdmission, TokenBroker } from './broker-types.mjs'
 import { type GptCatalogs, readGptSettingsView } from './claude-catalog.mjs'
 import { serveGpt } from './claude-gpt.mjs'
 import { type GptModel, type GptSettingsView, resolveGptModel } from './claude-models.mjs'
+import { DESKTOP_MODEL_PREFIX, desktopGptModel } from './desktop-models.mjs'
 import {
   carriesBody,
   decodeBody,
@@ -257,12 +258,18 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
       }
     }
     const requested = typeof parsed?.model === 'string' ? parsed.model : ''
-    if (!requested.startsWith('gpt-')) {
+    const desktop = requested.startsWith(DESKTOP_MODEL_PREFIX)
+    const model = desktop ? desktopGptModel(requested) : requested
+    if (desktop && !model) {
+      error(res, 400, 'unsupported_model', 'Invalid AnyEngine Desktop model')
+      return
+    }
+    if (!model?.startsWith('gpt-')) {
       inflight(ctx, res, 'claude')
       passthrough({ ...ctx, upstream: () => anthropic }, req, res, path, query, read.raw)
       return
     }
-    await gptMessages(ctx, req, res, path, parsed as Obj, requested)
+    await gptMessages(ctx, req, res, path, { ...parsed, model } as Obj, model)
   }
   return async (ctx, req, res) => {
     const target = targetOf(req.url)

@@ -6,6 +6,7 @@ import { brotliCompressSync, gzipSync } from 'node:zlib'
 import type { AccountAdmission, BrokerLease, TokenBroker } from '../src/broker-types.mjs'
 import type { GptCatalogs } from '../src/claude-catalog.mjs'
 import type { GptModel } from '../src/claude-models.mjs'
+import { DESKTOP_MODEL_PREFIX, desktopModelId } from '../src/desktop-models.mjs'
 import { MAX_BODY_BYTES } from '../src/router-relay.mjs'
 import { type RunningRouter, startRouter } from '../src/router-server.mjs'
 import { type FakeBackend, startFakeBackend } from './helpers/fake-backend.mjs'
@@ -539,6 +540,44 @@ test('unknown GPT is a local invalid request, while broker degradation leaves Cl
     ? readFileSync(f.router.context.log.path, 'utf8')
     : ''
   noCredentials(log)
+})
+
+test('Desktop selection routes the exact GPT model without sending local credentials upstream', async (t) => {
+  const f = await fixture(t)
+  const answer = await wire(f.origin, {
+    path: '/v1/messages?beta=true',
+    body: Buffer.from(
+      JSON.stringify({
+        model: desktopModelId(model.id),
+        max_tokens: 16,
+        stream: true,
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    ),
+    headers: { ...headers, authorization: 'Bearer anyengine-local' },
+  })
+  assert.equal(answer.status, 200)
+  assert.ok(answer.body.includes(Buffer.from('PONG')))
+  assert.equal(f.captured.length, 0)
+  const request = f.gpt.requests[0]
+  assert.ok(request)
+  assert.equal(JSON.parse(request.raw.toString()).model, model.id)
+  assert.equal(request.headers.authorization, `Bearer ${GPT_AUTH}`)
+  assert.equal(request.headers['x-api-key'], undefined)
+  for (const id of [
+    `${DESKTOP_MODEL_PREFIX}bad`,
+    desktopModelId('claude-opus-5'),
+    desktopModelId('gpt-missing'),
+  ]) {
+    const refused = await wire(f.origin, {
+      body: Buffer.from(
+        JSON.stringify({ model: id, messages: [{ role: 'user', content: 'hello' }] }),
+      ),
+    })
+    assert.equal(refused.status, 400)
+  }
+  assert.equal(f.gpt.requests.length, 1)
+  assert.equal(f.captured.length, 0)
 })
 
 test('GPT count_tokens is a deterministic local UTF-8/image estimate with no provider requests', async (t) => {

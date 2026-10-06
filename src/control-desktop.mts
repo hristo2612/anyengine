@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util'
 import type { Command } from './control-cli.mjs'
 import { executingLib } from './control-flip-options.mjs'
 import { atomicFile, jsonAt, object, statAt } from './control-layer-state.mjs'
+import { realSystem } from './control-system.mjs'
 import { withFileLock } from './file-lock.mjs'
 
 const USAGE = 'usage: anyengine desktop on|off|status [--json]'
@@ -49,7 +50,8 @@ export function desktopStatus(home: string, root: string) {
   return {
     enabled: !!receipt && isDeepStrictEqual(entry, receipt.entry),
     conflict: entry !== undefined && (!receipt || !isDeepStrictEqual(entry, receipt.entry)),
-    integration: 'GPT consultation through MCP; native model switching is unsupported',
+    integration:
+      'GPT consultation through MCP; native selection is optional with desktop picker on',
   }
 }
 function disable(target: string, receiptPath: string, receipt: Receipt | undefined): void {
@@ -107,6 +109,14 @@ function enable(target: string, receiptPath: string, root: string): void {
   }
 }
 export const desktopCommand: Command = async (args, system, root, say) => {
+  if (args[0] === 'picker') {
+    const { desktopPickerCommand } = await import('./control-desktop-picker.mjs')
+    const desktop = realSystem(
+      { ...process.env, HOME: system.home, ANYENGINE_CHATGPT_APP: '/Applications/Claude.app' },
+      system.exec,
+    )
+    return desktopPickerCommand(args.slice(1), desktop, root, say)
+  }
   const [verb, flag] = args
   if (
     !['on', 'off', 'status'].includes(verb ?? '') ||
