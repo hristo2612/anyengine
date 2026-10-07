@@ -8,8 +8,8 @@ import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
 
 after(removeTempDirs)
 const load = () => import('../src/' + 'control-claude-update.mjs')
-const authName = 'codex-auth-0.160.0.json'
-const messagesName = 'claude-messages-2.1.289.json'
+const authName = 'codex-auth-0.162.0-alpha.2.json'
+const messagesName = 'claude-messages-2.1.292.json'
 const selected = { codex: '/selected/codex', claude: '/selected/claude' }
 const key = { lib: 'm2', appVersion: '26.930.1', codexVersion: '0.160.0', settings: 'fixture' }
 const reason = 'Claude Code GPT update capture is incompatible'

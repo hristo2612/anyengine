@@ -411,8 +411,8 @@ test('M2 suite identity includes immutable capture fixtures while an M1 source r
   const { REQUIRED_HELPERS, REQUIRED_FIXTURES, REQUIRED_M2_FIXTURES, suiteIdentity } =
     createRequire(import.meta.url)('../../scripts/lib/startup-schema.mjs')
   assert.deepEqual(REQUIRED_M2_FIXTURES, [
-    'test/fixtures/codex-auth-0.160.0.json',
-    'test/fixtures/claude-messages-2.1.289.json',
+    'test/fixtures/codex-auth-0.162.0-alpha.2.json',
+    'test/fixtures/claude-messages-2.1.292.json',
     'test/fixtures/claude-posture-2.1.289.json',
     'test/fixtures/raine-translation-v0.1.42.json',
   ])

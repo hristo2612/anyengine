@@ -5,8 +5,8 @@ import { markDegraded } from './degraded.mjs'
 
 export type UpdateCapture = (script: string, args: readonly string[]) => Promise<unknown>
 const reason = 'Claude Code GPT update capture is incompatible'
-const authFixture = 'codex-auth-0.160.0.json'
-const messagesFixture = 'claude-messages-2.1.289.json'
+const authFixture = 'codex-auth-0.162.0-alpha.2.json'
+const messagesFixture = 'claude-messages-2.1.292.json'
 const fail = (): never => {
   throw new Error(reason)
 }

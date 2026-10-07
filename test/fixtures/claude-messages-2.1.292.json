@@ -1,5 +1,5 @@
 {
-  "claudeVersion": "2.1.289",
+  "claudeVersion": "2.1.292",
   "isolation": {
     "fakeCredentials": true,
     "loopbackOnly": true,
@@ -22,13 +22,18 @@
     "primaryGpt": true,
     "readRoundTrip": true,
     "generatedGptAgent": true,
-    "headHello": true,
+    "headHello": false,
     "streaming": true,
     "nonStreaming": true,
     "countTokens": false,
     "picker": false
   },
   "opens": [
+    {
+      "contract": "headHello",
+      "status": "not-observed",
+      "reason": "The bounded real CLI scenarios did not exercise this contract; no shape was synthesized."
+    },
     {
       "contract": "countTokens",
       "status": "not-observed",
@@ -64,17 +69,6 @@
         "startupSummary": "[claude-code:unrecognized_model] {\"model\":\"gpt-6.1-sol\",\"query_source\":\"sdk\"}"
       },
       "requests": [
-        {
-          "method": "HEAD",
-          "path": "/api/hello",
-          "headers": {
-            "connection": "keep-alive",
-            "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd"
-          },
-          "fakeApiKey": false,
-          "authorizationPresent": false
-        },
         {
           "method": "POST",
           "path": "/v1/messages",
@@ -121,7 +115,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6005
+              "bytes": 5917
             },
             "tools": [
               {
@@ -165,6 +159,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -195,7 +203,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -222,7 +230,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -803,7 +811,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -851,6 +859,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -1023,7 +1040,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2080
+                      "bytes": 2513
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -1089,7 +1106,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6005
+              "bytes": 5917
             },
             "tools": [
               {
@@ -1133,6 +1150,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -1163,7 +1194,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1190,7 +1221,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -1771,7 +1802,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1819,6 +1850,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -1988,7 +2028,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 2080
+                  "bytes": 2513
                 }
               },
               {
@@ -2059,17 +2099,6 @@
       },
       "requests": [
         {
-          "method": "HEAD",
-          "path": "/api/hello",
-          "headers": {
-            "connection": "keep-alive",
-            "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd"
-          },
-          "fakeApiKey": false,
-          "authorizationPresent": false
-        },
-        {
           "method": "POST",
           "path": "/v1/messages",
           "headers": {
@@ -2115,7 +2144,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6023
+              "bytes": 5935
             },
             "tools": [
               {
@@ -2159,6 +2188,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -2189,7 +2232,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2216,7 +2259,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -2797,7 +2840,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2845,6 +2888,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -3017,7 +3069,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2241
+                      "bytes": 2674
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -3149,7 +3201,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 383
+                      "bytes": 816
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -3215,7 +3267,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6023
+              "bytes": 5935
             },
             "tools": [
               {
@@ -3259,6 +3311,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -3289,7 +3355,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3316,7 +3382,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -3897,7 +3963,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3945,6 +4011,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -4114,7 +4189,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 2241
+                  "bytes": 2674
                 }
               },
               {
@@ -4144,11 +4219,11 @@
                         "type": "text",
                         "text": {
                           "type": "string",
-                          "bytes": 1126
+                          "bytes": 1082
                         },
                         "agentLaunch": {
                           "agentId": "agent_id_1",
-                          "outputFile": "<PROBE>/tmp/claude-<UID>/<PROJECT_KEY>/<UUID>/tasks/agent_id_1.output"
+                          "outputFile": "<PROBE>/tmp/claude-<UID>/-private-tmp-claude-messages-capture-SN68OM-agent-default-project/<UUID>/tasks/agent_id_1.output"
                         }
                       }
                     ]
@@ -4291,7 +4366,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 383
+                  "bytes": 816
                 }
               },
               {
@@ -4391,7 +4466,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6023
+              "bytes": 5935
             },
             "tools": [
               {
@@ -4435,6 +4510,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -4465,7 +4554,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4492,7 +4581,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -5073,7 +5162,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -5121,6 +5210,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -5290,7 +5388,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 2241
+                  "bytes": 2674
                 }
               },
               {
@@ -5324,18 +5422,18 @@
                         "type": "text",
                         "text": {
                           "type": "string",
-                          "bytes": 1126
+                          "bytes": 1082
                         },
                         "agentLaunch": {
                           "agentId": "agent_id_1",
-                          "outputFile": "<PROBE>/tmp/claude-<UID>/<PROJECT_KEY>/<UUID>/tasks/agent_id_1.output"
+                          "outputFile": "<PROBE>/tmp/claude-<UID>/-private-tmp-claude-messages-capture-SN68OM-agent-default-project/<UUID>/tasks/agent_id_1.output"
                         }
                       }
                     ]
                   },
                   {
                     "type": "text",
-                    "text": "<system-reminder omitted; 1314 bytes>"
+                    "text": "<system-reminder omitted; 1270 bytes>"
                   }
                 ]
               },
@@ -5383,17 +5481,6 @@
       },
       "requests": [
         {
-          "method": "HEAD",
-          "path": "/api/hello",
-          "headers": {
-            "connection": "keep-alive",
-            "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd"
-          },
-          "fakeApiKey": false,
-          "authorizationPresent": false
-        },
-        {
           "method": "POST",
           "path": "/v1/messages",
           "headers": {
@@ -5440,7 +5527,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6017
+              "bytes": 5929
             },
             "tools": [
               {
@@ -5484,6 +5571,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -5514,7 +5615,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -5541,7 +5642,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -6122,7 +6223,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -6170,6 +6271,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -6342,7 +6452,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 7331
+                      "bytes": 7718
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -6377,7 +6487,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "60",
-            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07",
+            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -6475,7 +6585,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "60",
-            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07",
+            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -6573,7 +6683,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "60",
-            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07",
+            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -6671,7 +6781,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "60",
-            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07",
+            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -6769,7 +6879,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "60",
-            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07",
+            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -6867,7 +6977,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "60",
-            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07",
+            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -6964,7 +7074,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "60",
-            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07",
+            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -7061,7 +7171,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "60",
-            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07",
+            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -7158,7 +7268,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "60",
-            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07",
+            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -7255,7 +7365,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "60",
-            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07",
+            "anthropic-beta": "claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -7383,7 +7493,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6017
+              "bytes": 5929
             },
             "tools": [
               {
@@ -7427,6 +7537,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -7457,7 +7581,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -7484,7 +7608,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -8065,7 +8189,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8113,6 +8237,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -8282,7 +8415,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 7331
+                  "bytes": 7718
                 }
               },
               {
@@ -8358,17 +8491,6 @@
       },
       "requests": [
         {
-          "method": "HEAD",
-          "path": "/api/hello",
-          "headers": {
-            "connection": "keep-alive",
-            "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd"
-          },
-          "fakeApiKey": false,
-          "authorizationPresent": false
-        },
-        {
           "method": "POST",
           "path": "/v1/messages",
           "headers": {
@@ -8414,7 +8536,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6023
+              "bytes": 5935
             },
             "tools": [
               {
@@ -8458,6 +8580,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -8488,7 +8624,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8515,7 +8651,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -9096,7 +9232,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -9144,6 +9280,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -9316,7 +9461,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2241
+                      "bytes": 2674
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -9448,7 +9593,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 383
+                      "bytes": 816
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -9514,7 +9659,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6023
+              "bytes": 5935
             },
             "tools": [
               {
@@ -9558,6 +9703,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -9588,7 +9747,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -9615,7 +9774,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -10196,7 +10355,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -10244,6 +10403,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -10413,7 +10581,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 2241
+                  "bytes": 2674
                 }
               },
               {
@@ -10443,11 +10611,11 @@
                         "type": "text",
                         "text": {
                           "type": "string",
-                          "bytes": 1126
+                          "bytes": 1082
                         },
                         "agentLaunch": {
                           "agentId": "agent_id_2",
-                          "outputFile": "<PROBE>/tmp/claude-<UID>/<PROJECT_KEY>/<UUID>/tasks/agent_id_2.output"
+                          "outputFile": "<PROBE>/tmp/claude-<UID>/-private-tmp-claude-messages-capture-SN68OM-agent-dontAsk-project/<UUID>/tasks/agent_id_2.output"
                         }
                       }
                     ]
@@ -10590,7 +10758,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 383
+                  "bytes": 816
                 }
               },
               {
@@ -10690,7 +10858,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6023
+              "bytes": 5935
             },
             "tools": [
               {
@@ -10734,6 +10902,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -10764,7 +10946,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -10791,7 +10973,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -11372,7 +11554,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -11420,6 +11602,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -11589,7 +11780,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 2241
+                  "bytes": 2674
                 }
               },
               {
@@ -11623,18 +11814,18 @@
                         "type": "text",
                         "text": {
                           "type": "string",
-                          "bytes": 1126
+                          "bytes": 1082
                         },
                         "agentLaunch": {
                           "agentId": "agent_id_2",
-                          "outputFile": "<PROBE>/tmp/claude-<UID>/<PROJECT_KEY>/<UUID>/tasks/agent_id_2.output"
+                          "outputFile": "<PROBE>/tmp/claude-<UID>/-private-tmp-claude-messages-capture-SN68OM-agent-dontAsk-project/<UUID>/tasks/agent_id_2.output"
                         }
                       }
                     ]
                   },
                   {
                     "type": "text",
-                    "text": "<system-reminder omitted; 1314 bytes>"
+                    "text": "<system-reminder omitted; 1270 bytes>"
                   }
                 ]
               },
@@ -11682,17 +11873,6 @@
       },
       "requests": [
         {
-          "method": "HEAD",
-          "path": "/api/hello",
-          "headers": {
-            "connection": "keep-alive",
-            "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd"
-          },
-          "fakeApiKey": false,
-          "authorizationPresent": false
-        },
-        {
           "method": "POST",
           "path": "/v1/messages",
           "headers": {
@@ -11738,7 +11918,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6007
+              "bytes": 5919
             },
             "tools": [
               {
@@ -11782,6 +11962,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -11812,7 +12006,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -11839,7 +12033,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -12420,7 +12614,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -12468,6 +12662,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -12640,7 +12843,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2081
+                      "bytes": 2514
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -12710,7 +12913,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6007
+              "bytes": 5919
             },
             "tools": [
               {
@@ -12754,6 +12957,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -12784,7 +13001,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -12811,7 +13028,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -13392,7 +13609,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -13440,6 +13657,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -13612,7 +13838,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2081
+                      "bytes": 2514
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -13682,7 +13908,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6007
+              "bytes": 5919
             },
             "tools": [
               {
@@ -13726,6 +13952,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -13756,7 +13996,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -13783,7 +14023,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -14364,7 +14604,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -14412,6 +14652,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -14584,7 +14833,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2081
+                      "bytes": 2514
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -14654,7 +14903,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6007
+              "bytes": 5919
             },
             "tools": [
               {
@@ -14698,6 +14947,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -14728,7 +14991,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -14755,7 +15018,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -15336,7 +15599,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -15384,6 +15647,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -15556,7 +15828,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2081
+                      "bytes": 2514
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -15626,7 +15898,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6007
+              "bytes": 5919
             },
             "tools": [
               {
@@ -15670,6 +15942,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -15700,7 +15986,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -15727,7 +16013,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -16308,7 +16594,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -16356,6 +16642,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -16528,7 +16823,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2081
+                      "bytes": 2514
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -16598,7 +16893,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 6007
+              "bytes": 5919
             },
             "tools": [
               {
@@ -16642,6 +16937,20 @@
                         "fable"
                       ]
                     },
+                    "effort": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 276
+                      },
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max"
+                      ]
+                    },
                     "run_in_background": {
                       "description": {
                         "type": "string",
@@ -16672,7 +16981,7 @@
                 "name": "Bash",
                 "description": {
                   "type": "string",
-                  "bytes": 1423
+                  "bytes": 1422
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -16699,7 +17008,7 @@
                     "run_in_background": {
                       "description": {
                         "type": "string",
-                        "bytes": 184
+                        "bytes": 183
                       },
                       "type": "boolean"
                     },
@@ -17280,7 +17589,7 @@
                 "name": "TaskStop",
                 "description": {
                   "type": "string",
-                  "bytes": 389
+                  "bytes": 373
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -17328,6 +17637,15 @@
                         "bytes": 42
                       },
                       "type": "string"
+                    },
+                    "offset": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 157
+                      },
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
                     }
                   },
                   "required": [
@@ -17500,7 +17818,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2081
+                      "bytes": 2514
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -17531,19 +17849,7 @@
       "ready": true,
       "pickerObserved": false,
       "gptLabelObserved": true,
-      "requests": [
-        {
-          "method": "HEAD",
-          "path": "/api/hello",
-          "headers": {
-            "connection": "keep-alive",
-            "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd"
-          },
-          "fakeApiKey": false,
-          "authorizationPresent": false
-        }
-      ]
+      "requests": []
     }
   }
 }

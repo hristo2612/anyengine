@@ -65,8 +65,8 @@ function makeSource(root: string): string {
     recursive: true,
   })
   for (const name of [
-    'codex-auth-0.160.0.json',
-    'claude-messages-2.1.289.json',
+    'codex-auth-0.162.0-alpha.2.json',
+    'claude-messages-2.1.292.json',
     'claude-posture-2.1.289.json',
     'raine-translation-v0.1.42.json',
   ]) {
@@ -141,8 +141,8 @@ test('install-lib installs, verifies and points current at the new version', () 
       'the installed manifest retains the pinned source provenance',
     )
     for (const name of [
-      'codex-auth-0.160.0.json',
-      'claude-messages-2.1.289.json',
+      'codex-auth-0.162.0-alpha.2.json',
+      'claude-messages-2.1.292.json',
       'claude-posture-2.1.289.json',
       'raine-translation-v0.1.42.json',
     ]) {

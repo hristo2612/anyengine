@@ -81,8 +81,8 @@ export const REQUIRED_HELPERS = [
   'dist/src/posture.mjs',
 ]
 export const REQUIRED_M2_FIXTURES = [
-  'test/fixtures/codex-auth-0.160.0.json',
-  'test/fixtures/claude-messages-2.1.289.json',
+  'test/fixtures/codex-auth-0.162.0-alpha.2.json',
+  'test/fixtures/claude-messages-2.1.292.json',
   'test/fixtures/claude-posture-2.1.289.json',
   'test/fixtures/raine-translation-v0.1.42.json',
 ]
