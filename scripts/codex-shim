@@ -50,7 +50,7 @@ SCHEMA_HELPER="$(dirname "$ADAPTER")/../../scripts/lib/startup-schema.mjs"
 [ -f "$SCHEMA_HELPER" ] || SCHEMA_HELPER="$(dirname "${BASH_SOURCE[0]}")/lib/startup-schema.mjs"
 STARTUP_ROOT="${ANYENGINE_ROOT:-$HOME/.anyengine}"
 # Moved together with src/util.mts and CI by scripts/sync-codex-compat.mjs.
-DEFAULT_COMPAT_VERSION="0.160.0"
+DEFAULT_COMPAT_VERSION="0.162.0-alpha.2"
 VERSION_SUFFIX="${ANYENGINE_VERSION_SUFFIX-anyengine}"
 MODE="${ANYENGINE_ROUTE:-${ANYENGINE_RUNTIME_TYPE:-agent-sdk-sidecar}}"
 # The desktop's own codex. A fallback runs this, never whatever codex PATH

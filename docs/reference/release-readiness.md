@@ -53,7 +53,7 @@ The Rust-first direction is documented in
 - Representative app-server JSON fixtures are checked in.
 - Rust tests parse and re-serialize the covered fixtures.
 - CI runs `cargo test --workspace`.
-- CI runs a pinned fixture drift check against `@openai/codex@0.160.0`.
+- CI runs a pinned fixture drift check against `@openai/codex@0.162.0-alpha.2`.
 
 Not claimed yet:
 

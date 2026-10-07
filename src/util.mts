@@ -130,7 +130,7 @@ export function platformOs(): string {
 // this is only the fallback: keep it at the version ChatGPT.app bundles, and
 // move every written pin together with scripts/sync-codex-compat.mjs.
 // Override per host with ANYENGINE_COMPAT_VERSION.
-const DEFAULT_CODEX_COMPAT_VERSION = '0.160.0'
+const DEFAULT_CODEX_COMPAT_VERSION = '0.162.0-alpha.2'
 
 export function codexCompatVersion(): string {
   return (

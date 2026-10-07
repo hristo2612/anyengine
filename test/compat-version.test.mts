@@ -20,7 +20,7 @@ after(removeTempDirs)
 
 const shim = resolve('scripts/codex-shim')
 const sync = resolve('scripts/sync-codex-compat.mjs')
-const PINNED = '0.160.0'
+const PINNED = '0.162.0-alpha.2'
 const SITES = [
   'src/util.mts',
   'test/compat-version.test.mts',

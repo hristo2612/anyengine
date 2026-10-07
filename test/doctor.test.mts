@@ -23,7 +23,7 @@ const doctor = resolve('scripts/doctor.mjs')
 const installLib = resolve('scripts/install-lib.mjs')
 const fakeNpm = resolve('test/fixtures/fake-npm.mjs')
 
-const PINNED = '0.160.0'
+const PINNED = '0.162.0-alpha.2'
 
 // A bundled codex that reports `version`, so no doctor run depends on which
 // ChatGPT.app build the machine has. One file per version: runDoctor's default
