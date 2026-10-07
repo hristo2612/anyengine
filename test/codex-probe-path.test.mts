@@ -61,8 +61,9 @@ for (const [behavior, ownership] of [
     const fake = join(root, 'fake.mjs')
     writeFileSync(
       fake,
-      `import {writeFileSync,existsSync} from 'node:fs';
-      writeFileSync('owner.json',JSON.stringify({pid:process.pid,group:process.ppid}));
+      `import {writeFileSync,existsSync,renameSync} from 'node:fs';
+      writeFileSync('owner.json.tmp',JSON.stringify({pid:process.pid,group:process.ppid}));
+      renameSync('owner.json.tmp','owner.json');
       console.log('codex-cli 0.159.0');
       setInterval(()=>{if(existsSync('release'))process.exit(0)},5);`,
     )
