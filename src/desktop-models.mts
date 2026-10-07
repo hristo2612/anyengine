@@ -7,6 +7,10 @@ import { CLAUDE_EFFORTS, type DesktopClaudeModel } from './desktop-claude-catalo
 export const DESKTOP_MODEL_PREFIX = 'anyengine/claude-compatible/'
 export const DESKTOP_CLAUDE_PREFIX = 'anyengine/claude-subscription/'
 export const desktopClaudeId = (id: string) => `${DESKTOP_CLAUDE_PREFIX}${id}`
+export function desktopClaudeName(model: ClaudeModelEntry): string {
+  const resolved = (model as Partial<DesktopClaudeModel>).resolvedModel
+  return resolved?.startsWith('claude-') ? resolved : desktopClaudeId(model.id)
+}
 export function desktopModelId(model: string): string {
   return `${DESKTOP_MODEL_PREFIX}${Buffer.from(model).toString('hex')}`
 }
@@ -55,9 +59,7 @@ export function desktopProfile(
               ? 'high'
               : [...CLAUDE_EFFORTS].reverse().find((level) => native.efforts?.includes(level))
           return {
-            name: nativeNames
-              ? (native.resolvedModel ?? desktopClaudeId(model.id))
-              : desktopClaudeId(model.id),
+            name: nativeNames ? desktopClaudeName(model) : desktopClaudeId(model.id),
             labelOverride: model.displayName,
             ...(maximum ? { maxEffort: maximum } : {}),
             ...(family ? { anthropicFamilyTier: family } : {}),

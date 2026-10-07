@@ -10,7 +10,7 @@ import type { GptModel } from './claude-models.mjs'
 import type { Command } from './control-cli.mjs'
 import { atomicFile, jsonAt, object } from './control-layer-state.mjs'
 import { desktopClaudeModels } from './desktop-claude-catalog.mjs'
-import { desktopModelId, desktopProfile } from './desktop-models.mjs'
+import { desktopClaudeName, desktopModelId, desktopProfile } from './desktop-models.mjs'
 import { withFileLock } from './file-lock.mjs'
 import { fetchDesktopClaudeModels, fetchGptSettingsView, settingsView } from './router-messages.mjs'
 
@@ -289,7 +289,7 @@ export const desktopPickerCommand: Command = async (args, system, root, say) => 
     const first = models[0]
     if (!first) throw new Error('No GPT models are available; existing Desktop mode retained.')
     await checkRoute(config.router.port, desktopModelId(first.id))
-    for (const model of claudeModels) await checkRoute(config.router.port, model.resolvedModel)
+    for (const model of claudeModels) await checkRoute(config.router.port, desktopClaudeName(model))
   }
   mkdirSync(dirname(p.receipt), { recursive: true, mode: 0o700 })
   withFileLock(`${p.receipt}.lock`, () => {

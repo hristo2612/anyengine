@@ -59,8 +59,18 @@ async function fixture(t: TestContext) {
         req.headers['sec-fetch-site'] === 'none' &&
         req.headers['sec-fetch-dest'] === 'empty' &&
         req.headers['sec-fetch-mode'] === 'no-cors'
-      res.writeHead(compatible && desktop ? 200 : 400, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ input_tokens: 1 }))
+      let body = ''
+      req.on('data', (chunk) => {
+        body += chunk
+      })
+      req.on('end', () => {
+        const name = JSON.parse(body).model as string
+        const route = name.startsWith('claude-') || name.startsWith('anyengine/')
+        res.writeHead(compatible && desktop && route ? 200 : 400, {
+          'content-type': 'application/json',
+        })
+        res.end(JSON.stringify({ input_tokens: 1 }))
+      })
       return
     }
     res.writeHead(available ? 200 : 503, { 'content-type': 'application/json' })
@@ -281,4 +291,23 @@ test('refresh includes newly available Claude choices and exact effort limits wi
   assert.equal(row.anthropicFamilyTier, 'fable')
   await f.run('off')
   assert.deepEqual(read(f.mode), { deploymentMode: '1p', keep: 'original' })
+})
+
+test('custom CLI aliases keep their local route when no native resolved ID is available', async (t) => {
+  const f = await fixture(t)
+  const custom = {
+    ...nativeModels[0]!,
+    id: 'custom-long',
+    claudeModel: 'sonnet[1m]',
+    resolvedModel: 'sonnet[1m]',
+    displayName: 'Custom long context',
+  }
+  f.models([...nativeModels, custom])
+  await f.run('on')
+  const receipt = read(f.receipt)
+  const row = read(f.profile(receipt.id)).inferenceModels.find(
+    (m: any) => m.labelOverride === 'Custom long context',
+  )
+  assert.equal(row.name, 'anyengine/claude-subscription/custom-long')
+  await f.run('off')
 })
