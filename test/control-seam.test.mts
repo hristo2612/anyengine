@@ -288,6 +288,52 @@ test('marker liveness matches exact detached identity and foreground operation',
   assert.throws(() => markerAlive(marker(), system), /cannot inspect/)
 })
 
+test('foreground Desktop lifecycle aliases keep their active recovery marker', () => {
+  const system = fakeSystem('/private/test')
+  for (const { op, args, quoted, raw } of [
+    {
+      op: 'on',
+      args: ['--native-proof', '/path with space'],
+      quoted: '--native-proof "/path with space"',
+      raw: '--native-proof /path with space',
+    },
+    { op: 'off', args: ['--router-only'], quoted: '--router-only', raw: '--router-only' },
+    { op: 'restart', args: ['--wait-quiet', '1'], quoted: '--wait-quiet 1', raw: '--wait-quiet 1' },
+  ] as const) {
+    const active = {
+      ...marker(),
+      op,
+      runner: 'foreground' as const,
+      args: [...args, '--foreground'],
+    }
+    for (const command of [
+      `node /x/adapter.mjs desktop chatgpt ${op} ${quoted} --foreground`,
+      `node /x/adapter.mjs desktop chatgpt ${op} --foreground ${raw}`,
+    ]) {
+      system.procs = [proc(5, 1, command)]
+      assert.equal(markerAlive(active, system), true, command)
+    }
+    for (const command of [
+      `node /x/adapter.mjs desktop claude tools ${op} ${raw} --foreground`,
+      `node /x/adapter.mjs desktop chatgpt ${op} --force --foreground`,
+      `node /x/adapter.mjs desktop chatgpt ${op} ${raw} --foreground --foreground`,
+      `node /x/adapter.mjs desktop chatgpt status ${raw} --foreground`,
+    ]) {
+      system.procs = [proc(5, 1, command)]
+      assert.equal(markerAlive(active, system), false, command)
+    }
+    system.procs = [
+      proc(
+        5,
+        1,
+        `node /x/adapter.mjs desktop chatgpt ${op} ${raw} --foreground`,
+        '2026-10-02T00:00:00.000Z',
+      ),
+    ]
+    assert.equal(markerAlive(active, system), false, 'a reused pid is not this Desktop flip')
+  }
+})
+
 test('process ancestry is nearest-first and stops at cycles; adapters exclude other modes', () => {
   const system = fakeSystem('/private/test')
   system.procs = [

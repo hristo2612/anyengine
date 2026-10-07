@@ -283,6 +283,7 @@ function applyJobs(
 ): void {
   mkdirSync(join(root, 'logs'), { recursive: true, mode: 0o700 })
   for (const { label } of jobs) {
+    writer.track(plistPath(system.home, label))
     writer.addJob(label)
     if (result.wrote.includes(plistPath(system.home, label)) || !loaded.get(label))
       loadJob(system, label, plistPath(system.home, label))

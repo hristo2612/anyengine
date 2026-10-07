@@ -112,6 +112,38 @@ test('on adopts the hand-flipped M0 state without writing the rc block or the ba
   assert.equal(readLayers(root).layers.length, 2)
 })
 
+test('on records an already identical router plist so off retains its baseline', async () => {
+  const home = await m0Home()
+  const root = join(home, '.anyengine')
+  const system = fakeSystem(home)
+  const plan = fakeLib(home)
+  const target = join(home, 'Library/LaunchAgents/dev.anyengine.router.plist')
+  const bytes = routerPlist({
+    root,
+    launcher: join(root, 'bin/anyengine'),
+    node: plan.node,
+    pathDirs: [
+      ...new Set([dirname(plan.node), ...(plan.claudeCli ? [dirname(plan.claudeCli)] : [])]),
+    ],
+    log: join(root, 'logs/router.launchd.log'),
+  })
+  mkdirSync(dirname(target), { recursive: true })
+  writeFileSync(target, bytes, { mode: 0o644 })
+  const result = applyOnFiles(system, root, plan, { dryRun: false, paths: pathsFor(home) })
+  assert.ok(result.unchanged.includes(target))
+  assert.equal(
+    readLayers(root)
+      .layers.find((row) => row.name === 'router')
+      ?.changes.find((row) => row.target === target)?.before,
+    'file',
+  )
+  system.running = false
+  assert.equal(applyOffFiles(system, root, { routerOnly: true, paths: pathsFor(home) }).ok, true)
+  finishOff(system, root, pathsFor(home))
+  assert.equal(readFileSync(target, 'utf8'), bytes)
+  assert.equal(system.jobs.has('dev.anyengine.router'), false)
+})
+
 test('on refuses a half-on M0', async () => {
   const home = await m0Home()
   writeFileSync(

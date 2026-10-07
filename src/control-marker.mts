@@ -143,12 +143,13 @@ export function markerAlive(marker: FlipMarker, system: System): boolean {
   if (marker.runner === 'foreground') {
     if (actual.filter((arg) => arg === '--foreground').length !== 1) return false
     const args = actual.filter((arg) => arg !== '--foreground')
-    const expected = [marker.op, ...marker.args.filter((arg) => arg !== '--foreground')]
+    const prefix = actual[0] === 'desktop' && actual[1] === 'chatgpt' ? ['desktop', 'chatgpt'] : []
+    const expected = [...prefix, marker.op, ...marker.args.filter((arg) => arg !== '--foreground')]
     if (args.length === expected.length && args.every((arg, index) => arg === expected[index]))
       return true
     // ps flattens argv without quoting spaces. Compare the complete expected
     // command at real argument boundaries; the async lock remains authority.
-    for (let index = 1; index <= expected.length; index += 1) {
+    for (let index = prefix.length + 1; index <= expected.length; index += 1) {
       const withFlag = [...expected.slice(0, index), '--foreground', ...expected.slice(index)]
       if (invocation.rawArgs === withFlag.join(' ')) return true
     }
