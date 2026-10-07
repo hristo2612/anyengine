@@ -169,3 +169,20 @@ test('Desktop session control exposes the option and off restores only owned met
     else process.env.CLAUDE_CONFIG_DIR = old
   }
 })
+
+test('actual remote, sandbox, scheduled and staged Desktop records are excluded', async () => {
+  const f = await fixture()
+  setConfigValue(f.root, 'sessions.desktopAccounts', 'true')
+  for (const field of [
+    'sshConfig',
+    'wslConfig',
+    'movedToCloud',
+    'ranInSandboxVm',
+    'scheduledTaskId',
+    'stagedTranscriptPath',
+  ]) {
+    write(f.source, { ...f.record, [field]: { fixture: true } })
+    assert.equal(listDesktopSessions(f.home, f.configDir).length, 0, field)
+    assert.equal(syncDesktopSessions(f.home, f.root, f.configDir).created, 0, field)
+  }
+})

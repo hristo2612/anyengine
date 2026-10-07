@@ -25,7 +25,8 @@ message. You can switch providers in an existing conversation; the conversation
 and tool results are supplied to the next model as context.
 
 Claude labels and effort ranges come from the official client rather than a fixed
-list. Discovery initializes the client without sending an inference request.
+list. Native model IDs let Desktop match its own signed thinking/effort catalog;
+multiple CLI aliases for the same model share one Desktop row. Discovery initializes the client without sending an inference request.
 Run `picker refresh` after changing accounts or when models change; rerunning
 `picker on` also refreshes an existing installation. Desktop restarts when its
 profile changes. Gateway mode blocks Claude's fast mode, and Desktop's signed

@@ -21,6 +21,7 @@ export function desktopProfile(
   port: number,
   models: readonly GptModel[],
   claudeModels: readonly ClaudeModelEntry[] = [],
+  nativeNames = false,
 ) {
   return {
     inferenceProvider: 'gateway',
@@ -32,25 +33,39 @@ export function desktopProfile(
     modelDiscoveryEnabled: false,
     modelCatalogEnabled: false,
     inferenceModels: [
-      ...claudeModels.map((model) => {
-        const native = model as Partial<DesktopClaudeModel>
-        const family = /claude-(sonnet|opus|haiku|fable|mythos)-/.exec(
-          native.resolvedModel ?? '',
-        )?.[1]
-        const maximum =
-          native.efforts === undefined
-            ? 'high'
-            : [...CLAUDE_EFFORTS].reverse().find((level) => native.efforts?.includes(level))
-        return {
-          name: desktopClaudeId(model.id),
-          labelOverride: model.displayName,
-          ...(maximum ? { maxEffort: maximum } : {}),
-          ...(family ? { anthropicFamilyTier: family } : {}),
-          ...(native.resolvedModel && model.claudeModel.endsWith('[1m]')
-            ? { supports1m: true }
-            : {}),
-        }
-      }),
+      ...claudeModels
+        .filter(
+          (model, index) =>
+            !nativeNames ||
+            !claudeModels
+              .slice(index + 1)
+              .some(
+                (next) =>
+                  (next as Partial<DesktopClaudeModel>).resolvedModel ===
+                  (model as Partial<DesktopClaudeModel>).resolvedModel,
+              ),
+        )
+        .map((model) => {
+          const native = model as Partial<DesktopClaudeModel>
+          const family = /claude-(sonnet|opus|haiku|fable|mythos)-/.exec(
+            native.resolvedModel ?? '',
+          )?.[1]
+          const maximum =
+            native.efforts === undefined
+              ? 'high'
+              : [...CLAUDE_EFFORTS].reverse().find((level) => native.efforts?.includes(level))
+          return {
+            name: nativeNames
+              ? (native.resolvedModel ?? desktopClaudeId(model.id))
+              : desktopClaudeId(model.id),
+            labelOverride: model.displayName,
+            ...(maximum ? { maxEffort: maximum } : {}),
+            ...(family ? { anthropicFamilyTier: family } : {}),
+            ...(native.resolvedModel && model.claudeModel.endsWith('[1m]')
+              ? { supports1m: true }
+              : {}),
+          }
+        }),
       ...models.map((model) => ({
         name: desktopModelId(model.id),
         labelOverride: model.label,

@@ -296,7 +296,10 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
       }
     }
     const requested = typeof parsed?.model === 'string' ? parsed.model : ''
-    if (requested.startsWith(DESKTOP_CLAUDE_PREFIX)) {
+    if (
+      requested.startsWith(DESKTOP_CLAUDE_PREFIX) ||
+      (req.headers.authorization === 'Bearer anyengine-local' && requested.startsWith('claude-'))
+    ) {
       await desktopClaude(ctx, req, res, path, parsed as Obj, requested)
       return
     }
@@ -345,7 +348,11 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
             signal: caller.signal,
           })
         : config.claude.models
-      const model = models.find((entry) => requested === `${DESKTOP_CLAUDE_PREFIX}${entry.id}`)
+      const model = models.find(
+        (entry) =>
+          requested === `${DESKTOP_CLAUDE_PREFIX}${entry.id}` ||
+          ('resolvedModel' in entry && entry.resolvedModel === requested),
+      )
       if (!model) {
         ctx.log.info('desktop.model-unavailable', { model: requested.slice(0, 256) })
         error(res, 400, 'unsupported_model', 'The requested Desktop Claude model is unavailable')

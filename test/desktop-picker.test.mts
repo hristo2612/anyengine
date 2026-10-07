@@ -141,7 +141,7 @@ test('picker install/retry/removal preserves native login, unrelated settings an
     'haiku',
     model.id,
   ])
-  assert.equal(receipt.version, 3)
+  assert.equal(receipt.version, 4)
   assert.deepEqual(receipt.claudeModels, nativeModels)
   assert.deepEqual(f.system.calls, ['quitApp', 'openApp'])
   await f.run('on')
@@ -191,7 +191,10 @@ test('picker refuses edited profiles or foreign selections and leaves them intac
   assert.equal(desktopPickerStatus(f.home, f.root).conflict, true)
   await assert.rejects(f.run('off'), /edited/)
   assert.deepEqual(read(f.profile(receipt.id)), changed)
-  write(f.profile(receipt.id), desktopProfile(f.port, [model], receipt.claudeModels))
+  write(
+    f.profile(receipt.id),
+    desktopProfile(f.port, [model], receipt.claudeModels, receipt.version === 4),
+  )
   write(f.meta, { ...read(f.meta), appliedId: '33333333-3333-4333-8333-333333333333' })
   await assert.rejects(f.run('on'), /edited/)
   assert.equal(read(f.meta).appliedId, '33333333-3333-4333-8333-333333333333')
@@ -237,7 +240,7 @@ test('existing GPT-only installs upgrade to both subscriptions and keep their or
   write(f.profile(receipt.id), desktopProfile(f.port, [model]))
   await f.run('on')
   const next = read(f.receipt)
-  assert.equal(next.version, 3)
+  assert.equal(next.version, 4)
   assert.deepEqual(desktopPickerStatus(f.home, f.root).models, [
     'opus',
     'sonnet',
@@ -273,6 +276,7 @@ test('refresh includes newly available Claude choices and exact effort limits wi
   const row = read(f.profile(after.id)).inferenceModels.find(
     (m: any) => m.labelOverride === 'Fable 5.1',
   )
+  assert.equal(row.name, 'claude-fable-5-1')
   assert.equal(row.maxEffort, 'max')
   assert.equal(row.anthropicFamilyTier, 'fable')
   await f.run('off')

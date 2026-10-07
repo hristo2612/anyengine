@@ -985,6 +985,11 @@ test('Desktop model control exposes native Fable options and routes them without
   assert.equal(turns, 0)
   assert.equal((await wire(f.origin, { body, headers })).status, 200)
   assert.equal(turns, 1)
+  const native = Buffer.from(
+    JSON.stringify({ model: 'claude-fable-5-1', messages: [{ role: 'user', content: 'hello' }] }),
+  )
+  assert.equal((await wire(f.origin, { body: native, headers })).status, 200)
+  assert.equal(turns, 2)
   assert.equal(f.captured.length, 0)
   assert.equal(f.gpt.requests.length, 0)
 })

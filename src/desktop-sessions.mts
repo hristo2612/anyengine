@@ -118,13 +118,23 @@ export function listDesktopSessions(home: string, configDir = join(home, '.claud
           continue
         // Remote/Cowork/import staging needs the native importer, not a local projection.
         if (
-          record.sshConnection ||
-          record.sshConnectionId ||
-          record.remoteSessionId ||
-          record.remoteEnvironmentId ||
-          record.wslDistro ||
-          record.isCowork ||
-          record.stagedTranscriptPath
+          [
+            'sshConfig',
+            'wslConfig',
+            'movedToCloud',
+            'ranInSandboxVm',
+            'scheduledTaskId',
+            'sshConnection',
+            'sshConnectionId',
+            'sshRemoteTranscriptPath',
+            'remoteSessionId',
+            'remoteEnvironmentId',
+            'wslDistro',
+            'isCowork',
+            'stagedTranscriptPath',
+            'scratchFilesLeftIn',
+            'scratchOfferFolder',
+          ].some((key) => record[key])
         )
           continue
         out.push({

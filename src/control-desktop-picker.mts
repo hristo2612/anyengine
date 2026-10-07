@@ -10,7 +10,7 @@ import type { GptModel } from './claude-models.mjs'
 import type { Command } from './control-cli.mjs'
 import { atomicFile, jsonAt, object } from './control-layer-state.mjs'
 import { desktopClaudeModels } from './desktop-claude-catalog.mjs'
-import { desktopClaudeId, desktopModelId, desktopProfile } from './desktop-models.mjs'
+import { desktopModelId, desktopProfile } from './desktop-models.mjs'
 import { withFileLock } from './file-lock.mjs'
 import { fetchDesktopClaudeModels, fetchGptSettingsView, settingsView } from './router-messages.mjs'
 
@@ -69,7 +69,7 @@ async function checkRoute(port: number, model: string): Promise<void> {
   })
 }
 interface Receipt {
-  version: 1 | 2 | 3
+  version: 1 | 2 | 3 | 4
   id: string
   port: number
   models: GptModel[]
@@ -103,7 +103,7 @@ function receiptAt(path: string): Receipt | undefined {
   const value = read(path)
   if (value === undefined) return undefined
   if (
-    ![1, 2, 3].includes(value.version as number) ||
+    ![1, 2, 3, 4].includes(value.version as number) ||
     typeof value.id !== 'string' ||
     !ID.test(value.id) ||
     !Number.isInteger(value.port) ||
@@ -119,7 +119,7 @@ function receiptAt(path: string): Receipt | undefined {
   const models = settingsView({ generation: 0, fetchedAt: 0, models: value.models }).models
   if (!models.length) throw new Error('Desktop picker recovery has no models.')
   const claudeModels =
-    value.version === 3
+    value.version === 3 || value.version === 4
       ? desktopClaudeModels(value.claudeModels)
       : value.version === 2
         ? (PARSERS['claude.models']?.(value.claudeModels, DEFAULT_CONFIG) as ClaudeModelEntry[])
@@ -131,7 +131,7 @@ function receiptAt(path: string): Receipt | undefined {
   } as unknown as Receipt
 }
 const profileOf = (receipt: Receipt) =>
-  desktopProfile(receipt.port, receipt.models, receipt.claudeModels)
+  desktopProfile(receipt.port, receipt.models, receipt.claudeModels, receipt.version === 4)
 function metadata(path: string): Record<string, unknown> & { entries: Record<string, unknown>[] } {
   const value = read(path) ?? { entries: [] }
   if (
@@ -222,7 +222,7 @@ function prepareReceipt(
   if (mode.deploymentMode !== undefined && !['1p', '3p'].includes(String(mode.deploymentMode)))
     throw new Error('Invalid Desktop mode; existing settings retained.')
   const receipt: Receipt = {
-    version: 3,
+    version: 4,
     id: randomUUID(),
     port,
     models,
@@ -289,15 +289,14 @@ export const desktopPickerCommand: Command = async (args, system, root, say) => 
     const first = models[0]
     if (!first) throw new Error('No GPT models are available; existing Desktop mode retained.')
     await checkRoute(config.router.port, desktopModelId(first.id))
-    for (const model of claudeModels)
-      await checkRoute(config.router.port, desktopClaudeId(model.id))
+    for (const model of claudeModels) await checkRoute(config.router.port, model.resolvedModel)
   }
   mkdirSync(dirname(p.receipt), { recursive: true, mode: 0o700 })
   withFileLock(`${p.receipt}.lock`, () => {
     let receipt = receiptAt(p.receipt)
     if (receipt) owned(p, receipt)
     const sameCatalog =
-      receipt?.version === 3 &&
+      receipt?.version === 4 &&
       receipt.port === config.router.port &&
       isDeepStrictEqual(receipt.models, models) &&
       isDeepStrictEqual(receipt.claudeModels, claudeModels)
