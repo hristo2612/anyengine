@@ -124,6 +124,18 @@ Originals and continued branches stay intact. Sync copies new conversations
 once; cross-open again to bring over newer history. See
 [Session browsing and cross-open](docs/guide/sessions.md) for controls and limits.
 
+To keep local Claude Desktop Code conversations visible after an account switch,
+opt in separately:
+
+```bash
+anyengine desktop sessions on
+anyengine desktop sessions off
+```
+
+Reopen Claude to reload its list. Originals stay in place, credentials and
+permissions stay with each account, and off retains entries you have continued.
+See [Desktop sessions across accounts](docs/guide/claude-desktop.md#optional-sessions-across-accounts).
+
 ## Requirements
 
 macOS, ChatGPT.app 26.9 or newer, Node.js 24+ (for stable `node:sqlite`), and

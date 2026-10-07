@@ -322,6 +322,10 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
     requested: string,
   ): Promise<void> {
     if (!deps.desktopClaude || req.headers.authorization !== 'Bearer anyengine-local') {
+      ctx.log.info('desktop.route-unavailable', {
+        configured: !!deps.desktopClaude,
+        model: requested.slice(0, 256),
+      })
       error(res, 400, 'unsupported_model', 'The requested Desktop Claude model is unavailable')
       return
     }
@@ -343,6 +347,7 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
         : config.claude.models
       const model = models.find((entry) => requested === `${DESKTOP_CLAUDE_PREFIX}${entry.id}`)
       if (!model) {
+        ctx.log.info('desktop.model-unavailable', { model: requested.slice(0, 256) })
         error(res, 400, 'unsupported_model', 'The requested Desktop Claude model is unavailable')
         return
       }

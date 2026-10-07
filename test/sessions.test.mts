@@ -77,7 +77,11 @@ async function setup() {
 
 test('optional controls start off, off refuses copies, switches preserve other settings', async () => {
   const root = await tempDir('anyengine-sessions-off-')
-  assert.deepEqual(readConfig(root).config.sessions, { enabled: false, sync: false })
+  assert.deepEqual(readConfig(root).config.sessions, {
+    enabled: false,
+    sync: false,
+    desktopAccounts: false,
+  })
   let out = ''
   const say = (s: string) => {
     out += s
@@ -96,9 +100,17 @@ test('optional controls start off, off refuses copies, switches preserve other s
   assert.equal(await runControl(['sessions', 'on'], undefined, root, say), 0)
   assert.equal(readConfig(root).config.sessions.sync, false)
   assert.equal(await runControl(['sessions', 'sync', 'on'], undefined, root, say), 0)
-  assert.deepEqual(readConfig(root).config.sessions, { enabled: true, sync: true })
+  assert.deepEqual(readConfig(root).config.sessions, {
+    enabled: true,
+    sync: true,
+    desktopAccounts: false,
+  })
   assert.equal(await runControl(['sessions', 'off'], undefined, root, say), 0)
-  assert.deepEqual(readConfig(root).config.sessions, { enabled: false, sync: false })
+  assert.deepEqual(readConfig(root).config.sessions, {
+    enabled: false,
+    sync: false,
+    desktopAccounts: false,
+  })
   assert.equal(readConfig(root).config.router.enabled, true)
 })
 

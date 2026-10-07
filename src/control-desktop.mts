@@ -109,6 +109,10 @@ function enable(target: string, receiptPath: string, root: string): void {
   }
 }
 export const desktopCommand: Command = async (args, system, root, say) => {
+  if (args[0] === 'sessions') {
+    const { desktopSessionsCommand } = await import('./control-desktop-sessions.mjs')
+    return desktopSessionsCommand(args.slice(1), system, root, say)
+  }
   if (args[0] === 'picker') {
     const { desktopPickerCommand } = await import('./control-desktop-picker.mjs')
     const desktop = realSystem(

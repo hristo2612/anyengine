@@ -152,6 +152,7 @@ export const PARSERS: Readonly<Record<string, Parser>> = {
   'claims.unclaimedFlipThreshold': intIn(1, 100),
   'sessions.enabled': bool,
   'sessions.sync': bool,
+  'sessions.desktopAccounts': bool,
 }
 export const SET_CHECKS: Readonly<Record<string, (value: unknown) => void>> = {
   'claude.cli': executableFile,

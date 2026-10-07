@@ -86,3 +86,8 @@ Settings are `sessions.enabled` and `sessions.sync` in
 `~/.anyengine/config.json`, both `false` by default. Copy mappings live under
 `~/.anyengine/sessions/`; actual copies live in the destination's native history.
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` select the vendor history homes.
+
+For local Claude Desktop Code sessions hidden after switching accounts, use the
+separate opt-in [Desktop account sharing](claude-desktop.md#optional-sessions-across-accounts)
+option. `sessions off` disables cross-engine browsing and copying; Desktop account
+sharing has its own `desktop sessions off` control.

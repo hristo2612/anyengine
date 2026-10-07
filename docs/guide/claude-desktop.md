@@ -1,7 +1,8 @@
 # Claude and GPT in Claude Desktop
 
-AnyEngine offers two independent options: Claude and GPT together in the model
-picker, or GPT tool consultation while keeping Claude's ordinary cloud mode.
+AnyEngine offers independent options: Claude and GPT together in the model
+picker, GPT tool consultation in ordinary cloud mode, and local Code sessions
+visible across Desktop accounts.
 
 ## Combined model picker
 
@@ -62,6 +63,48 @@ retained and reported as a conflict. Recovery intent is saved before settings
 change; interrupted enable can be retried or undone, and install/launch failures
 restore the prior selection automatically. Existing GPT-only installations upgrade
 when you rerun `picker on`. Use `picker refresh` to update model lists.
+
+## Optional sessions across accounts
+
+Claude Desktop indexes local Code sessions under the account and organization
+that created them. Switching accounts changes which folder it reads; the CLI
+transcripts remain in the shared Claude Code history. AnyEngine can make these
+local conversations visible in the other account folders:
+
+```bash
+anyengine desktop sessions on
+anyengine desktop sessions status
+anyengine desktop sessions list
+anyengine desktop sessions sync
+anyengine desktop sessions off
+```
+
+This option starts **off** and is independent of the combined picker and
+cross-engine session copying. `on` shares existing eligible sessions, then checks
+for new ones once a minute while AnyEngine runs. `sync` repeats the check manually.
+Quit and reopen Claude after sharing or switching accounts to reload its list;
+AnyEngine does not restart an active session in the background.
+
+Sharing creates minimal local Code entries across existing account/organization
+folders in both `Claude` and `Claude-3p`. If a new account has no local Code folder,
+start one Code session there, then sync. Entries link to the existing CLI
+transcript; they do not copy its content or transfer login credentials, connector
+settings, permission grants, model picks, Chrome access or stale error banners.
+The destination uses its own defaults and approvals. Original entries and
+transcripts are untouched, and existing destination entries are never overwritten.
+
+`off` stops sharing and removes unchanged entries created by AnyEngine. Entries
+you have continued or edited are retained, along with their transcripts. Desktop
+keeps separate titles and sidebar metadata in each account; AnyEngine does not
+merge those changes. Avoid opening the same transcript for concurrent writes in
+two accounts.
+
+Only local Code sessions with an existing local CLI transcript are included.
+Claude cloud chats, gateway Chat history, Cowork, SSH/remote sessions, staged
+imports, schedules and scratch workspaces are outside this option. Desktop and
+Claude Code logins remain independent. The setting is `sessions.desktopAccounts`
+in `~/.anyengine/config.json`; ownership receipts live under
+`~/.anyengine/recovery/claude-desktop/sessions.json`.
 
 ## Optional GPT tool consultation
 

@@ -1,4 +1,7 @@
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { readConfig } from './anyengine-config.mjs'
+import { syncDesktopSessions } from './desktop-sessions.mjs'
 import { Sessions } from './sessions.mjs'
 
 // Piggyback on an existing AnyEngine process. No extra service or login.
@@ -22,12 +25,27 @@ export function startSessionSync(
     )
   }
   const tick = () => {
-    if (pending || !enabled()) return
+    const read = readConfig(root)
+    if (pending || closed || env.ANYENGINE_MOCK === '1' || read.errors.length) return
+    const desktopEnabled = read.config.sessions.desktopAccounts
+    if (!desktopEnabled && !enabled()) return
     pending = (async () => {
       try {
-        current = new Sessions(root, env)
-        const result = await current.sync(25, undefined, enabled)
-        if (result.copied.length) report(`Copied ${result.copied.length} new conversations`)
+        if (desktopEnabled) {
+          const home = env.HOME || homedir()
+          const result = syncDesktopSessions(
+            home,
+            root,
+            env.CLAUDE_CONFIG_DIR || join(home, '.claude'),
+          )
+          if (result.created)
+            report(`Shared ${result.created} Desktop session entries; reopen Claude to reload`)
+        }
+        if (enabled()) {
+          current = new Sessions(root, env)
+          const result = await current.sync(25, undefined, enabled)
+          if (result.copied.length) report(`Copied ${result.copied.length} new conversations`)
+        }
       } catch (error) {
         report(`Session sync paused: ${error instanceof Error ? error.message : String(error)}`)
       } finally {

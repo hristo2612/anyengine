@@ -59,7 +59,7 @@ export interface AnyEngineConfig {
     gptModel: string | null
   }
   claims: { idleReleaseMinutes: number; graceMs: number; unclaimedFlipThreshold: number }
-  sessions: { enabled: boolean; sync: boolean }
+  sessions: { enabled: boolean; sync: boolean; desktopAccounts: boolean }
 }
 
 export interface EnginePaths {
@@ -111,7 +111,7 @@ export const DEFAULT_CONFIG: AnyEngineConfig = deepFreeze<AnyEngineConfig>({
   },
   smoke: { enabled: true, hour: 3, minute: 30, claudeModel: 'haiku', gptModel: null },
   claims: { idleReleaseMinutes: 10, graceMs: 3000, unclaimedFlipThreshold: 3 },
-  sessions: { enabled: false, sync: false },
+  sessions: { enabled: false, sync: false, desktopAccounts: false },
 })
 
 // Where the default is the riskier choice, a setting that cannot be read

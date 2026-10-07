@@ -13,6 +13,9 @@ Account controls and limits are described in [Control commands](control.md).
 Optional history browsing and automatic copying use `sessions.enabled` and
 `sessions.sync`, both `false` by default. Prefer `anyengine sessions on|off`
 and `anyengine sessions sync on|off`; see [Session browsing and cross-open](sessions.md).
+Local Claude Desktop Code visibility across accounts uses the independent
+`sessions.desktopAccounts` setting, also `false` by default. Use
+`anyengine desktop sessions on|off`; see [Claude Desktop](claude-desktop.md).
 The installed setup selects the interactive Claude CLI runtime. The environment
 settings below are advanced adapter/backend overrides; set them in the intended
 host's environment or `~/.anyengine/runtime.env`. Existing overrides can take
