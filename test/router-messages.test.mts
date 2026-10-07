@@ -6,6 +6,7 @@ import { brotliCompressSync, gzipSync } from 'node:zlib'
 import type { AccountAdmission, BrokerLease, TokenBroker } from '../src/broker-types.mjs'
 import type { GptCatalogs } from '../src/claude-catalog.mjs'
 import type { GptModel } from '../src/claude-models.mjs'
+import { claudeCatalogModels, DESKTOP_CLAUDE_MODELS } from '../src/desktop-claude-catalog.mjs'
 import type { DesktopClaudeRuntime } from '../src/desktop-claude-runtime.mjs'
 import { DESKTOP_MODEL_PREFIX, desktopClaudeId, desktopModelId } from '../src/desktop-models.mjs'
 import { MAX_BODY_BYTES } from '../src/router-relay.mjs'
@@ -125,7 +126,11 @@ function success(res: ServerResponse) {
   res.end(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''))
 }
 
-async function fixture(t: TestContext, desktopRuntime?: Pick<DesktopClaudeRuntime, 'run'>) {
+async function fixture(
+  t: TestContext,
+  desktopRuntime?: Pick<DesktopClaudeRuntime, 'run'> &
+    Partial<Pick<DesktopClaudeRuntime, 'models'>>,
+) {
   const { messagesHook } = await load()
   const root = await tempDir('rm-')
   let router: RunningRouter | null = null
@@ -931,4 +936,55 @@ test('Desktop Claude uses only the subscription client; local counts, unknown mo
   assert.equal(f.state.gets, 0)
   assert.equal(f.gpt.requests.length, 0)
   assert.equal(f.captured.length, 0)
+})
+
+test('Desktop model control exposes native Fable options and routes them without Anthropic credential passthrough', async (t) => {
+  const models = claudeCatalogModels([
+    {
+      value: 'fable',
+      resolvedModel: 'claude-fable-5-1',
+      displayName: 'Fable 5.1',
+      description: 'Native account model',
+    },
+  ])
+  let turns = 0
+  let discoveries = 0
+  const f = await fixture(t, {
+    models: async () => {
+      discoveries++
+      return models
+    },
+    run: async (input) => {
+      turns++
+      assert.equal(input.model.claudeModel, 'fable')
+      input.res.end(
+        JSON.stringify({ type: 'message', content: [{ type: 'text', text: 'FABLE_OK' }] }),
+      )
+    },
+  })
+  const blocked = await wire(f.origin, {
+    path: DESKTOP_CLAUDE_MODELS,
+    method: 'GET',
+    headers: { origin: 'https://example.com' },
+  })
+  assert.equal(blocked.status, 403)
+  assert.equal(discoveries, 0)
+  const { fetchDesktopClaudeModels } = await load()
+  assert.deepEqual(await fetchDesktopClaudeModels(f.origin, new AbortController().signal), models)
+  const headers = { authorization: 'Bearer anyengine-local', 'content-type': 'application/json' }
+  const body = Buffer.from(
+    JSON.stringify({
+      model: desktopClaudeId('fable'),
+      messages: [{ role: 'user', content: 'hello' }],
+    }),
+  )
+  assert.equal(
+    (await wire(f.origin, { path: '/v1/messages/count_tokens', body, headers })).status,
+    200,
+  )
+  assert.equal(turns, 0)
+  assert.equal((await wire(f.origin, { body, headers })).status, 200)
+  assert.equal(turns, 1)
+  assert.equal(f.captured.length, 0)
+  assert.equal(f.gpt.requests.length, 0)
 })

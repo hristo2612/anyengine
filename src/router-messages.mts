@@ -1,22 +1,22 @@
 // Claude retains its wire payload. Only an explicit GPT model crosses into
 // the broker-authenticated Messages translator.
 import { isUtf8 } from 'node:buffer'
-import http, { type IncomingMessage, type ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AccountAdmission, TokenBroker } from './broker-types.mjs'
 import { type GptCatalogs, readGptSettingsView } from './claude-catalog.mjs'
 import { serveGpt } from './claude-gpt.mjs'
 import { type GptModel, type GptSettingsView, resolveGptModel } from './claude-models.mjs'
+import { DESKTOP_CLAUDE_MODELS, desktopClaudeModels } from './desktop-claude-catalog.mjs'
 import type { DesktopClaudeRuntime } from './desktop-claude-runtime.mjs'
 import { DESKTOP_CLAUDE_PREFIX, DESKTOP_MODEL_PREFIX, desktopGptModel } from './desktop-models.mjs'
+import { fetchModelSettings } from './router-model-settings.mjs'
 import {
   carriesBody,
   decodeBody,
   MAX_BODY_BYTES,
-  MAX_HEADER_BYTES,
   passthrough,
   readBody,
   readJsonBody,
-  relayAgent,
   sendJson,
 } from './router-relay.mjs'
 import { CODEX_BASE_PATH, localOnly, type RouterContext } from './router-server.mjs'
@@ -34,7 +34,10 @@ interface MessagesDependencies {
   catalogs: GptCatalogs
   anthropicOrigin?: string
   gptOrigin?: string
-  desktopClaude?: { runtime: Pick<DesktopClaudeRuntime, 'run'>; root: string }
+  desktopClaude?: {
+    runtime: Pick<DesktopClaudeRuntime, 'run'> & Partial<Pick<DesktopClaudeRuntime, 'models'>>
+    root: string
+  }
 }
 
 const MAX_DECODED_BYTES = 256 * 1024 * 1024
@@ -192,6 +195,39 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
       caller.detach()
     }
   }
+  async function controlClaudeModels(
+    ctx: RouterContext,
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<void> {
+    if (req.method !== 'GET') {
+      error(res, 405, 'method_not_allowed', 'Use GET for the model settings view')
+      return
+    }
+    const caller = callerSignal(req, res)
+    try {
+      if (!deps.desktopClaude?.runtime.models) throw new Error('Claude catalog unavailable')
+      const config = ctx.config()
+      const models = await deps.desktopClaude.runtime.models({
+        root: deps.desktopClaude.root,
+        cli: config.claude.cli,
+        configured: config.claude.models,
+        signal: caller.signal,
+        refresh: true,
+      })
+      if (!caller.signal.aborted) sendJson(res, 200, { models })
+    } catch {
+      if (!caller.signal.aborted)
+        error(
+          res,
+          503,
+          'claude_unavailable',
+          'Claude model settings are unavailable; check your Claude Code login',
+        )
+    } finally {
+      caller.detach()
+    }
+  }
   async function gptMessages(
     ctx: RouterContext,
     req: IncomingMessage,
@@ -285,24 +321,35 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
     body: Obj,
     requested: string,
   ): Promise<void> {
-    const model = ctx
-      .config()
-      .claude.models.find((entry) => requested === `${DESKTOP_CLAUDE_PREFIX}${entry.id}`)
-    if (!model || !deps.desktopClaude || req.headers.authorization !== 'Bearer anyengine-local') {
+    if (!deps.desktopClaude || req.headers.authorization !== 'Bearer anyengine-local') {
       error(res, 400, 'unsupported_model', 'The requested Desktop Claude model is unavailable')
       return
     }
-    if (path === '/v1/messages/count_tokens') {
-      sendJson(res, 200, { input_tokens: estimatedTokens(body) })
-      return
-    }
-    if (path !== '/v1/messages') {
+    if (!['/v1/messages', '/v1/messages/count_tokens'].includes(path)) {
       error(res, 400, 'unsupported_endpoint', 'Desktop Claude requires the Messages endpoint')
       return
     }
     const caller = callerSignal(req, res)
     inflight(ctx, res, 'claude')
     try {
+      const config = ctx.config()
+      const models = deps.desktopClaude.runtime.models
+        ? await deps.desktopClaude.runtime.models({
+            root: deps.desktopClaude.root,
+            cli: config.claude.cli,
+            configured: config.claude.models,
+            signal: caller.signal,
+          })
+        : config.claude.models
+      const model = models.find((entry) => requested === `${DESKTOP_CLAUDE_PREFIX}${entry.id}`)
+      if (!model) {
+        error(res, 400, 'unsupported_model', 'The requested Desktop Claude model is unavailable')
+        return
+      }
+      if (path === '/v1/messages/count_tokens') {
+        sendJson(res, 200, { input_tokens: estimatedTokens(body) })
+        return
+      }
       await deps.desktopClaude.runtime.run({
         root: deps.desktopClaude.root,
         body,
@@ -329,7 +376,9 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
       path === '/health' ||
       path === CODEX_BASE_PATH ||
       path.startsWith(`${CODEX_BASE_PATH}/`) ||
-      ((path === '/control' || path.startsWith('/control/')) && path !== CONTROL_MODELS)
+      ((path === '/control' || path.startsWith('/control/')) &&
+        path !== CONTROL_MODELS &&
+        path !== DESKTOP_CLAUDE_MODELS)
     )
       return false
     if (localOnly(req)) {
@@ -341,6 +390,7 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
       return true
     }
     if (path === CONTROL_MODELS) await controlModels(req, res)
+    else if (path === DESKTOP_CLAUDE_MODELS) await controlClaudeModels(ctx, req, res)
     else if (req.method === 'GET' || req.method === 'HEAD') {
       inflight(ctx, res, 'claude')
       passthrough({ ...ctx, upstream: () => anthropic }, req, res, path, query, null)
@@ -349,7 +399,6 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
   }
 }
 
-const MAX_VIEW_BYTES = 1024 * 1024
 const CONTROLS = /[\p{Cc}\p{Zl}\p{Zp}]/u
 const EFFORT = /^[a-z][a-z0-9_-]{0,63}$/
 
@@ -414,82 +463,11 @@ export async function fetchGptSettingsView(
   baseUrl: string,
   signal: AbortSignal,
 ): Promise<GptSettingsView> {
-  if (signal.aborted) throw viewFailure(signal)
-  let target: URL
-  try {
-    const base = new URL(baseUrl)
-    if (
-      base.protocol !== 'http:' ||
-      !['127.0.0.1', '[::1]'].includes(base.hostname) ||
-      base.username ||
-      base.password ||
-      base.search ||
-      base.hash ||
-      (base.pathname !== '/' && base.pathname.replace(/\/$/, '') !== CODEX_BASE_PATH)
-    )
-      throw viewFailure()
-    target = new URL(CONTROL_MODELS, base.origin)
-  } catch {
-    throw viewFailure()
-  }
-  return new Promise<GptSettingsView>((resolve, reject) => {
-    let finished = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const finish = (view?: GptSettingsView) => {
-      if (finished) return
-      finished = true
-      clearTimeout(timer)
-      if (view && !signal.aborted) resolve(view)
-      else reject(viewFailure(signal))
-    }
-    const request = http.request(
-      target,
-      {
-        method: 'GET',
-        headers: { accept: 'application/json' },
-        agent: relayAgent(target),
-        maxHeaderSize: MAX_HEADER_BYTES,
-        signal,
-      },
-      (response) => {
-        response.once('error', () => finish())
-        response.once('aborted', () => finish())
-        if (
-          response.statusCode !== 200 ||
-          Number(response.headers['content-length'] ?? 0) > MAX_VIEW_BYTES
-        ) {
-          response.destroy()
-          finish()
-          return
-        }
-        const chunks: Buffer[] = []
-        let size = 0
-        response.on('data', (chunk: Buffer) => {
-          size += chunk.length
-          if (size > MAX_VIEW_BYTES) {
-            chunks.length = 0
-            response.destroy()
-            finish()
-          } else if (!finished) chunks.push(chunk)
-        })
-        response.once('end', () => {
-          if (finished) return
-          try {
-            const bytes = decodeBody(
-              Buffer.concat(chunks),
-              response.headers['content-encoding'],
-              MAX_VIEW_BYTES,
-            )
-            const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-            finish(settingsView(JSON.parse(text)))
-          } catch {
-            finish()
-          }
-        })
-      },
-    )
-    timer = setTimeout(() => request.destroy(viewFailure()), 8_000)
-    request.once('error', () => finish())
-    request.end()
+  return fetchModelSettings(baseUrl, signal, CONTROL_MODELS, settingsView)
+}
+export async function fetchDesktopClaudeModels(baseUrl: string, signal: AbortSignal) {
+  return fetchModelSettings(baseUrl, signal, DESKTOP_CLAUDE_MODELS, (value: unknown) => {
+    if (!record(value)) throw viewFailure()
+    return desktopClaudeModels(value.models)
   })
 }

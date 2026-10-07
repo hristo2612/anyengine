@@ -9,11 +9,12 @@ import { PARSERS } from './anyengine-config-rules.mjs'
 import type { GptModel } from './claude-models.mjs'
 import type { Command } from './control-cli.mjs'
 import { atomicFile, jsonAt, object } from './control-layer-state.mjs'
+import { desktopClaudeModels } from './desktop-claude-catalog.mjs'
 import { desktopClaudeId, desktopModelId, desktopProfile } from './desktop-models.mjs'
 import { withFileLock } from './file-lock.mjs'
-import { fetchGptSettingsView, settingsView } from './router-messages.mjs'
+import { fetchDesktopClaudeModels, fetchGptSettingsView, settingsView } from './router-messages.mjs'
 
-const USAGE = 'usage: anyengine desktop picker on|off|status [--json]'
+const USAGE = 'usage: anyengine desktop picker on|refresh|off|status [--json]'
 const ID = /^[a-f0-9-]{36}$/
 // Count locally without inference, before switching Desktop to this router.
 async function checkRoute(port: number, model: string): Promise<void> {
@@ -68,7 +69,7 @@ async function checkRoute(port: number, model: string): Promise<void> {
   })
 }
 interface Receipt {
-  version: 1 | 2
+  version: 1 | 2 | 3
   id: string
   port: number
   models: GptModel[]
@@ -102,7 +103,7 @@ function receiptAt(path: string): Receipt | undefined {
   const value = read(path)
   if (value === undefined) return undefined
   if (
-    (value.version !== 1 && value.version !== 2) ||
+    ![1, 2, 3].includes(value.version as number) ||
     typeof value.id !== 'string' ||
     !ID.test(value.id) ||
     !Number.isInteger(value.port) ||
@@ -118,9 +119,11 @@ function receiptAt(path: string): Receipt | undefined {
   const models = settingsView({ generation: 0, fetchedAt: 0, models: value.models }).models
   if (!models.length) throw new Error('Desktop picker recovery has no models.')
   const claudeModels =
-    value.version === 2
-      ? (PARSERS['claude.models']?.(value.claudeModels, DEFAULT_CONFIG) as ClaudeModelEntry[])
-      : undefined
+    value.version === 3
+      ? desktopClaudeModels(value.claudeModels)
+      : value.version === 2
+        ? (PARSERS['claude.models']?.(value.claudeModels, DEFAULT_CONFIG) as ClaudeModelEntry[])
+        : undefined
   return {
     ...value,
     models: [...models],
@@ -219,7 +222,7 @@ function prepareReceipt(
   if (mode.deploymentMode !== undefined && !['1p', '3p'].includes(String(mode.deploymentMode)))
     throw new Error('Invalid Desktop mode; existing settings retained.')
   const receipt: Receipt = {
-    version: 2,
+    version: 3,
     id: randomUUID(),
     port,
     models,
@@ -243,7 +246,7 @@ function applyProfile(p: ReturnType<typeof paths>, receipt: Receipt): void {
 export const desktopPickerCommand: Command = async (args, system, root, say) => {
   const [verb, flag] = args
   if (
-    !['on', 'off', 'status'].includes(verb ?? '') ||
+    !['on', 'refresh', 'off', 'status'].includes(verb ?? '') ||
     args.length > 2 ||
     (flag !== undefined && (verb !== 'status' || flag !== '--json'))
   ) {
@@ -261,35 +264,48 @@ export const desktopPickerCommand: Command = async (args, system, root, say) => 
   }
   const p = paths(system.home, root)
   const { config, errors } = readConfig(root)
-  if (verb === 'on' && (errors.length || !config.router.enabled))
+  const enabling = verb === 'on' || verb === 'refresh'
+  if (verb === 'refresh' && !desktopPickerStatus(system.home, root).enabled)
+    throw new Error('Enable the Desktop picker before refreshing its models.')
+  if (enabling && (errors.length || !config.router.enabled))
     throw new Error('Enable the AnyEngine router before the Desktop picker.')
-  const models =
-    verb === 'on'
-      ? [
-          ...(
-            await fetchGptSettingsView(
-              `http://127.0.0.1:${config.router.port}`,
-              AbortSignal.timeout(15_000),
-            )
-          ).models,
-        ]
-      : []
-  if (verb === 'on') {
+  const models = enabling
+    ? [
+        ...(
+          await fetchGptSettingsView(
+            `http://127.0.0.1:${config.router.port}`,
+            AbortSignal.timeout(15_000),
+          )
+        ).models,
+      ]
+    : []
+  const claudeModels = enabling
+    ? await fetchDesktopClaudeModels(
+        `http://127.0.0.1:${config.router.port}`,
+        AbortSignal.timeout(25_000),
+      )
+    : []
+  if (enabling) {
     const first = models[0]
     if (!first) throw new Error('No GPT models are available; existing Desktop mode retained.')
     await checkRoute(config.router.port, desktopModelId(first.id))
-    for (const model of config.claude.models)
+    for (const model of claudeModels)
       await checkRoute(config.router.port, desktopClaudeId(model.id))
   }
   mkdirSync(dirname(p.receipt), { recursive: true, mode: 0o700 })
   withFileLock(`${p.receipt}.lock`, () => {
     let receipt = receiptAt(p.receipt)
     if (receipt) owned(p, receipt)
+    const sameCatalog =
+      receipt?.version === 3 &&
+      receipt.port === config.router.port &&
+      isDeepStrictEqual(receipt.models, models) &&
+      isDeepStrictEqual(receipt.claudeModels, claudeModels)
     if (verb === 'off' && !receipt) {
       say('Claude Desktop native GPT picker is already off.\n')
       return
     }
-    if (verb === 'on' && receipt?.version === 2 && desktopPickerStatus(system.home, root).enabled) {
+    if (enabling && sameCatalog && desktopPickerStatus(system.home, root).enabled && receipt) {
       say('Claude Desktop Claude + GPT picker is already on.\n')
       return
     }
@@ -299,21 +315,21 @@ export const desktopPickerCommand: Command = async (args, system, root, say) => 
     try {
       if (verb === 'off' && receipt) restore(p, receipt)
       else {
-        if (receipt?.version === 1) {
+        if (receipt && !sameCatalog) {
           restore(p, receipt)
           receipt = undefined
         }
-        receipt ??= prepareReceipt(p, config.router.port, models, config.claude.models)
+        receipt ??= prepareReceipt(p, config.router.port, models, claudeModels)
         applyProfile(p, receipt)
       }
       if (wasRunning) system.openApp()
     } catch (error) {
-      if (verb === 'on' && receipt) restore(p, receipt)
+      if (enabling && receipt) restore(p, receipt)
       if (wasRunning) system.openApp()
       throw error
     }
     say(
-      `Claude Desktop Claude + GPT picker ${verb}. ${verb === 'on' ? 'Select Claude (Claude Code subscription) or GPT (Codex subscription) in the app’s model menu. Gateway history is local; picker off restores Claude cloud mode.' : 'Previous Desktop mode restored.'}\n`,
+      `Claude Desktop Claude + GPT picker ${verb}. ${enabling ? 'Select Claude (Claude Code subscription) or GPT (Codex subscription) in the app’s model menu. Gateway history is local; picker off restores Claude cloud mode.' : 'Previous Desktop mode restored.'}\n`,
     )
   })
   return 0

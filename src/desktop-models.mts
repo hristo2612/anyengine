@@ -2,6 +2,7 @@
 
 import type { ClaudeModelEntry } from './anyengine-config.mjs'
 import type { GptModel } from './claude-models.mjs'
+import { CLAUDE_EFFORTS, type DesktopClaudeModel } from './desktop-claude-catalog.mjs'
 
 export const DESKTOP_MODEL_PREFIX = 'anyengine/claude-compatible/'
 export const DESKTOP_CLAUDE_PREFIX = 'anyengine/claude-subscription/'
@@ -31,11 +32,25 @@ export function desktopProfile(
     modelDiscoveryEnabled: false,
     modelCatalogEnabled: false,
     inferenceModels: [
-      ...claudeModels.map((model) => ({
-        name: desktopClaudeId(model.id),
-        labelOverride: model.displayName,
-        maxEffort: 'high',
-      })),
+      ...claudeModels.map((model) => {
+        const native = model as Partial<DesktopClaudeModel>
+        const family = /claude-(sonnet|opus|haiku|fable|mythos)-/.exec(
+          native.resolvedModel ?? '',
+        )?.[1]
+        const maximum =
+          native.efforts === undefined
+            ? 'high'
+            : [...CLAUDE_EFFORTS].reverse().find((level) => native.efforts?.includes(level))
+        return {
+          name: desktopClaudeId(model.id),
+          labelOverride: model.displayName,
+          ...(maximum ? { maxEffort: maximum } : {}),
+          ...(family ? { anthropicFamilyTier: family } : {}),
+          ...(native.resolvedModel && model.claudeModel.endsWith('[1m]')
+            ? { supports1m: true }
+            : {}),
+        }
+      }),
       ...models.map((model) => ({
         name: desktopModelId(model.id),
         labelOverride: model.label,

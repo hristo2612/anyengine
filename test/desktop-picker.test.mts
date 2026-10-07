@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { after, type TestContext, test } from 'node:test'
 import { DEFAULT_CONFIG, setConfigValue } from '../src/anyengine-config.mjs'
 import { desktopPickerCommand, desktopPickerStatus } from '../src/control-desktop-picker.mjs'
+import { claudeCatalogModels, DESKTOP_CLAUDE_MODELS } from '../src/desktop-claude-catalog.mjs'
 import {
   DESKTOP_MODEL_PREFIX,
   desktopGptModel,
@@ -23,6 +24,16 @@ const model = {
   efforts: ['low', 'high', 'ultra'],
 }
 const read = (path: string) => JSON.parse(readFileSync(path, 'utf8'))
+const nativeModels = claudeCatalogModels(
+  DEFAULT_CONFIG.claude.models.map((model) => ({
+    value: model.id,
+    resolvedModel: `claude-${model.id}-test`,
+    displayName: model.displayName,
+    description: 'Native model',
+    supportsEffort: true,
+    supportedEffortLevels: ['low', 'medium', 'high', 'max'],
+  })),
+)
 function write(path: string, value: object) {
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, JSON.stringify(value))
@@ -35,7 +46,13 @@ async function fixture(t: TestContext) {
   system.version = '2.19675.1'
   let available = true
   let compatible = true
+  let claudeModels = nativeModels
   const server = http.createServer((req, res) => {
+    if (req.url === DESKTOP_CLAUDE_MODELS) {
+      res.writeHead(available ? 200 : 503, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ models: claudeModels }))
+      return
+    }
     if (req.url === '/v1/messages/count_tokens') {
       const desktop =
         req.headers.authorization === 'Bearer anyengine-local' &&
@@ -75,6 +92,9 @@ async function fixture(t: TestContext) {
     },
     oldRouter: () => {
       compatible = false
+    },
+    models: (models: typeof nativeModels) => {
+      claudeModels = models
     },
     run: (verb: string) => desktopPickerCommand([verb], system, root, () => {}),
   }
@@ -121,8 +141,8 @@ test('picker install/retry/removal preserves native login, unrelated settings an
     'haiku',
     model.id,
   ])
-  assert.equal(receipt.version, 2)
-  assert.deepEqual(receipt.claudeModels, DEFAULT_CONFIG.claude.models)
+  assert.equal(receipt.version, 3)
+  assert.deepEqual(receipt.claudeModels, nativeModels)
   assert.deepEqual(f.system.calls, ['quitApp', 'openApp'])
   await f.run('on')
   assert.deepEqual(f.system.calls, ['quitApp', 'openApp'])
@@ -217,7 +237,7 @@ test('existing GPT-only installs upgrade to both subscriptions and keep their or
   write(f.profile(receipt.id), desktopProfile(f.port, [model]))
   await f.run('on')
   const next = read(f.receipt)
-  assert.equal(next.version, 2)
+  assert.equal(next.version, 3)
   assert.deepEqual(desktopPickerStatus(f.home, f.root).models, [
     'opus',
     'sonnet',
@@ -227,4 +247,34 @@ test('existing GPT-only installs upgrade to both subscriptions and keep their or
   assert.equal(existsSync(f.profile(receipt.id)), false)
   await f.run('off')
   assert.deepEqual(read(f.mode), { deploymentMode: '1p', keep: 'native' })
+})
+
+test('refresh includes newly available Claude choices and exact effort limits without losing rollback', async (t) => {
+  const f = await fixture(t)
+  write(f.mode, { deploymentMode: '1p', keep: 'original' })
+  await f.run('on')
+  const before = read(f.receipt)
+  const fable = claudeCatalogModels([
+    {
+      value: 'fable',
+      resolvedModel: 'claude-fable-5-1',
+      displayName: 'Fable 5.1',
+      description: 'Native Fable option',
+      supportsEffort: true,
+      supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    },
+  ])[0]!
+  f.models([...nativeModels, fable])
+  await f.run('refresh')
+  const after = read(f.receipt)
+  assert.notEqual(before.id, after.id)
+  assert.ok(desktopPickerStatus(f.home, f.root).models.includes('fable'))
+  assert.equal(existsSync(f.profile(before.id)), false)
+  const row = read(f.profile(after.id)).inferenceModels.find(
+    (m: any) => m.labelOverride === 'Fable 5.1',
+  )
+  assert.equal(row.maxEffort, 'max')
+  assert.equal(row.anthropicFamilyTier, 'fable')
+  await f.run('off')
+  assert.deepEqual(read(f.mode), { deploymentMode: '1p', keep: 'original' })
 })

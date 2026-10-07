@@ -13,6 +13,11 @@ import {
 import type { ClaudeModelEntry } from './anyengine-config.mjs'
 import { claudeEnvironment } from './claude-environment.mjs'
 import { createGptOutput as createMessagesOutput } from './claude-gpt-output.mjs'
+import {
+  configuredDesktopModels,
+  type DesktopClaudeModel,
+  discoverClaudeModels,
+} from './desktop-claude-catalog.mjs'
 import { desktopTools } from './desktop-tools-mcp.mjs'
 import type { Obj } from './vendor/claude-code-proxy/types.mjs'
 
@@ -112,12 +117,50 @@ export class DesktopClaudeRuntime {
     this.query = privateQuery
   }
   private readonly query: typeof query
-  private readonly runs = new Map<AbortController, Promise<void>>()
+  private readonly runs = new Map<AbortController, Promise<unknown>>()
+  private catalog: { key: string; at: number; models: DesktopClaudeModel[] } | undefined
+  private discovery: { key: string; promise: Promise<DesktopClaudeModel[]> } | undefined
   private closing = false
   async close(): Promise<void> {
     this.closing = true
     for (const abort of this.runs.keys()) abort.abort()
     await Promise.allSettled(this.runs.values())
+  }
+  async models(input: {
+    root: string
+    cli: string | null
+    configured: ClaudeModelEntry[]
+    signal: AbortSignal
+    refresh?: boolean
+  }): Promise<DesktopClaudeModel[]> {
+    if (this.closing || this.runs.size >= 32) throw new Error('Claude Desktop is busy')
+    input.signal.throwIfAborted()
+    const key = `${input.root}\0${input.cli ?? ''}`
+    if (!input.refresh && this.catalog?.key === key && Date.now() - this.catalog.at < 60_000)
+      return configuredDesktopModels(this.catalog.models, input.configured)
+    let pending = this.discovery?.key === key ? this.discovery.promise : undefined
+    if (!pending) {
+      const abort = new AbortController()
+      pending = discoverClaudeModels({
+        root: input.root,
+        cli: input.cli,
+        signal: AbortSignal.any([abort.signal, input.signal]),
+        query: this.query,
+      })
+        .then((models) => {
+          this.catalog = { key, at: Date.now(), models }
+          return models
+        })
+        .finally(() => {
+          this.runs.delete(abort)
+          if (this.discovery?.promise === pending) this.discovery = undefined
+        })
+      this.runs.set(abort, pending)
+      this.discovery = { key, promise: pending }
+    }
+    const models = await pending
+    input.signal.throwIfAborted()
+    return configuredDesktopModels(models, input.configured)
   }
   async run(input: {
     root: string

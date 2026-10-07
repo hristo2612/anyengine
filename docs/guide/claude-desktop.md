@@ -10,16 +10,25 @@ After installing and enabling AnyEngine:
 
 ```bash
 anyengine desktop picker on
+anyengine desktop picker refresh
 anyengine desktop picker status
 anyengine desktop picker status --json
 ```
 
 If Claude is running, AnyEngine quits and reopens it to apply the profile.
 Otherwise, open Claude after the command. The normal model menu contains your
-configured Claude models (Opus, Sonnet and Haiku by default) plus the GPT models
-available to your selected Codex account. Choose either provider and send a
+model choices reported by your signed-in Claude Code client, including Fable
+and available earlier versions, plus the GPT models available to your selected
+Codex account. Explicit custom Claude entries remain available too. Choose either provider and send a
 message. You can switch providers in an existing conversation; the conversation
 and tool results are supplied to the next model as context.
+
+Claude labels and effort ranges come from the official client rather than a fixed
+list. Discovery initializes the client without sending an inference request.
+Run `picker refresh` after changing accounts or when models change; rerunning
+`picker on` also refreshes an existing installation. Desktop restarts when its
+profile changes. Gateway mode blocks Claude's fast mode, and Desktop's signed
+catalog controls some thinking options; AnyEngine does not bypass those limits.
 
 Claude runs through the **official Claude Code client and its saved subscription
 login**. AnyEngine does not extract or proxy Claude OAuth credentials. GPT runs
@@ -52,7 +61,7 @@ and connectors survive. An edited AnyEngine profile or foreign selection is
 retained and reported as a conflict. Recovery intent is saved before settings
 change; interrupted enable can be retried or undone, and install/launch failures
 restore the prior selection automatically. Existing GPT-only installations upgrade
-when you rerun `picker on`. Refresh model lists by switching the option off/on.
+when you rerun `picker on`. Use `picker refresh` to update model lists.
 
 ## Optional GPT tool consultation
 
