@@ -90,4 +90,4 @@ Settings are `sessions.enabled` and `sessions.sync` in
 For local Claude Desktop Code sessions hidden after switching accounts, use the
 separate opt-in [Desktop account sharing](claude-desktop.md#optional-sessions-across-accounts)
 option. `sessions off` disables cross-engine browsing and copying; Desktop account
-sharing has its own `desktop sessions off` control.
+sharing has its own `desktop claude sessions off` control.

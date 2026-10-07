@@ -73,14 +73,30 @@ command above for setup and updates even when the installed controls are on PATH
 Provide credentials only through your own shell or secret manager. Never commit
 API keys, OAuth or session data, `.env` files, or acceptance logs.
 
+## Desktop app controls
+
+Use explicit app names when managing desktop integrations:
+
+```bash
+anyengine desktop chatgpt status
+anyengine desktop chatgpt on --auto-rollback
+anyengine desktop chatgpt off
+```
+
+ChatGPT's `on`, `off`, `restart`, `status` and `doctor` commands reuse the shared
+core controls and accept the same flags. Turning this routing off also stops the
+Claude Code GPT route. Claude Desktop's picker, tools and session sharing are
+separate options below. Existing `anyengine on|off|...`, `desktop picker ...`,
+`desktop on|off|status` and `desktop sessions ...` commands remain aliases.
+
 ## Optional Claude Desktop model picker
 
 Select Claude or GPT in the same Claude Desktop model menu, in Chat or local Code:
 
 ```bash
-anyengine desktop picker on
-anyengine desktop picker status
-anyengine desktop picker off
+anyengine desktop claude picker on
+anyengine desktop claude picker status
+anyengine desktop claude picker off
 ```
 
 Claude uses your signed-in Claude Code subscription; GPT uses your Codex/ChatGPT
@@ -95,10 +111,10 @@ optional connector. Claude stays the main model; GPT's answer arrives as a tool
 result. This does not change Desktop's native model picker.
 
 ```bash
-anyengine desktop on
+anyengine desktop claude tools on
 # Quit and reopen Claude, then ask it to consult GPT through AnyEngine.
-anyengine desktop status
-anyengine desktop off
+anyengine desktop claude tools status
+anyengine desktop claude tools off
 ```
 
 Your existing logins stay intact, and session sync remains a separate option.
@@ -128,8 +144,8 @@ To keep local Claude Desktop Code conversations visible after an account switch,
 opt in separately:
 
 ```bash
-anyengine desktop sessions on
-anyengine desktop sessions off
+anyengine desktop claude sessions on
+anyengine desktop claude sessions off
 ```
 
 Reopen Claude to reload its list. Originals stay in place, credentials and

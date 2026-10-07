@@ -8,7 +8,8 @@ import {
   syncDesktopSessions,
 } from './desktop-sessions.mjs'
 
-const USAGE = 'usage: anyengine desktop sessions on|off|status|list|sync [--json]'
+const USAGE =
+  'usage: anyengine desktop claude sessions on|off|status|list|sync [--json] (alias: desktop sessions)'
 export const desktopSessionsCommand: Command = async (args, system, root, say) => {
   const [verb, flag] = args
   if (

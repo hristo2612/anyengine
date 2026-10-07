@@ -11,6 +11,10 @@ test('npm entry exposes help, version and setup without activating hosts', () =>
     const result = spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8' })
     assert.equal(result.status, 0, result.stderr)
     assert.match(result.stdout, /setup/)
+    if (args[0] !== 'setup') {
+      assert.match(result.stdout, /desktop chatgpt/)
+      assert.match(result.stdout, /desktop claude/)
+    }
   }
   const result = spawnSync(process.execPath, [cli, '--version'], { encoding: 'utf8' })
   assert.equal(result.status, 0, result.stderr)

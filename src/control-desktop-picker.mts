@@ -14,7 +14,8 @@ import { desktopClaudeName, desktopModelId, desktopProfile } from './desktop-mod
 import { withFileLock } from './file-lock.mjs'
 import { fetchDesktopClaudeModels, fetchGptSettingsView, settingsView } from './router-messages.mjs'
 
-const USAGE = 'usage: anyengine desktop picker on|refresh|off|status [--json]'
+const USAGE =
+  'usage: anyengine desktop claude picker on|refresh|off|status [--json] (alias: desktop picker)'
 const ID = /^[a-f0-9-]{36}$/
 // Count locally without inference, before switching Desktop to this router.
 async function checkRoute(port: number, model: string): Promise<void> {

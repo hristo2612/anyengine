@@ -2,7 +2,7 @@
 
 Run the installed `anyengine` launcher, or use `npm run anyengine -- <command>`
 from a source checkout. This build implements `status`, `doctor`, `mode`, `config`, `cache clean`,
-`on`, `off`, `rollback m2|m3`, `restart`, `smoke`, `accounts`, `limits`, `sessions`, and `codex`.
+`on`, `off`, `rollback m2|m3`, `restart`, `smoke`, `accounts`, `limits`, `sessions`, `desktop`, and `codex`.
 
 Use `npm run setup` for a clean source installation or update. It stages the
 verified library and invokes `on` with automatic rollback. After a fresh install,
@@ -14,6 +14,34 @@ Exit codes are 0 for a completed command, 1 for failed inspection or operation,
 and 2 for invalid arguments or refused settings. Read commands can return a
 partial report with explicit errors and exit 1. Importing the command registry
 performs no app, launchd, filesystem, or engine action.
+
+## Desktop apps
+
+```bash
+anyengine desktop chatgpt on --auto-rollback
+anyengine desktop chatgpt off
+anyengine desktop chatgpt restart
+anyengine desktop chatgpt status --json
+anyengine desktop chatgpt doctor
+
+anyengine desktop claude picker on
+anyengine desktop claude tools on
+anyengine desktop claude sessions on
+```
+
+The ChatGPT commands call the existing shared core controls with the same flags,
+exit codes, quiet checks and rollback. `desktop chatgpt off` also stops the router
+used by Claude Code and Claude Desktop; it does not remove Claude Desktop's
+optional configuration. Restore Claude's ordinary mode first with
+`desktop claude picker off` if that picker is enabled.
+
+The Claude options are independent: `picker` selects Claude or GPT natively,
+`tools` lets Claude consult GPT through MCP, and `sessions` shares local Code
+entries across account folders. See [Claude Desktop](claude-desktop.md).
+
+Existing commands remain aliases: root `on|off|restart|status|doctor` for
+`desktop chatgpt ...`; `desktop picker ...`, `desktop on|off|status`, and
+`desktop sessions ...` for the corresponding Claude options.
 
 ## Optional conversation history
 
@@ -678,23 +706,23 @@ performs real model calls; installed/live acceptance is a separate check.
 ## Optional Claude Desktop picker and connector
 
 ```bash
-anyengine desktop picker on
-anyengine desktop picker status [--json]
-anyengine desktop picker off
+anyengine desktop claude picker on
+anyengine desktop claude picker status [--json]
+anyengine desktop claude picker off
 
-anyengine desktop on
-anyengine desktop status [--json]
-anyengine desktop off
+anyengine desktop claude tools on
+anyengine desktop claude tools status [--json]
+anyengine desktop claude tools off
 ```
 
-`desktop picker on` puts Claude and GPT together in Desktop's native Chat and
+`desktop claude picker on` puts Claude and GPT together in Desktop's native Chat and
 local Code model menus. Claude uses the official Claude Code client with its saved
 subscription login; GPT uses the selected Codex account. Model switching keeps the
 conversation context. Gateway history is local and separate from Claude cloud history;
 `picker off` restores the previous mode and saved login. A running app is restarted
 on enable/disable. Settings and launch failures roll back automatically.
 
-The separate `desktop on` option enables GPT tool consultation while staying in
+The separate `desktop claude tools on` option enables GPT tool consultation while staying in
 ordinary Claude mode. Quit and reopen Claude after connector changes. Disable
 these optional integrations before turning the router off.
 See [Claude Desktop](claude-desktop.md).

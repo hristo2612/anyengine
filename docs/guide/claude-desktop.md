@@ -4,16 +4,21 @@ AnyEngine offers independent options: Claude and GPT together in the model
 picker, GPT tool consultation in ordinary cloud mode, and local Code sessions
 visible across Desktop accounts.
 
+Claude options use `anyengine desktop claude picker|tools|sessions`. The earlier
+`desktop picker ...`, `desktop on|off|status`, and `desktop sessions ...` commands
+remain aliases. ChatGPT.app uses `desktop chatgpt on|off|restart|status|doctor`,
+which controls the shared core routing; see [Desktop app controls](control.md#desktop-apps).
+
 ## Combined model picker
 
 You need a signed-in Claude Code subscription and a working Codex/ChatGPT login.
 After installing and enabling AnyEngine:
 
 ```bash
-anyengine desktop picker on
-anyengine desktop picker refresh
-anyengine desktop picker status
-anyengine desktop picker status --json
+anyengine desktop claude picker on
+anyengine desktop claude picker refresh
+anyengine desktop claude picker status
+anyengine desktop claude picker status --json
 ```
 
 If Claude is running, AnyEngine quits and reopens it to apply the profile.
@@ -55,7 +60,7 @@ been verified. Existing optional session sync controls remain independent.
 To return to your original mode:
 
 ```bash
-anyengine desktop picker off
+anyengine desktop claude picker off
 ```
 
 The previous mode and inference profile are restored. Other profiles, preferences
@@ -73,11 +78,11 @@ transcripts remain in the shared Claude Code history. AnyEngine can make these
 local conversations visible in the other account folders:
 
 ```bash
-anyengine desktop sessions on
-anyengine desktop sessions status
-anyengine desktop sessions list
-anyengine desktop sessions sync
-anyengine desktop sessions off
+anyengine desktop claude sessions on
+anyengine desktop claude sessions status
+anyengine desktop claude sessions list
+anyengine desktop claude sessions sync
+anyengine desktop claude sessions off
 ```
 
 This option starts **off** and is independent of the combined picker and
@@ -112,12 +117,12 @@ in `~/.anyengine/config.json`; ownership receipts live under
 The optional AnyEngine connector lets Claude consult GPT through your existing
 Codex/ChatGPT subscription. It works in Claude Desktop's **Chat** and local
 **Code** tabs. Claude stays the main model; GPT returns an answer as a tool result.
-For native model selection instead, use `desktop picker on` above.
+For native model selection instead, use `desktop claude picker on` above.
 
 After installing and enabling AnyEngine, opt in:
 
 ```bash
-anyengine desktop on
+anyengine desktop claude tools on
 ```
 
 Quit and reopen Claude Desktop. Start a conversation and ask:
@@ -147,22 +152,22 @@ The router must be running, and Codex must have a working ChatGPT login.
 ## Status and removal
 
 ```bash
-anyengine desktop status
-anyengine desktop status --json
-anyengine desktop off
+anyengine desktop claude tools status
+anyengine desktop claude tools status --json
+anyengine desktop claude tools off
 ```
 
 Status reports the saved connector configuration, not whether a running app has
 reloaded it. Quit and reopen Claude after enabling or disabling the connector.
 
-`desktop off` removes the one managed `mcpServers.anyengine` entry from
+`desktop claude tools off` removes the one managed `mcpServers.anyengine` entry from
 `~/Library/Application Support/Claude/claude_desktop_config.json`. Other
 connectors and preferences survive. An existing unowned entry or an edited
 managed entry is retained and reported as a conflict. Interrupted installation
-can be retried with `desktop on` or undone with `desktop off`.
+can be retried with `desktop claude tools on` or undone with `desktop claude tools off`.
 
 The Desktop option is independent of the core routing controls. Disable it with
-`desktop off` before turning all routing off with `anyengine off`. If the router
+`desktop claude tools off` before turning all routing off with `anyengine off`. If the router
 is stopped, GPT tool calls return an error; ordinary Claude remains usable.
 
 ## Supported scope

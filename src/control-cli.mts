@@ -43,9 +43,11 @@ const USAGE = `usage: anyengine <command>
   accounts add|list|use|rotate|recover
   limits [--json] [--refresh]
   sessions on|off|status|list|search|show|open|sync
-  desktop on|off|status
-  desktop picker on|refresh|off|status
-  desktop sessions on|off|status|list|sync
+  desktop chatgpt on|off|restart|status|doctor (shared core controls)
+  desktop claude picker on|refresh|off|status
+  desktop claude tools on|off|status
+  desktop claude sessions on|off|status|list|sync
+  aliases: desktop on|off|status; desktop picker ...; desktop sessions ...
   on | off | restart | doctor | smoke | codex (require their registered implementation)
 `
 const SETTINGS_NOTE =
@@ -201,6 +203,34 @@ const cache: Command = async (args, system, root, say) => {
   }
 }
 const COMMANDS: Record<string, Command> = { status, mode, config, cache }
+function desktopArguments(argv: string[], say: Say): string[] | number {
+  if (argv[0] !== 'desktop') return argv
+  if (argv.length === 1 || (argv.length === 2 && ['--help', '-h'].includes(argv[1] ?? ''))) {
+    say(USAGE)
+    return argv.length === 1 ? 2 : 0
+  }
+  if (argv[1] === 'chatgpt') {
+    if (!['on', 'off', 'restart', 'status', 'doctor'].includes(argv[2] ?? '')) {
+      say(
+        'usage: anyengine desktop chatgpt on|off|restart|status|doctor [existing control flags]\n',
+      )
+      return 2
+    }
+    return argv.slice(2)
+  }
+  if (argv[1] === 'claude') {
+    if (!['picker', 'tools', 'sessions'].includes(argv[2] ?? '')) {
+      say('usage: anyengine desktop claude picker|tools|sessions <command>\n')
+      return 2
+    }
+    if (argv[2] === 'tools' && !['on', 'off', 'status'].includes(argv[3] ?? '')) {
+      say('usage: anyengine desktop claude tools on|off|status [--json]\n')
+      return 2
+    }
+    return ['desktop', ...argv.slice(argv[2] === 'tools' ? 3 : 2)]
+  }
+  return argv
+}
 export function registerCommand(name: string, command: Command): void {
   if (!CONTROL_COMMANDS.has(name)) throw new Error(`unknown control command ${name}`)
   COMMANDS[name] = command
@@ -221,7 +251,9 @@ export async function runControl(
     return 2
   }
   await import('./control-commands.mjs')
-  const [name, ...args] = argv
+  const commandArgs = desktopArguments(argv, say)
+  if (typeof commandArgs === 'number') return commandArgs
+  const [name, ...args] = commandArgs
   const command = name ? COMMANDS[name] : undefined
   if (!command) {
     if (name && CONTROL_COMMANDS.has(name))

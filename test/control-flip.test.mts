@@ -21,8 +21,14 @@ test('registered flips refuse app ancestry before creating state or launching a 
   ]
   for (const op of ['on', 'off', 'restart']) {
     const out: string[] = []
-    assert.equal(await runControl([op, '--yes'], system, root, (s) => out.push(s)), 1)
-    assert.match(out.join(''), /inside ChatGPT\.app/)
+    for (const args of [
+      [op, '--yes'],
+      ['desktop', 'chatgpt', op, '--yes'],
+    ]) {
+      out.length = 0
+      assert.equal(await runControl(args, system, root, (s) => out.push(s)), 1)
+      assert.match(out.join(''), /inside ChatGPT\.app/)
+    }
     assert.equal(existsSync(join(root, 'state')), false)
     assert.equal(system.calls.length, 0)
   }

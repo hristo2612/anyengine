@@ -404,6 +404,9 @@ function usage(code: number): never {
   anyengine app-server proxy [--sock PATH]
   anyengine selfcheck [--deep]
   anyengine router
+  anyengine desktop chatgpt on|off|restart|status|doctor
+  anyengine desktop claude picker|tools|sessions <command>
+  anyengine desktop --help
 `
   ;(code === 0 ? process.stdout : process.stderr).write(text)
   process.exit(code)

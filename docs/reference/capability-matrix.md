@@ -152,7 +152,7 @@ exactly like upstream codex.
 3. Run the capability probe over SSH against a named host.
 4. Flesh out plugin/skill/app surfaces if Codex App starts relying on them.
 
-Claude Desktop also has an independent, default-off `desktop sessions on|off`
+Claude Desktop also has an independent, default-off `desktop claude sessions on|off`
 option for local Code session visibility across existing account folders.
 See [Desktop account sharing](../guide/claude-desktop.md#optional-sessions-across-accounts)
 for scope and undo behavior.

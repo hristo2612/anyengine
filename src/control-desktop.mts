@@ -8,7 +8,7 @@ import { atomicFile, jsonAt, object, statAt } from './control-layer-state.mjs'
 import { realSystem } from './control-system.mjs'
 import { withFileLock } from './file-lock.mjs'
 
-const USAGE = 'usage: anyengine desktop on|off|status [--json]'
+const USAGE = 'usage: anyengine desktop claude tools on|off|status [--json] (alias: desktop)'
 interface Receipt {
   version: 1
   target: string
@@ -51,7 +51,7 @@ export function desktopStatus(home: string, root: string) {
     enabled: !!receipt && isDeepStrictEqual(entry, receipt.entry),
     conflict: entry !== undefined && (!receipt || !isDeepStrictEqual(entry, receipt.entry)),
     integration:
-      'GPT consultation through MCP; native selection is optional with desktop picker on',
+      'GPT consultation through MCP; native selection is optional with desktop claude picker on',
   }
 }
 function disable(target: string, receiptPath: string, receipt: Receipt | undefined): void {
@@ -64,7 +64,7 @@ function disable(target: string, receiptPath: string, receipt: Receipt | undefin
   }
   if (current !== undefined && !isDeepStrictEqual(current, receipt.entry))
     throw new Error(
-      'Desktop anyengine entry was edited; retained. Restore that entry before desktop off.',
+      'Desktop anyengine entry was edited; retained. Restore that entry before desktop claude tools off.',
     )
   if (current !== undefined) {
     delete servers(value).anyengine

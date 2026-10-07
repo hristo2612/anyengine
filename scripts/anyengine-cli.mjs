@@ -17,6 +17,9 @@ const help = `Usage: anyengine <command>
   on | off | restart | rollback
   config | mode | cache | smoke | codex
   accounts | limits | sessions | desktop
+  desktop chatgpt on|off|restart|status|doctor
+  desktop claude picker|tools|sessions <command>
+  Legacy desktop commands remain aliases.
   --version                    Show the npm package version
 
 Install or update: npx anyengine-cli@latest setup
