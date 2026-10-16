@@ -1,9 +1,10 @@
 // The captured fixtures an installed library ships and checks against, named
-// once. The doctor, the Claude Code update gate, install-lib, the startup suite
-// identity and the posture capture all read these names, and package.json
-// `files` lists the same paths (test/fixture-pins.test.mts keeps it in step).
-// Refreshing a capture means: run its capture script against the new binary,
-// then change the version here.
+// in one place. The doctor, the Claude Code update gate, install-lib and the
+// posture capture read these names; the startup helper
+// (scripts/lib/startup-schema.mjs) and package.json `files` keep copies, and
+// test/fixture-pins.test.mts fails when they disagree. To refresh a capture:
+// change the version here, build, then run its capture script against that
+// exact binary (scripts/AGENTS.md has the steps).
 
 /** Claude Code version the posture and Messages captures were taken from. */
 export const CLAUDE_FIXTURE_VERSION = '2.1.301'

@@ -671,7 +671,12 @@ export async function captureClaudePosture(args = process.argv.slice(2)) {
       if (!selected || mode === selected) modes[mode] = await run(mode, version)
     const picker = !selected || selected === 'picker' ? await run('picker', version) : null,
       opens = []
+    // A parent that refused the Agent launch itself (plan mode) leaves the
+    // child contracts unexercised, not failed; say which.
+    const denied =
+      'The native plan parent denied the owned Agent launch; no GPT child or child tool attempt occurred.'
     for (const [mode, row] of Object.entries(modes)) {
+      const unexercised = row.agentPermissionDenied === true && row.childPermissionMode === null
       if (
         !row.agentLoaded ||
         !row.childModelObserved ||
@@ -681,7 +686,9 @@ export async function captureClaudePosture(args = process.argv.slice(2)) {
       )
         opens.push({
           contract: `agentInheritance:${mode}`,
-          reason: 'The actual blank-body agent/mode/positive-Read receipts were incomplete.',
+          reason: unexercised
+            ? denied
+            : 'The actual blank-body agent/mode/positive-Read receipts were incomplete.',
         })
       for (const tool of ['outsideRead', 'write', 'command'])
         if (
@@ -691,8 +698,9 @@ export async function captureClaudePosture(args = process.argv.slice(2)) {
         )
           opens.push({
             contract: `permission:${mode}:${tool}`,
-            reason:
-              'The actual advertised tool, native denial, error-result and unchanged-marker receipts did not all pass.',
+            reason: unexercised
+              ? denied
+              : 'The actual advertised tool, native denial, error-result and unchanged-marker receipts did not all pass.',
           })
       if (row.deadline || row.exitCode !== 0)
         opens.push({

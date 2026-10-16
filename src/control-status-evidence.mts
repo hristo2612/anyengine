@@ -172,7 +172,7 @@ function unresolvedUpstream(upstream: Record<string, unknown>): string {
     return 'router upstream reports an unresolved failure'
   const at = Date.parse(String(upstream.lastErrorAt))
   const when = Number.isFinite(at) ? ` at ${new Date(at).toISOString()}` : ''
-  return `router upstream: OpenAI refused the Codex app's own login with HTTP 401 on /models${when}; the router forwards that login unchanged, so restart the app or codex-anywhere session that holds it, or run codex login`
+  return `router upstream: OpenAI refused the Codex app's own login with HTTP 401 on /models${when}; the router forwards that login unchanged, so restart the app (or the other Codex front end) that holds it, or run codex login`
 }
 
 export function readStatusLayers(root: string): string[] {

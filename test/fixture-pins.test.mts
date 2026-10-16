@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import test from 'node:test'
 import {
   CLAUDE_FIXTURE_VERSION,
+  CODEX_AUTH_FIXTURE_VERSION,
   FIXTURE_NAMES,
   M2_FIXTURES,
   SHIPPED_FIXTURES,
@@ -18,6 +19,12 @@ test('every pinned fixture exists and names the version it was captured from', (
     const capture = JSON.parse(readFileSync(`test/fixtures/${name}`, 'utf8'))
     assert.equal(capture.claudeVersion, CLAUDE_FIXTURE_VERSION, name)
   }
+  const auth = JSON.parse(readFileSync(`test/fixtures/${FIXTURE_NAMES.codexAuth}`, 'utf8'))
+  assert.equal(
+    auth.codexVersion,
+    CODEX_AUTH_FIXTURE_VERSION,
+    'a renamed auth capture must be recaptured',
+  )
 })
 
 test('the npm package ships exactly the pinned fixtures and nothing it lists is missing', () => {

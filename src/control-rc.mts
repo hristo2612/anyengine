@@ -1,6 +1,7 @@
 // The login-shell rc and its one AnyEngine block. ChatGPT.app imports its
 // login shell's environment with CODEX_SHELL=1, so a CODEX_SHELL-guarded
-// `export CODEX_CLI_PATH=...` reaches only the app. M0 left that block in
+// `export CODEX_CLI_PATH=...` reaches the app and anything else that runs its
+// code that way (docs/guide/deployment.md), not ordinary terminals. M0 left that block in
 // ~/.zshrc by hand (uncommented, unmarked); `on` recognises it in any of
 // three states and never writes a second one: active (leave it), commented
 // (uncomment its three lines) or absent (append a marked block).

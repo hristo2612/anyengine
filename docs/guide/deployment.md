@@ -54,7 +54,7 @@ use `on --lib VERSION` for the full managed activation and live checks.
 ## Shell and configuration
 
 Setup supports zsh (`~/.zshrc`) and bash (`~/.bash_profile`). On fresh installs, the
-managed shell block puts `~/.anyengine/bin` on PATH and sets the app's Codex entry only when
+managed shell block puts `~/.anyengine/bin` on PATH and sets the app's Codex entry when
 ChatGPT.app imports its shell environment. Ordinary terminal Codex keeps its
 normal entry. Off restores the owned changes while preserving unrelated edits;
 conflicting edits are reported for resolution.
@@ -64,8 +64,7 @@ sets when it imports a login environment, not only the app. A separate front
 end on the same Mac, such as codex-anywhere, would therefore also get the shim
 and run inside AnyEngine. Such a front end should choose its own Codex CLI and
 keep `CODEX_CLI_PATH` through that import; to use AnyEngine on purpose, it
-points `CODEX_CLI_PATH` at the shim, `~/bin/codex` (codex-anywhere:
-`CODEX_ANYWHERE_ANYENGINE=1`, off by default). The shim reads
+points `CODEX_CLI_PATH` at the shim, `~/bin/codex`. The shim reads
 `~/.anyengine/runtime.env` itself, so it needs nothing else from the shell.
 `anyengine off` returns `~/bin/codex` to what was there before `on`, so such a
 front end should check that the shim exists and otherwise use its own CLI.

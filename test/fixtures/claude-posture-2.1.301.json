@@ -165,19 +165,19 @@
   "opens": [
     {
       "contract": "agentInheritance:plan",
-      "reason": "The actual blank-body agent/mode/positive-Read receipts were incomplete."
+      "reason": "The native plan parent denied the owned Agent launch; no GPT child or child tool attempt occurred."
     },
     {
       "contract": "permission:plan:outsideRead",
-      "reason": "The actual advertised tool, native denial, error-result and unchanged-marker receipts did not all pass."
+      "reason": "The native plan parent denied the owned Agent launch; no GPT child or child tool attempt occurred."
     },
     {
       "contract": "permission:plan:write",
-      "reason": "The actual advertised tool, native denial, error-result and unchanged-marker receipts did not all pass."
+      "reason": "The native plan parent denied the owned Agent launch; no GPT child or child tool attempt occurred."
     },
     {
       "contract": "permission:plan:command",
-      "reason": "The actual advertised tool, native denial, error-result and unchanged-marker receipts did not all pass."
+      "reason": "The native plan parent denied the owned Agent launch; no GPT child or child tool attempt occurred."
     },
     {
       "contract": "pickerMenu",

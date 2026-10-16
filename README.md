@@ -154,7 +154,9 @@ See [Desktop sessions across accounts](docs/guide/claude-desktop.md#optional-ses
 
 ## Requirements
 
-macOS, ChatGPT.app 26.9 or newer, Node.js 24+ (for stable `node:sqlite`), and
+macOS, a ChatGPT.app build whose bundled codex this release supports (0.1.0:
+ChatGPT.app 26.1007, codex 0.162.0-alpha.17.2; `anyengine doctor` names a
+mismatch and setup stops on one), Node.js 24+ (for stable `node:sqlite`), and
 whichever CLIs you want to route to: `claude`, `grok`. Codex ships with the app.
 
 ## Documentation

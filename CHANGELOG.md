@@ -15,17 +15,21 @@ First npm release. Install with `npx anyengine-cli@latest setup` (macOS, Node.js
   instead of borrowing a bearer from another Codex process, which could keep
   handing out a replaced login. A refusal forces one fresh read and one retry;
   an expiring or refused bearer is refreshed by one short-lived official
-  `codex app-server`, at most once per five minutes. A persistent 401 returns
+  `codex app-server`. A bearer refused again within five minutes of a refresh
+  is not refreshed again; a refresh that failed outright retries after a minute. A persistent 401 returns
   `gpt_login_refused`, and `anyengine doctor` names it with the time and the fix.
 - **GPT in Claude Code works with claude.ai connectors attached.** Claude Code
   sends connector tools inline (`tool_addition`, `tool_removal`,
   `tool_reference`, deferred tools); they are folded into GPT's tool list
   instead of failing with `unsupported_content`. The nightly `claude-code-gpt`
-  smoke adds a read-only turn with your real settings and connectors.
+  smoke adds a read-only turn with your real settings and connectors; it is
+  skipped when a managed or MDM policy, `disableAllHooks`, or safe or simple
+  mode could switch its deny-all hook off.
 - **Fixtures follow Claude Code 2.1.301.** The zero-spend posture and Messages
   captures were rerun, so `anyengine doctor` and the update gate accept 2.1.301.
-  Every shipped fixture is named once (`src/fixture-pins.mts`); the package
-  previously listed fixtures that no longer existed.
+  Shipped fixtures are named in one module (`src/fixture-pins.mts`); the two
+  copies (the startup helper and package.json `files`) are checked by a test.
+  The package previously listed fixtures that no longer existed.
 - **Compatibility follows ChatGPT.app 26.1007.** Pins and CI now use codex
   `0.162.0-alpha.17.2`. Its zero-spend wire, spawn and auth recordings match
   the `0.162.0-alpha.2` ones except for the version, and the posture and Rust
@@ -35,6 +39,11 @@ First npm release. Install with `npx anyengine-cli@latest setup` (macOS, Node.js
 - **Other front ends.** The managed shell block reaches any program that imports
   a `CODEX_SHELL` login environment; the deployment guide says how a separate
   front end keeps its own Codex CLI or opts in to the shim.
+
+## Development history before 0.1.0
+
+The entries below record the private milestones that led to 0.1.0. Versions and
+pins they name were current at the time; 0.1.0 pins are listed above.
 
 ### Setup and guides
 

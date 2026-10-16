@@ -157,7 +157,9 @@ check('compat pin matches the bundled codex', () => {
   if (version && version !== pinned) {
     throw new Error(
       `bundled codex is ${version}, the repo pins ${pinned}; ` +
-        'run node scripts/sync-codex-compat.mjs and commit the result',
+        'this AnyEngine release is not verified with that ChatGPT.app build yet: ' +
+        'update AnyEngine (npx anyengine-cli@latest setup) or run anyengine off; ' +
+        'maintainers: run node scripts/sync-codex-compat.mjs and commit the result',
     )
   }
 })

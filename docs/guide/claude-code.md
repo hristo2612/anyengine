@@ -114,7 +114,8 @@ prevents this scheduled model work.
 
 The isolated Claude 2.1.301 posture capture proves default and dontAsk child
 inheritance with native tool denials. Plan denied Agent launch, so its child
-checks remain unexercised. The interactive picker displayed GPT and Claude rows,
-and a session-only GPT selection passed without changing the saved default.
+checks remain unexercised. The capture does not observe the picker menu; in the
+M2 acceptance (Claude 2.1.289) the interactive picker displayed GPT and Claude
+rows, and a session-only GPT selection passed without changing the saved default.
 These checks do not establish every permission mode. See the
 [M2 acceptance record](../evidence/m2-acceptance.md) for evidence and limits.
