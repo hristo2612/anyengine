@@ -91,7 +91,17 @@ forwards unchanged; doctor names that case separately.
 
 When scheduled smoke is enabled, `claude-code-gpt` performs one bounded Read of
 the fixed smoke marker and requires its tool result followed by PONG. It restores
-an existing marker and joins its owned process family. Failure degrades only
+an existing marker and joins its owned process family. It then runs one more
+turn with your real settings and whole tool surface, MCP servers and claude.ai
+connectors included, and requires PONG with no tool use. That turn runs in plan
+mode, for one turn, with no saved session, so it changes nothing.
+
+Claude Code 2.1.30x can change its tool set mid-conversation: a `system`
+message adds tools (`tool_addition`) or removes them (`tool_removal`), tools
+marked `defer_loading` stay off until added, and ToolSearch results name the
+tools they load (`tool_reference`). claude.ai connectors arrive this way. GPT
+gets the tools that are on at the end of the conversation as ordinary function
+tools; the text of such a system message still reaches it. Failure degrades only
 that path and uses the existing once-until-pass notification. Disabling smoke
 prevents this scheduled model work.
 

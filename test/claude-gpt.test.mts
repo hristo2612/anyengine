@@ -383,6 +383,32 @@ test('a Responses 401 after a catalog-forced read is not retried: one forced rea
   assert.equal(f.releases(), 1)
 })
 
+test('a real Claude Code request with claude.ai connectors reaches GPT with the connector tools', async (t) => {
+  // Before the inline-tools fold this was "400 Invalid GPT request (unsupported_content)".
+  const { readFileSync } = await import('node:fs')
+  const [captured] = JSON.parse(
+    readFileSync('test/fixtures/claude-code-inline-tools-2.1.301.json', 'utf8'),
+  ).requests as Obj[]
+  const f = await fixture(t)
+  f.backend.models = [
+    gptEntry('gpt-shared', 1, {
+      use_responses_lite: true,
+      supported_reasoning_levels: [{ effort: 'high', description: 'h' }],
+    }),
+  ]
+  const response = await f.post({ ...captured, model: 'gpt-shared' })
+  assert.equal(response.status, 200)
+  await response.text()
+  await f.released.promise
+  const sent = JSON.parse(f.modelCalls()[0]?.raw.toString('utf8') ?? '{}')
+  const tools = (sent.input as Obj[]).find((item) => item.type === 'additional_tools')
+    ?.tools as Obj[]
+  const names = tools.map((tool) => tool.name)
+  assert.ok(names.includes('mcp__connector__tool_1'))
+  assert.ok(names.includes('ToolSearch'))
+  assert.equal(names.includes('DeferredToolPlaceholder'), false)
+})
+
 test('401 twice is authentication failure and generation change during retry sends no B model bytes', async (t) => {
   for (const changeGeneration of [false, true]) {
     const f = await fixture(t)

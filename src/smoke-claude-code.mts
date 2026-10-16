@@ -12,6 +12,43 @@ import { joinDetachedGroup } from './smoke-client.mjs'
 const MARKER = 'anyengine-smoke-marker.txt'
 const PROMPT =
   'Read the file anyengine-smoke-marker.txt using Read once and reply with exactly PONG.'
+const REAL_PROMPT = 'Reply with exactly PONG. Do not use any tool.'
+const markerArgs = (model: string) => [
+  '-p',
+  PROMPT,
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--model',
+  model,
+  '--tools',
+  'Read',
+  '--allowedTools',
+  'Read',
+  '--max-turns',
+  '2',
+  '--no-session-persistence',
+  '--disable-slash-commands',
+]
+// The user's own settings and whole tool surface, claude.ai connectors
+// included. With `--tools` restricted Claude Code lists every tool up front;
+// unrestricted it adds connector tools inline, a request shape only real
+// setups send (it broke GPT on 2026-10-16). Plan mode, one turn and no saved
+// session keep this turn read-only.
+const realArgs = (model: string) => [
+  '-p',
+  REAL_PROMPT,
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--model',
+  model,
+  '--permission-mode',
+  'plan',
+  '--max-turns',
+  '1',
+  '--no-session-persistence',
+]
 const MAX_OUTPUT = 8 * 1024 * 1024
 type Event = Record<string, any>
 
@@ -60,40 +97,20 @@ function marker(ctx: PathContext): { text: string; restore(): void } {
 
 async function cliTurn(
   ctx: PathContext,
-  model: string,
+  args: string[],
   signal: AbortSignal,
 ): Promise<{ code: number | null; bytes: Buffer }> {
   if (signal.aborted) throw new Error('Claude Code smoke deadline exceeded')
   ctx.run.pending(ctx.cohort)
-  const child = spawn(
-    ctx.config.claude.cli!,
-    [
-      '-p',
-      PROMPT,
-      '--output-format',
-      'stream-json',
-      '--verbose',
-      '--model',
-      model,
-      '--tools',
-      'Read',
-      '--allowedTools',
-      'Read',
-      '--max-turns',
-      '2',
-      '--no-session-persistence',
-      '--disable-slash-commands',
-    ],
-    {
-      cwd: ctx.deps.project,
-      detached: true,
-      stdio: 'pipe',
-      env: ctx.deps.adapterEnv({
-        ANTHROPIC_BASE_URL: `http://127.0.0.1:${ctx.config.router.port}`,
-        CLAUDE_CODE_GATEWAY_HINT_HEADERS: '1',
-      }),
-    },
-  )
+  const child = spawn(ctx.config.claude.cli!, args, {
+    cwd: ctx.deps.project,
+    detached: true,
+    stdio: 'pipe',
+    env: ctx.deps.adapterEnv({
+      ANTHROPIC_BASE_URL: `http://127.0.0.1:${ctx.config.router.port}`,
+      CLAUDE_CODE_GATEWAY_HINT_HEADERS: '1',
+    }),
+  })
   let failure: string | null = null
   let size = 0
   const chunks: Buffer[] = []
@@ -237,6 +254,40 @@ function verified(bytes: Buffer, project: string, markerText: string, model: str
   )
 }
 
+function events(bytes: Buffer): Event[] | null {
+  const lines = new TextDecoder('utf-8', { fatal: true }).decode(bytes).trim().split('\n')
+  if (lines.length > 1024) return null
+  const parsed: Event[] = lines.filter(Boolean).map((line) => JSON.parse(line))
+  return parsed.every((event) => event && typeof event === 'object' && !Array.isArray(event))
+    ? parsed
+    : null
+}
+// PONG with no tool use; returns the connected MCP server count for the detail.
+function verifiedReal(bytes: Buffer, model: string): number | null {
+  const all = events(bytes)
+  if (!all) return null
+  const init = all.find((event) => event.type === 'system' && event.subtype === 'init')
+  const used = all.some(
+    (event) =>
+      event.type === 'assistant' && content(event).some((block) => block.type === 'tool_use'),
+  )
+  const completed = all.filter((event) => event.type === 'result')
+  const terminal = completed[0]
+  if (
+    !init ||
+    init.model !== model ||
+    used ||
+    completed.length !== 1 ||
+    terminal?.subtype !== 'success' ||
+    terminal.is_error === true ||
+    typeof terminal.result !== 'string' ||
+    terminal.result.trim() !== 'PONG'
+  )
+    return null
+  const servers = Array.isArray(init.mcp_servers) ? init.mcp_servers : []
+  return servers.filter((server: Event) => server?.status === 'connected').length
+}
+
 export async function runClaudeCodeSmoke(ctx: PathContext): Promise<PathResult> {
   const started = Date.now()
   const result = (ok: boolean | null, detail: string): PathResult => ({
@@ -248,7 +299,8 @@ export async function runClaudeCodeSmoke(ctx: PathContext): Promise<PathResult> 
   if (!ctx.config.router.enabled || !ctx.config.claude.cli)
     return result(null, 'Claude Code GPT routing/CLI is not installed')
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 60_000)
+  // Two turns; the second connects the user's MCP servers and connectors first.
+  const timer = setTimeout(() => controller.abort(), 120_000)
   let owned: ReturnType<typeof marker> | undefined
   try {
     ctx.verify()
@@ -260,15 +312,29 @@ export async function runClaudeCodeSmoke(ctx: PathContext): Promise<PathResult> 
     if (!model || !resolveGptModel(model, view.models))
       return result(false, 'Configured GPT smoke model unavailable; codex login or anyengine off')
     owned = marker(ctx)
-    const work = await cliTurn(ctx, model, controller.signal)
+    const work = await cliTurn(ctx, markerArgs(model), controller.signal)
     const ok = work.code === 0 && verified(work.bytes, ctx.deps.project, owned.text, model)
+    const restore = owned
+    owned = undefined
+    restore.restore()
     ctx.verify()
-    return result(
-      ok,
-      ok
-        ? 'Claude Code GPT one Read marker result then PONG verified'
-        : 'Claude Code GPT tool/terminal evidence failed; codex login or anyengine off',
-    )
+    if (!ok)
+      return result(
+        false,
+        'Claude Code GPT tool/terminal evidence failed; codex login or anyengine off',
+      )
+    const real = await cliTurn(ctx, realArgs(model), controller.signal)
+    const servers = real.code === 0 ? verifiedReal(real.bytes, model) : null
+    ctx.verify()
+    return servers === null
+      ? result(
+          false,
+          "Claude Code GPT with the user's real settings and connectors failed (the marker turn passed); see the router log",
+        )
+      : result(
+          true,
+          `Claude Code GPT one Read marker result then PONG verified; real settings with ${servers} connected MCP servers then PONG verified`,
+        )
   } catch {
     return result(
       false,

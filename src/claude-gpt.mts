@@ -5,6 +5,7 @@ import https from 'node:https'
 import type { AccountAdmission, BrokerLease, TokenBroker } from './broker-types.mjs'
 import { CATALOG_REJECTED, type GptCatalogs, gptTarget } from './claude-catalog.mjs'
 import { createGptOutput } from './claude-gpt-output.mjs'
+import { foldInlineTools } from './claude-inline-tools.mjs'
 import { type GptCatalogSnapshot, type ModelChoice, resolveGptModel } from './claude-models.mjs'
 import { MAX_HEADER_BYTES, relayAgent } from './router-relay.mjs'
 import { mapFailure, translationError } from './vendor/claude-code-proxy/errors.mjs'
@@ -130,7 +131,7 @@ async function sendModel(
           code: 'unsupported_model',
         })
       const body = JSON.stringify(
-        translateRequest(input.body, {
+        translateRequest(foldInlineTools(input.body), {
           model,
           sessionKey: sessionKey(input.req.headers, input.body),
         }),

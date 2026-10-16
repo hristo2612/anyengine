@@ -29,15 +29,24 @@ async function fixture(t: TestContext, behavior = 'success') {
   writeFileSync(
     cli,
     `#!${process.execPath}
-import { readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 await new Promise((done) => { process.stdin.once('end', done); process.stdin.resume() })
 const args = process.argv.slice(2), mode = ${JSON.stringify(behavior)}
 const child = mode === 'descendant' ? spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio:'inherit'}) : null
-writeFileSync(${JSON.stringify(capture)}, JSON.stringify({ args, cwd: process.cwd(), base: process.env.ANTHROPIC_BASE_URL, pid: process.pid, childPid:child?.pid }))
-const marker = readFileSync(join(process.cwd(), 'anyengine-smoke-marker.txt'), 'utf8')
+const real = args.includes('plan')
+const record = JSON.stringify({ args, cwd: process.cwd(), base: process.env.ANTHROPIC_BASE_URL, pid: process.pid, childPid:child?.pid })
+if (real) appendFileSync(${JSON.stringify(capture)} + '.real', record)
+else writeFileSync(${JSON.stringify(capture)}, record)
 const emit = (value) => process.stdout.write(JSON.stringify(value) + '\\n')
+if (real) {
+  emit({type:'system',subtype:'init',model:${JSON.stringify(id)},mcp_servers:[{name:'a',status:'connected'},{name:'b',status:'needs-auth'}]})
+  if (mode === 'real-tool') emit({type:'assistant',message:{content:[{type:'tool_use',id:'t',name:'Bash',input:{}}]}})
+  emit({type:'result',subtype:mode === 'real-error' ? 'error_during_execution' : 'success',is_error:mode === 'real-error',result:'PONG'})
+  process.exit(0)
+}
+const marker = readFileSync(join(process.cwd(), 'anyengine-smoke-marker.txt'), 'utf8')
 emit({type:'system',subtype:'init',model:${JSON.stringify(id)}})
 const tool = {type:'tool_use',id:'read_fixture',name:'Read',input:{file_path:'anyengine-smoke-marker.txt'}}
 const result = {type:'tool_result',tool_use_id:'read_fixture',content:marker}
@@ -147,7 +156,29 @@ test('Claude Code smoke proves one correlated Read, the fresh marker result and 
   assert.throws(() => process.kill(launched.pid, 0), { code: 'ESRCH' })
   assert.equal(f.ctx.sessions.size, 0)
   assert.equal(f.views(), 1)
+  // Then one read-only turn with the user's real settings and full tool surface.
+  const real = JSON.parse(readFileSync(`${f.capture}.real`, 'utf8'))
+  assert.match(result.detail, /real settings with 1 connected MCP servers then PONG/)
+  assert.equal(real.base, `http://127.0.0.1:${f.ctx.config.router.port}`)
+  for (const flag of ['--tools', '--allowedTools', '--disable-slash-commands'])
+    assert.equal(real.args.includes(flag), false, flag)
+  for (const [flag, value] of [
+    ['--permission-mode', 'plan'],
+    ['--max-turns', '1'],
+    ['--model', id],
+  ])
+    assert.equal(real.args[real.args.indexOf(flag) + 1], value)
+  assert.ok(real.args.includes('--no-session-persistence'))
 })
+
+for (const mode of ['real-tool', 'real-error'] as const)
+  test(`Claude Code smoke fails when the real-settings turn ${mode === 'real-tool' ? 'uses a tool' : 'errors'}`, async (t) => {
+    const f = await fixture(t, mode)
+    const result = await f.runClaudeCodeSmoke(f.ctx)
+    assert.equal(result.ok, false)
+    assert.match(result.detail, /real settings and connectors failed/)
+    assert.equal(existsSync(join(f.project, 'anyengine-smoke-marker.txt')), false)
+  })
 
 test('Claude Code smoke restores a colliding marker byte-for-byte with its prior mode', async (t) => {
   const f = await fixture(t)

@@ -1,0 +1,603 @@
+{
+  "claudeVersion": "2.1.301",
+  "capturedAt": "2026-10-16",
+  "note": "Two real Claude Code 2.1.301 GPT requests (claude -p --model gpt-5.6-luna, the user's real settings and claude.ai connectors) captured through a recording proxy. Structure only: every string is redacted except type, role, id, tool names and the effort/display/keep enums; MCP tool names are placeholders; schemas are minimal. 1 = first turn (connector tools added inline by a system message); 2 = after one ToolSearch call (deferred tools turned on by tool_reference blocks).",
+  "requests": [
+    {
+      "model": "gpt-5.6-luna",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "<redacted>"
+            },
+            {
+              "type": "text",
+              "text": "<redacted>"
+            },
+            {
+              "type": "text",
+              "text": "<redacted>"
+            },
+            {
+              "type": "text",
+              "text": "<redacted>"
+            }
+          ]
+        },
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "text",
+              "text": "<redacted>"
+            },
+            {
+              "type": "tool_addition",
+              "tool": {
+                "type": "tool_definition",
+                "definition": {
+                  "name": "mcp__connector__tool_1",
+                  "description": "<redacted>",
+                  "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "eager_input_streaming": true
+                }
+              }
+            },
+            {
+              "type": "tool_addition",
+              "tool": {
+                "type": "tool_definition",
+                "definition": {
+                  "name": "mcp__connector__tool_2",
+                  "description": "<redacted>",
+                  "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "eager_input_streaming": true
+                }
+              }
+            },
+            {
+              "type": "tool_addition",
+              "tool": {
+                "type": "tool_definition",
+                "definition": {
+                  "name": "mcp__connector__tool_3",
+                  "description": "<redacted>",
+                  "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "eager_input_streaming": true
+                }
+              },
+              "cache_control": {
+                "type": "ephemeral",
+                "ttl": "1h"
+              }
+            }
+          ]
+        }
+      ],
+      "system": [
+        {
+          "type": "text",
+          "text": "<redacted>"
+        },
+        {
+          "type": "text",
+          "text": "<redacted>"
+        },
+        {
+          "type": "text",
+          "text": "<redacted>",
+          "cache_control": {
+            "type": "ephemeral",
+            "ttl": "1h",
+            "scope": "<redacted>"
+          }
+        },
+        {
+          "type": "text",
+          "text": "<redacted>",
+          "cache_control": {
+            "type": "ephemeral",
+            "ttl": "1h"
+          }
+        }
+      ],
+      "tools": [
+        {
+          "name": "Agent",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "Bash",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "Edit",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "ListAgents",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "Read",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "ReportFindings",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "ScheduleWakeup",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "Skill",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "ToolSearch",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "Workflow",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "DeferredToolPlaceholder",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "defer_loading": true
+        },
+        {
+          "name": "Write",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        }
+      ],
+      "metadata": {
+        "user_id": "<redacted>"
+      },
+      "max_tokens": 32000,
+      "thinking": {
+        "type": "adaptive",
+        "display": "omitted"
+      },
+      "context_management": {
+        "edits": [
+          {
+            "type": "clear_thinking_20251015",
+            "keep": "all"
+          }
+        ]
+      },
+      "output_config": {
+        "effort": "high"
+      },
+      "diagnostics": {
+        "previous_message_id": null
+      },
+      "stream": true
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "<redacted>"
+            },
+            {
+              "type": "text",
+              "text": "<redacted>"
+            },
+            {
+              "type": "text",
+              "text": "<redacted>"
+            },
+            {
+              "type": "text",
+              "text": "<redacted>"
+            }
+          ]
+        },
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "text",
+              "text": "<redacted>"
+            },
+            {
+              "type": "tool_addition",
+              "tool": {
+                "type": "tool_definition",
+                "definition": {
+                  "name": "mcp__connector__tool_1",
+                  "description": "<redacted>",
+                  "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "eager_input_streaming": true
+                }
+              }
+            },
+            {
+              "type": "tool_addition",
+              "tool": {
+                "type": "tool_definition",
+                "definition": {
+                  "name": "mcp__connector__tool_2",
+                  "description": "<redacted>",
+                  "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "eager_input_streaming": true
+                }
+              }
+            },
+            {
+              "type": "tool_addition",
+              "tool": {
+                "type": "tool_definition",
+                "definition": {
+                  "name": "mcp__connector__tool_3",
+                  "description": "<redacted>",
+                  "input_schema": {
+                    "type": "object",
+                    "properties": {}
+                  },
+                  "eager_input_streaming": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "<redacted>",
+              "signature": "<redacted>"
+            },
+            {
+              "type": "tool_use",
+              "id": "call_7d14aaf688244b2c999f886ae0933eeb",
+              "name": "ToolSearch",
+              "input": {
+                "query": "<redacted>",
+                "max_results": 10
+              },
+              "cache_control": {
+                "type": "ephemeral",
+                "ttl": "1h"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "call_7d14aaf688244b2c999f886ae0933eeb",
+              "content": [
+                {
+                  "type": "tool_reference",
+                  "tool_name": "CronCreate"
+                },
+                {
+                  "type": "tool_reference",
+                  "tool_name": "Monitor"
+                },
+                {
+                  "type": "tool_reference",
+                  "tool_name": "RemoteTrigger"
+                },
+                {
+                  "type": "tool_reference",
+                  "tool_name": "WebFetch"
+                },
+                {
+                  "type": "tool_reference",
+                  "tool_name": "WebSearch"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "<redacted>",
+              "cache_control": {
+                "type": "ephemeral",
+                "ttl": "1h"
+              }
+            }
+          ]
+        }
+      ],
+      "system": [
+        {
+          "type": "text",
+          "text": "<redacted>"
+        },
+        {
+          "type": "text",
+          "text": "<redacted>"
+        },
+        {
+          "type": "text",
+          "text": "<redacted>",
+          "cache_control": {
+            "type": "ephemeral",
+            "ttl": "1h",
+            "scope": "<redacted>"
+          }
+        },
+        {
+          "type": "text",
+          "text": "<redacted>",
+          "cache_control": {
+            "type": "ephemeral",
+            "ttl": "1h"
+          }
+        }
+      ],
+      "tools": [
+        {
+          "name": "Agent",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "Bash",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "CronCreate",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true,
+          "defer_loading": true
+        },
+        {
+          "name": "Edit",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "ListAgents",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "Monitor",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true,
+          "defer_loading": true
+        },
+        {
+          "name": "Read",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "RemoteTrigger",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true,
+          "defer_loading": true
+        },
+        {
+          "name": "ReportFindings",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "ScheduleWakeup",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "Skill",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "ToolSearch",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "WebFetch",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true,
+          "defer_loading": true
+        },
+        {
+          "name": "WebSearch",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true,
+          "defer_loading": true
+        },
+        {
+          "name": "Workflow",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        },
+        {
+          "name": "DeferredToolPlaceholder",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "defer_loading": true
+        },
+        {
+          "name": "Write",
+          "description": "<redacted>",
+          "input_schema": {
+            "type": "object",
+            "properties": {}
+          },
+          "eager_input_streaming": true
+        }
+      ],
+      "metadata": {
+        "user_id": "<redacted>"
+      },
+      "max_tokens": 32000,
+      "thinking": {
+        "type": "adaptive",
+        "display": "omitted"
+      },
+      "context_management": {
+        "edits": [
+          {
+            "type": "clear_thinking_20251015",
+            "keep": "all"
+          }
+        ]
+      },
+      "output_config": {
+        "effort": "high"
+      },
+      "diagnostics": {
+        "previous_message_id": "<redacted>"
+      },
+      "stream": true
+    }
+  ]
+}
