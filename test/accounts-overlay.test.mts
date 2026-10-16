@@ -75,8 +75,8 @@ test('conflicting edits preserve both files and detached SQLite never replaces s
 })
 
 // 2026-10-16, the MacBook: ~/.codex held memories_1.sqlite with no sidecars
-// while the overlay was built (ChatGPT.app keeps state_5/logs_2/goals_1/
-// queue_1 open, so theirs existed). The official app-server then opened it
+// while the overlay was built (state_5/logs_2/goals_1/queue_1 had theirs from
+// earlier opens). The official app-server then opened it
 // through the overlay link, SQLite put -wal/-shm next to the real file, and
 // every on stopped at 'Unshared overlay entry: memories_1.sqlite-shm'.
 test('a linked database opened through the overlay keeps its sidecars canonical, and that verifies', async () => {
@@ -116,10 +116,8 @@ test('a linked database opened through the overlay keeps its sidecars canonical,
 test('only a linked database excuses a missing sidecar link', async () => {
   const p = await fixture()
   prepareOverlay(p)
-  // A sidecar whose database is not shared, a stray non-database file, and a
-  // sidecar that exists in the overlay as a real file all stay unshared.
-  writeFileSync(join(p.canonical, 'orphan.sqlite-wal'), '')
-  writeFileSync(join(p.canonical, 'new-state.json'), '{}')
+  // A sidecar written into the overlay as a real file and a new non-database
+  // entry stay unshared; so does a sidecar whose database is not shared.
   writeFileSync(join(p.canonical, 'kept.sqlite'), '')
   prepareOverlay(p)
   writeFileSync(join(p.canonical, 'kept.sqlite-wal'), '')
