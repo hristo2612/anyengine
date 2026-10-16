@@ -32,6 +32,7 @@
     "test/fixtures/raine-translation-v0.1.42.json",
     "crates/anyengine-protocol/fixtures/",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "SECURITY.md",

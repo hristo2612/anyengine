@@ -59,6 +59,17 @@ ChatGPT.app imports its shell environment. Ordinary terminal Codex keeps its
 normal entry. Off restores the owned changes while preserving unrelated edits;
 conflicting edits are reported for resolution.
 
+The block keys on `CODEX_SHELL`, which any program running ChatGPT.app's code
+sets when it imports a login environment, not only the app. A separate front
+end on the same Mac, such as codex-anywhere, would therefore also get the shim
+and run inside AnyEngine. Such a front end should choose its own Codex CLI and
+keep `CODEX_CLI_PATH` through that import; to use AnyEngine on purpose, it
+points `CODEX_CLI_PATH` at the shim, `~/bin/codex` (codex-anywhere:
+`CODEX_ANYWHERE_ANYENGINE=1`, off by default). The shim reads
+`~/.anyengine/runtime.env` itself, so it needs nothing else from the shell.
+`anyengine off` returns `~/bin/codex` to what was there before `on`, so such a
+front end should check that the shim exists and otherwise use its own CLI.
+
 Older installs preserve their existing shell block to keep retained recovery
 working. Use the absolute launcher or `export PATH="$HOME/.anyengine/bin:$PATH"`
 in a terminal.

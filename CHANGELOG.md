@@ -1,11 +1,34 @@
 # Changelog
 
-All notable public-facing changes for anyengine are summarized here.
-The project is still private in `package.json`; this file tracks release notes
-for maintainers preparing the next public release and does not change package
-versioning or publishing metadata.
+All notable changes to `anyengine-cli` are summarized here. Versions follow
+semver; while the major version is 0, a minor version may change behavior.
 
-## Unreleased
+## 0.1.0 (2026-10-16)
+
+First npm release. Install with `npx anyengine-cli@latest setup` (macOS, Node.js
+24 or newer); see [Getting started](docs/guide/getting-started.md).
+
+### GPT login, claude.ai connectors and packaging
+
+- **The router owns its GPT login.** It reads the active account's
+  `auth.json` itself (at most every five minutes, or at once after a refusal)
+  instead of borrowing a bearer from another Codex process, which could keep
+  handing out a replaced login. A refusal forces one fresh read and one retry;
+  an expiring or refused bearer is refreshed by one short-lived official
+  `codex app-server`, at most once per five minutes. A persistent 401 returns
+  `gpt_login_refused`, and `anyengine doctor` names it with the time and the fix.
+- **GPT in Claude Code works with claude.ai connectors attached.** Claude Code
+  sends connector tools inline (`tool_addition`, `tool_removal`,
+  `tool_reference`, deferred tools); they are folded into GPT's tool list
+  instead of failing with `unsupported_content`. The nightly `claude-code-gpt`
+  smoke adds a read-only turn with your real settings and connectors.
+- **Fixtures follow Claude Code 2.1.301.** The zero-spend posture and Messages
+  captures were rerun, so `anyengine doctor` and the update gate accept 2.1.301.
+  Every shipped fixture is named once (`src/fixture-pins.mts`); the package
+  previously listed fixtures that no longer existed.
+- **Other front ends.** The managed shell block reaches any program that imports
+  a `CODEX_SHELL` login environment; the deployment guide says how a separate
+  front end keeps its own Codex CLI or opts in to the shim.
 
 ### Setup and guides
 
@@ -15,7 +38,7 @@ versioning or publishing metadata.
   v1 installs use full recovery; direct-v1 updates retain the prior controls and
   Claude settings alongside the runtime. Existing milestone recovery remains.
 - README and first-use, app, configuration and recovery guides describe the
-  current cross-engine behavior and local-only release status.
+  current cross-engine behavior.
 
 ### M3: accounts and limits
 
