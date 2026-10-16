@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import http, { type IncomingMessage, type ServerResponse } from 'node:http'
 import https from 'node:https'
 import type { AccountAdmission, BrokerLease, TokenBroker } from './broker-types.mjs'
-import { type GptCatalogs, gptTarget } from './claude-catalog.mjs'
+import { CATALOG_REJECTED, type GptCatalogs, gptTarget } from './claude-catalog.mjs'
 import { createGptOutput } from './claude-gpt-output.mjs'
 import { type GptCatalogSnapshot, type ModelChoice, resolveGptModel } from './claude-models.mjs'
 import { MAX_HEADER_BYTES, relayAgent } from './router-relay.mjs'
@@ -35,6 +35,14 @@ const localCodes = new Set([
   'invalid_image',
 ])
 const stale = () => new Error('catalog.source-changed')
+// OpenAI refused the broker's bearer again after the one forced refresh.
+export const GPT_LOGIN_REFUSED: TranslationFailure = {
+  status: 503,
+  type: 'api_error',
+  code: 'gpt_login_refused',
+  message: 'OpenAI refused the GPT login (HTTP 401); run codex login, then try again',
+  retryAfter: null,
+}
 const aborted = () => new Error('broker.request-aborted')
 
 function failure(error: unknown): TranslationFailure {
@@ -51,6 +59,7 @@ function failure(error: unknown): TranslationFailure {
     return mapFailure(typed.status, { error: { code: typed.code } }, typed.retryAfter ?? undefined)
   }
   const code = error instanceof Error ? error.message : ''
+  if (code === CATALOG_REJECTED) return GPT_LOGIN_REFUSED
   if (
     [
       'broker.login-required',
@@ -105,9 +114,11 @@ async function sendModel(
   signal: AbortSignal,
   rejected?: BrokerLease,
 ): Promise<{ lease: BrokerLease; call: ReturnType<typeof startRequest> }> {
+  let refused = rejected
   for (let attempt = 0; attempt < 2; attempt++) {
+    let lease: BrokerLease | undefined
     try {
-      const lease = await abortable(input.broker.get(rejected ? { rejected } : undefined), signal)
+      lease = await abortable(input.broker.get(refused ? { rejected: refused } : undefined), signal)
       if (lease.generation !== generation) throw new Error('catalog.generation-changed')
       const snapshot = await input.catalogs.get(lease, signal)
       if (!validSnapshot(input, lease, snapshot, generation, signal)) throw stale()
@@ -128,6 +139,16 @@ async function sendModel(
       if (!validSnapshot(input, lease, snapshot, generation, signal)) throw stale()
       return { lease, call: startRequest(target, body, lease, model, signal) }
     } catch (error) {
+      // The catalog's 401 means this bearer is refused: force a fresh one once.
+      if (
+        attempt === 0 &&
+        !signal.aborted &&
+        lease &&
+        (error as Error)?.message === CATALOG_REJECTED
+      ) {
+        refused = lease
+        continue
+      }
       if (
         attempt === 0 &&
         !signal.aborted &&
@@ -298,8 +319,10 @@ export async function serveGpt(input: GptInput): Promise<void> {
       let retry = false
       try {
         await consume(await call.response, output, input.requestedModel)
+        input.broker.observe?.(lease, 'responses', 200)
       } catch (error) {
         const mapped = failure(error)
+        if (mapped.status === 401) input.broker.observe?.(lease, 'responses', 401)
         if (mapped.code === 'usage_limit_reached' && input.broker.isCurrent(lease))
           input.admission.quota?.(lease, input.requestedModel)
         if (

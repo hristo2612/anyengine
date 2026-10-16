@@ -67,6 +67,22 @@ kind/generation/readiness and translation version without credentials.
 owned picker rows and possible higher-priority settings or credential overrides.
 A ready GPT broker is separate from transparent Claude health.
 
+The GPT bearer comes from the active account's own Codex login. The router reads
+`auth.json` in that Codex home each time it needs a bearer (at most every five
+minutes, or at once after a refusal) and keeps it only in memory. It never
+refreshes or writes the login: when the bearer is expiring, or OpenAI answers
+HTTP 401 and the file still holds the same bearer, one short-lived official
+`codex app-server` refreshes it, exactly as Codex would. No app, adapter or
+codex-anywhere process is borrowed for this, so their restarts no longer decide
+which bearer the router holds. Each GPT request retries once after a 401.
+
+If the retry is refused too, `anyengine doctor` says so plainly: "OpenAI refused
+the GPT login with HTTP 401 on /models at <time> ... run codex login for the
+active account". The router log records `gpt.upstream-rejected` and, once a
+later request succeeds, `gpt.upstream-recovered`. A 401 on the Codex face
+(`models: HTTP_401` in router health) is the app's own login, which the router
+forwards unchanged; doctor names that case separately.
+
 When scheduled smoke is enabled, `claude-code-gpt` performs one bounded Read of
 the fixed smoke marker and requires its tool result followed by PONG. It restores
 an existing marker and joins its owned process family. Failure degrades only

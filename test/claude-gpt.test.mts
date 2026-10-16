@@ -95,6 +95,7 @@ async function fixture(t: TestContext) {
     close: async () => {},
   }
   const gets: (BrokerLease | undefined)[] = []
+  const observed: [string, string, number][] = []
   let refresh = () => {},
     brokerError: Error | null = null
   const broker: TokenBroker = {
@@ -106,6 +107,9 @@ async function fixture(t: TestContext) {
     },
     isCurrent: (value) => value === lease,
     invalidate: () => {},
+    observe: (seen, endpoint, status) => {
+      observed.push([seen.sourceId, endpoint, status])
+    },
     close: async () => {},
     status: () => ({ ready: true, source: 'adapter', generation: lease.generation, reason: null }),
   }
@@ -165,6 +169,7 @@ async function fixture(t: TestContext) {
     backend,
     quotas,
     gets,
+    observed,
     admitting,
     released,
     active: () => active,
@@ -312,6 +317,48 @@ test('one pre-output 401 reacquires source, catalog and lane under the original 
   assert.equal(second.headers.authorization, 'Bearer FAKE_BROKER_ONLY_B')
   assert.equal(second.headers['x-openai-internal-codex-responses-lite'], undefined)
   assert.ok(Array.isArray(JSON.parse(second.raw.toString('utf8')).tools))
+  assert.equal(f.releases(), 1)
+})
+
+test('a catalog 401 forces one fresh lease before any model bytes, under one admission', async (t) => {
+  const f = await fixture(t)
+  f.backend.failModels = 401
+  f.refresh(() => {
+    f.elect('B')
+    f.backend.failModels = null
+  })
+  const response = await f.post()
+  assert.equal(response.status, 200)
+  await response.text()
+  await f.released.promise
+  assert.equal(f.gets.filter(Boolean).length, 1)
+  const catalog = f.backend.requests.filter((call) => call.path.endsWith('/models'))
+  assert.deepEqual(
+    catalog.map((call) => call.headers.authorization),
+    ['Bearer FAKE_BROKER_ONLY_A', 'Bearer FAKE_BROKER_ONLY_B'],
+  )
+  assert.equal(f.modelCalls().length, 1)
+  assert.equal(f.modelCalls()[0]?.headers.authorization, 'Bearer FAKE_BROKER_ONLY_B')
+  assert.deepEqual(f.observed, [
+    ['A', 'models', 401],
+    ['B', 'models', 200],
+    ['B', 'responses', 200],
+  ])
+  assert.equal(f.releases(), 1)
+})
+
+test('a catalog 401 that survives the refresh is named and sends no model bytes', async (t) => {
+  const f = await fixture(t)
+  f.backend.failModels = 401
+  f.refresh(() => f.elect('B'))
+  const response = await f.post()
+  const text = await response.text()
+  await f.released.promise
+  assert.equal(response.status, 503)
+  assert.match(text, /gpt_login_refused/)
+  assert.match(text, /HTTP 401/)
+  assert.equal(f.modelCalls().length, 0)
+  assert.equal(f.gets.filter(Boolean).length, 1)
   assert.equal(f.releases(), 1)
 })
 

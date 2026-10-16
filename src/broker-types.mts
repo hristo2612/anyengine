@@ -20,7 +20,7 @@ export interface AuthSource {
   id: string
   generation: number
   home: string
-  kind?: 'adapter' | 'standalone'
+  kind?: 'adapter' | 'standalone' | 'file'
   request(
     method: 'getAuthStatus',
     params: { includeToken: true; refreshToken: boolean },
@@ -49,15 +49,27 @@ export interface BrokerLease {
   cacheRevision: number
 }
 
+// The last upstream answer to a broker bearer that was a 401. `open` stays
+// true until the same endpoint answers 200 again, so doctor can say whether a
+// refresh already fixed it.
+export interface BrokerRejection {
+  at: string
+  endpoint: 'models' | 'responses'
+  open: boolean
+}
+
 export interface TokenBroker {
   get(options?: { rejected?: BrokerLease }): Promise<BrokerLease>
   invalidate(generation: number): void
   isCurrent(lease: BrokerLease): boolean
+  // Callers report what the upstream answered to a lease's bearer.
+  observe?(lease: BrokerLease, endpoint: BrokerRejection['endpoint'], status: number): void
   close(): Promise<void>
   status(): {
     ready: boolean
-    source: 'adapter' | 'standalone' | 'none'
+    source: 'adapter' | 'standalone' | 'file' | 'none'
     generation: number
     reason: string | null
+    rejection?: BrokerRejection | null
   }
 }

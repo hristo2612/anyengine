@@ -3,8 +3,8 @@
 import { isUtf8 } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { AccountAdmission, TokenBroker } from './broker-types.mjs'
-import { type GptCatalogs, readGptSettingsView } from './claude-catalog.mjs'
-import { serveGpt } from './claude-gpt.mjs'
+import { CATALOG_REJECTED, type GptCatalogs, readGptSettingsView } from './claude-catalog.mjs'
+import { GPT_LOGIN_REFUSED, serveGpt } from './claude-gpt.mjs'
 import { type GptModel, type GptSettingsView, resolveGptModel } from './claude-models.mjs'
 import { DESKTOP_CLAUDE_MODELS, desktopClaudeModels } from './desktop-claude-catalog.mjs'
 import type { DesktopClaudeRuntime } from './desktop-claude-runtime.mjs'
@@ -188,9 +188,11 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
           fetchedAt: view.fetchedAt,
           models: view.models,
         })
-    } catch {
-      if (!caller.signal.aborted)
-        error(res, 503, 'gpt_unavailable', 'GPT model settings are unavailable; try again')
+    } catch (cause) {
+      if (caller.signal.aborted) return
+      if ((cause as Error)?.message === CATALOG_REJECTED)
+        error(res, 503, GPT_LOGIN_REFUSED.code, GPT_LOGIN_REFUSED.message)
+      else error(res, 503, 'gpt_unavailable', 'GPT model settings are unavailable; try again')
     } finally {
       caller.detach()
     }
@@ -262,9 +264,11 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
           signal: caller.signal,
         })
       } else error(res, 400, 'unsupported_endpoint', 'GPT requires the Messages endpoint')
-    } catch {
-      if (!caller.signal.aborted)
-        error(res, 503, 'gpt_unavailable', 'GPT is unavailable; try again')
+    } catch (cause) {
+      if (caller.signal.aborted) return
+      if ((cause as Error)?.message === CATALOG_REJECTED)
+        error(res, 503, GPT_LOGIN_REFUSED.code, GPT_LOGIN_REFUSED.message)
+      else error(res, 503, 'gpt_unavailable', 'GPT is unavailable; try again')
     } finally {
       caller.detach()
     }

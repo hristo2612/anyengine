@@ -37,6 +37,12 @@ environment. Users may authenticate locally with their own API key, OAuth login,
 or supported cloud-provider configuration. The adapter should not collect,
 persist, print, or redistribute those credentials.
 
+For GPT inside Claude Code, the router reads the active Codex login's access
+token from that Codex home's `auth.json` when it needs one and keeps it in
+memory only. It never refreshes, writes or logs it; a refresh is left to a
+short-lived official `codex app-server`. No bearer crosses a socket between
+processes.
+
 For tests that need real Claude access, run them only in an environment where
 the required credentials are already provided by the user. Use
 `ANYENGINE_MOCK=1` for protocol tests that do not require live credentials.

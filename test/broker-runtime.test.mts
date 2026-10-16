@@ -16,9 +16,11 @@ test('router broker stays lazy and exposes active admissions for the drain gate'
   const runtime = (await load()).createRouterBroker({
     root,
     account: () => ({ home, generation }),
-    launch: async () => {
-      launches++
-      throw new Error('no auth child should be requested')
+    official: {
+      status: async () => {
+        launches++
+        throw new Error('no auth child should be requested')
+      },
     },
   })
   try {
@@ -53,9 +55,11 @@ test('a missing Codex home leaves health and shutdown usable without launching a
   const runtime = (await load()).createRouterBroker({
     root,
     account: () => ({ home: join(root, 'missing'), generation: 1 }),
-    launch: async () => {
-      launches++
-      throw new Error('missing home must prevent a launch')
+    official: {
+      status: async () => {
+        launches++
+        throw new Error('missing home must prevent a launch')
+      },
     },
   })
   try {
@@ -73,8 +77,10 @@ test('shutdown denies new admission immediately and joins every live request bef
   const runtime = (await load()).createRouterBroker({
     root,
     account: () => ({ home: join(root, 'missing'), generation: 1 }),
-    launch: async () => {
-      throw new Error('unexpected auth launch')
+    official: {
+      status: async () => {
+        throw new Error('unexpected auth launch')
+      },
     },
   })
   const lease = await runtime.admission.begin()

@@ -1,0 +1,17 @@
+{
+  "capturedAt": "2026-10-16T10:16:13Z",
+  "note": "Key names and value types of the real ChatGPT login codex 0.162.0-alpha.2 wrote to ~/.codex/auth.json on the Mac mini (2026-10-10). No values were read into this file.",
+  "codexVersion": "0.162.0-alpha.2",
+  "authMode": "chatgpt",
+  "shape": {
+    "OPENAI_API_KEY": "null",
+    "auth_mode": "string",
+    "last_refresh": "string",
+    "tokens": {
+      "access_token": "string",
+      "account_id": "string",
+      "id_token": "string",
+      "refresh_token": "string"
+    }
+  }
+}

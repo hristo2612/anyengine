@@ -1,0 +1,38 @@
+{
+  "capturedAt": "2026-10-16T10:15:24.841Z",
+  "note": "Real chatgpt.com answers to a made-up unsigned bearer; no credential was sent.",
+  "calls": [
+    {
+      "path": "/backend-api/codex/models",
+      "method": "GET",
+      "status": 401,
+      "contentType": "text/plain",
+      "wwwAuthenticate": null,
+      "body": {
+        "error": {
+          "message": "Could not parse your authentication token. Please try signing in again.",
+          "type": null,
+          "code": "unauthorized_unknown",
+          "param": null
+        },
+        "status": 401
+      }
+    },
+    {
+      "path": "/backend-api/codex/responses",
+      "method": "POST",
+      "status": 401,
+      "contentType": "text/plain",
+      "wwwAuthenticate": null,
+      "body": {
+        "error": {
+          "message": "Could not parse your authentication token. Please try signing in again.",
+          "type": null,
+          "code": "unauthorized_unknown",
+          "param": null
+        },
+        "status": 401
+      }
+    }
+  ]
+}

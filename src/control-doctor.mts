@@ -24,6 +24,7 @@ import {
 } from './control-doctor-checks.mjs'
 import { regularBytes } from './control-layer-state.mjs'
 import { gatherStatus } from './control-status.mjs'
+import { brokerProblem } from './control-status-evidence.mjs'
 import { adapterArguments, type System } from './control-system.mjs'
 import { resolveRuntimeConfig } from './runtime-config.mjs'
 import { codexHome } from './util.mjs'
@@ -204,9 +205,15 @@ function claudeCode(c: DoctorContext): Finding {
     warnings.push(
       'External Codex adapters may use different homes; their canonical source is not proven',
     )
-  if (state.health !== 'ready')
+  // A named login problem is already in the warnings; the generic line covers the rest.
+  if (state.health !== 'ready' && !brokerProblem(state.broker))
     warnings.push('GPT readiness is unavailable; codex login; anyengine off restores user routing')
-  const detail = `port ${c.config.router.port}; broker sockets ${join(c.root, 'broker/sources')}; source ${state.broker?.source ?? 'unknown'} generation ${state.broker?.generation ?? 'unknown'}; translation ${state.translationVersion}; Claude fixture ${fixture}; ${state.models.length} model suggestions`
+  const rejection = state.broker?.rejection
+  const recovered =
+    rejection && !rejection.open
+      ? `; recovered from an HTTP 401 on /${rejection.endpoint} at ${rejection.at}`
+      : ''
+  const detail = `port ${c.config.router.port}; source ${state.broker?.source ?? 'unknown'} generation ${state.broker?.generation ?? 'unknown'}${recovered}; translation ${state.translationVersion}; Claude fixture ${fixture}; ${state.models.length} model suggestions`
   return warnings.length
     ? warn(`${detail}; ${warnings.join('; ')}`)
     : ok(`${detail}; user base URL, Haiku and hint settings active`)

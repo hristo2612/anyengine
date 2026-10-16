@@ -127,6 +127,7 @@ test('seven callers share one RPC and status exposes no account or bearer', asyn
       source: 'adapter',
       generation: 1,
       reason: null,
+      rejection: null,
     })
     assert.ok(!JSON.stringify(broker.status()).includes('acct-fake'))
     assert.ok(!JSON.stringify(broker.status()).includes(SECRET))
@@ -543,6 +544,7 @@ test('close unsubscribes, wakes pending calls, drops readiness and is idempotent
     source: 'none',
     generation: 1,
     reason: 'broker.closed',
+    rejection: null,
   })
   await broker.close()
   await assert.rejects(broker.get(), { message: 'broker.closed' })
@@ -559,6 +561,7 @@ test('standalone readiness is represented without publishing source IDs', async 
       source: 'standalone',
       generation: 1,
       reason: null,
+      rejection: null,
     })
   } finally {
     await broker.close()

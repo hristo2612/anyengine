@@ -4,6 +4,7 @@ import type {
   AuthStatus,
   BrokerLease,
   BrokerOwner,
+  BrokerRejection,
   SourceSelection,
   TokenBroker,
 } from './broker-types.mjs'
@@ -96,8 +97,10 @@ export function createTokenBroker(input: {
   account: () => ActiveAccount
   owner: BrokerOwner
   now?: () => number
+  log?: (event: string, fields: Record<string, unknown>) => void
 }): TokenBroker {
   const now = input.now ?? Date.now
+  let rejection: BrokerRejection | null = null
   let cacheRevision = 0
   let value: Value | null = null
   let inflight: Flight | null = null
@@ -272,6 +275,22 @@ export function createTokenBroker(input: {
       drop(closed ? 'broker.closed' : 'broker.source-changed')
     },
     isCurrent: leaseCurrent,
+    observe(lease, endpoint, status) {
+      try {
+        if (closed || lease.generation !== input.account().generation) return
+      } catch {
+        return
+      }
+      if (status === 401) {
+        rejection = { at: new Date(now()).toISOString(), endpoint, open: true }
+        // The caller retries once with this lease as `rejected`, which forces a fresh read.
+        input.log?.('gpt.upstream-rejected', { endpoint, code: 'HTTP_401' })
+      } else if (status === 200 && rejection?.open) {
+        // Any accepted bearer proves the login works again.
+        rejection = { ...rejection, open: false }
+        input.log?.('gpt.upstream-recovered', { endpoint })
+      }
+    },
     close() {
       if (!closePromise) {
         closed = true
@@ -295,6 +314,7 @@ export function createTokenBroker(input: {
         source: source === null ? 'none' : (source.kind ?? 'adapter'),
         generation: account.generation,
         reason,
+        rejection,
       }
     },
   }

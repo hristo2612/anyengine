@@ -51,7 +51,11 @@ export function buildRouterRuntime(root: string, log: RouterLog): RouterRuntime 
   const runDir = enginePaths(root).run
   const model = new ModelClaudeTurns(root, log)
   const desktopClaude = new DesktopClaudeRuntime()
-  const gpt = createRouterBroker({ root })
+  const gpt = createRouterBroker({
+    root,
+    log: (event, fields) =>
+      event === 'gpt.upstream-rejected' ? log.error(event, fields) : log.info(event, fields),
+  })
   const gptCatalogs = createGptCatalogs({
     root,
     broker: gpt.broker,

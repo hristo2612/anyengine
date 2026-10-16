@@ -1,0 +1,52 @@
+{
+  "capturedAt": "2026-10-16T10:15:25Z",
+  "note": "Real GET /health from the live router (lib 0.1.0-161aeb5b6620) on the Mac mini. The router logged models.upstream HTTP_401 from 2026-10-10T09:12:07.078Z to 2026-10-13T11:32:34.528Z (router.jsonl); none since its restart at 2026-10-13T12:07:29Z.",
+  "outage401": {
+    "first": "2026-10-10T09:12:07.078Z",
+    "last": "2026-10-13T11:32:34.528Z",
+    "perDay": {
+      "2026-10-10": 198,
+      "2026-10-11": 319,
+      "2026-10-12": 320,
+      "2026-10-13": 153
+    }
+  },
+  "health": {
+    "ok": true,
+    "pid": 660,
+    "version": "0.1.0-161aeb5b6620",
+    "startedAt": "2026-10-13T12:07:29.888Z",
+    "upstream": {
+      "lastOkAt": "2026-10-16T10:15:25.004Z",
+      "lastError": "models: CONNECTION_FAILED",
+      "lastErrorAt": "2026-10-16T01:18:58.174Z"
+    },
+    "inflight": {
+      "gpt": 0,
+      "claude": 1
+    },
+    "faults": {
+      "unhandledRejections": 0,
+      "hookErrors": 0
+    },
+    "mode": "agent",
+    "fanout": {
+      "path": "native",
+      "reason": "catalog marked v1",
+      "since": "2026-10-13T12:07:29.191Z"
+    },
+    "proofKey": {
+      "lib": "0.1.0-161aeb5b6620",
+      "appVersion": "26.1002.52244",
+      "codexVersion": "0.162.0-alpha.2",
+      "settings": "643d303b5a458342"
+    },
+    "gpt": {
+      "ready": true,
+      "source": "adapter",
+      "generation": 8,
+      "reason": null,
+      "activeRequests": 0
+    }
+  }
+}

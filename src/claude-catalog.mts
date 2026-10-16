@@ -15,6 +15,9 @@ export interface GptCatalogs {
 }
 const MAX_BYTES = 8 * 1024 * 1024
 const fail = (code = 'unavailable') => new Error(`catalog.${code}`)
+// The upstream answered the broker's bearer with HTTP 401: retry once with a forced refresh.
+export const CATALOG_REJECTED = 'catalog.rejected'
+const rejected = (error: unknown) => error instanceof Error && error.message === CATALOG_REJECTED
 const leaseKey = (lease: BrokerLease) =>
   JSON.stringify([lease.generation, lease.sourceId, lease.sourceRevision, lease.cacheRevision])
 
@@ -38,7 +41,24 @@ export function gptTarget(upstream: URL, endpoint: 'models' | 'responses'): URL 
   return target
 }
 
-async function fetchModels(target: URL, lease: BrokerLease, signal: AbortSignal): Promise<Obj> {
+function catalogBody(bytes: Buffer): Obj {
+  const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !Array.isArray((value as Obj).models)
+  )
+    throw fail()
+  return value as Obj
+}
+
+async function fetchModels(
+  target: URL,
+  lease: BrokerLease,
+  signal: AbortSignal,
+  observe: (status: number) => void,
+): Promise<Obj> {
   if (signal.aborted) throw fail('request-aborted')
   return new Promise((resolve, reject) => {
     const transport = target.protocol === 'https:' ? https : http
@@ -58,6 +78,8 @@ async function fetchModels(target: URL, lease: BrokerLease, signal: AbortSignal)
       },
       async (response) => {
         try {
+          observe(response.statusCode ?? 0)
+          if (response.statusCode === 401) throw fail('rejected')
           if (response.statusCode !== 200) throw fail()
           const chunks: Buffer[] = []
           let size = 0
@@ -72,18 +94,12 @@ async function fetchModels(target: URL, lease: BrokerLease, signal: AbortSignal)
             response.headers['content-encoding'],
             MAX_BYTES,
           )
-          const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
-          if (
-            !value ||
-            typeof value !== 'object' ||
-            Array.isArray(value) ||
-            !Array.isArray((value as Obj).models)
-          )
-            throw fail()
-          resolve(value as Obj)
-        } catch {
+          resolve(catalogBody(bytes))
+        } catch (error) {
           response.destroy()
-          reject(signal.aborted ? fail('request-aborted') : fail())
+          reject(
+            signal.aborted ? fail('request-aborted') : rejected(error) ? fail('rejected') : fail(),
+          )
         } finally {
           clearTimeout(timer)
         }
@@ -148,7 +164,12 @@ export function createGptCatalogs(input: {
     void (async () => {
       if (!current(lease, flight.epoch)) throw fail('source-changed')
       const models = selectGptModels(
-        await fetchModels(gptTarget(input.upstream, 'models'), lease, flight.controller.signal),
+        await fetchModels(
+          gptTarget(input.upstream, 'models'),
+          lease,
+          flight.controller.signal,
+          (status) => input.broker.observe?.(lease, 'models', status),
+        ),
       )
       if (!current(lease, flight.epoch) || inflight !== flight) throw fail('source-changed')
       const snapshot: GptCatalogSnapshot = Object.freeze({
@@ -169,7 +190,15 @@ export function createGptCatalogs(input: {
       cached = { key: flight.key, snapshot }
       resolve(snapshot)
     })()
-      .catch(() => reject(current(lease, flight.epoch) ? fail() : fail('source-changed')))
+      .catch((error) =>
+        reject(
+          !current(lease, flight.epoch)
+            ? fail('source-changed')
+            : rejected(error)
+              ? fail('rejected')
+              : fail(),
+        ),
+      )
       .finally(() => {
         if (inflight === flight) inflight = null
       })
@@ -217,10 +246,12 @@ export async function readGptSettingsView(input: {
   signal: AbortSignal
 }): Promise<GptSettingsView> {
   const admitted = await input.admission.begin(input.signal)
+  let refused: BrokerLease | undefined
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
+      let lease: BrokerLease | undefined
       try {
-        const lease = await input.broker.get()
+        lease = await input.broker.get(refused ? { rejected: refused } : undefined)
         if (lease.generation !== admitted.generation) throw fail('source-changed')
         const snapshot = await input.catalogs.get(lease, input.signal)
         if (
@@ -238,6 +269,10 @@ export async function readGptSettingsView(input: {
           models: snapshot.models,
         }
       } catch (error) {
+        if (attempt === 0 && rejected(error) && lease && !input.signal.aborted) {
+          refused = lease
+          continue
+        }
         if (
           attempt === 0 &&
           error instanceof Error &&

@@ -147,7 +147,7 @@ export function readStatusHealth(url: string): Promise<Record<string, unknown>> 
             (!value.upstream.lastOkAt ||
               String(value.upstream.lastErrorAt) >= String(value.upstream.lastOkAt))
           )
-            throw new Error('router upstream reports an unresolved failure')
+            throw new Error(unresolvedUpstream(value.upstream))
           if (value.gpt !== undefined) value.gpt = projectBroker(value.gpt)
           done(value)
         } catch (error) {
@@ -164,6 +164,15 @@ export function readStatusHealth(url: string): Promise<Record<string, unknown>> 
       reject(error)
     })
   })
+}
+
+// The Codex face forwards the app's own bearer, so its 401 names the app's login.
+function unresolvedUpstream(upstream: Record<string, unknown>): string {
+  if (upstream.lastError !== 'models: HTTP_401')
+    return 'router upstream reports an unresolved failure'
+  const at = Date.parse(String(upstream.lastErrorAt))
+  const when = Number.isFinite(at) ? ` at ${new Date(at).toISOString()}` : ''
+  return `router upstream: OpenAI refused the Codex app's own login with HTTP 401 on /models${when}; the router forwards that login unchanged, so restart the app or codex-anywhere session that holds it, or run codex login`
 }
 
 export function readStatusLayers(root: string): string[] {
@@ -210,9 +219,11 @@ export function readStatusLib(root: string): string | null {
 
 interface BrokerView {
   ready: boolean
-  source: 'adapter' | 'standalone' | 'none'
+  source: 'adapter' | 'standalone' | 'file' | 'none'
   generation: number
   reason: string | null
+  // Last HTTP 401 OpenAI gave the broker's bearer; open until a later 200.
+  rejection: { at: string; endpoint: 'models' | 'responses'; open: boolean } | null
 }
 export interface ClaudeCodeStatus {
   enabled: boolean | null
@@ -227,7 +238,7 @@ function projectBroker(value: unknown): BrokerView | null {
   if (
     !object(value) ||
     typeof value.ready !== 'boolean' ||
-    !['adapter', 'standalone', 'none'].includes(String(value.source)) ||
+    !['adapter', 'standalone', 'file', 'none'].includes(String(value.source)) ||
     !Number.isSafeInteger(value.generation) ||
     Number(value.generation) < 0
   )
@@ -243,7 +254,37 @@ function projectBroker(value: unknown): BrokerView | null {
     source: value.source as BrokerView['source'],
     generation: Number(value.generation),
     reason,
+    rejection: projectRejection(value.rejection),
   }
+}
+function projectRejection(value: unknown): BrokerView['rejection'] {
+  if (
+    !object(value) ||
+    typeof value.at !== 'string' ||
+    !Number.isFinite(Date.parse(value.at)) ||
+    !['models', 'responses'].includes(String(value.endpoint)) ||
+    typeof value.open !== 'boolean'
+  )
+    return null
+  return {
+    at: new Date(Date.parse(value.at)).toISOString(),
+    endpoint: value.endpoint as 'models' | 'responses',
+    open: value.open,
+  }
+}
+const LOGIN_REASONS: Record<string, string> = {
+  'broker.login-required': 'the active Codex home has no ChatGPT login',
+  'broker.chatgpt-required': 'the active Codex login is an API key, not ChatGPT',
+  'broker.token-expired': 'the Codex login expired and the official refresh did not renew it',
+  'broker.invalid-token': 'the Codex login holds a token the router cannot read',
+}
+// One plain sentence naming why GPT inside Claude Code is failing, or null.
+export function brokerProblem(broker: BrokerView | null): string | null {
+  if (!broker) return null
+  if (broker.rejection?.open)
+    return `OpenAI refused the GPT login with HTTP 401 on /${broker.rejection.endpoint} at ${broker.rejection.at}, even after the router re-read the Codex login and asked the official client to refresh it; run codex login for the active account`
+  const login = broker.reason ? LOGIN_REASONS[broker.reason] : undefined
+  return login ? `${login}; run codex login for the active account` : null
 }
 
 function userClaudeSettings(
@@ -365,6 +406,8 @@ export function readStatusClaudeCode(input: {
     if (precedence(input.home, input.root))
       state.warnings.push('Higher precedence managed/project settings may shadow user routing')
     state.translationVersion = translationVersion(input.root, input.current)
+    const problem = brokerProblem(state.broker)
+    if (enabled && problem) state.warnings.push(problem)
     const catalog = catalogIds(input.root, state.broker?.generation)
     state.models = catalog.models
     if (catalog.stale) state.warnings.push('Diagnostic models belong to another account generation')
@@ -372,7 +415,7 @@ export function readStatusClaudeCode(input: {
       state.health =
         !state.translationVersion || !state.broker
           ? 'unknown'
-          : settings.installed && state.broker.ready && state.models.length > 0
+          : settings.installed && state.broker.ready && state.models.length > 0 && !problem
             ? 'ready'
             : 'degraded'
   } catch {

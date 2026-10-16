@@ -50,6 +50,8 @@ async function fixture(t: TestContext, createOwnedRow = false) {
   system.execs.set(`${cli} --version`, { status: 0, stdout: '2.1.289 (Claude Code)\n', stderr: '' })
   setConfigValue(root, 'claude.cli', cli)
   let ready = true
+  let gptExtra: Record<string, unknown> = {}
+  let upstream: Record<string, unknown> = {}
   const server = http.createServer((request, response) => {
     assert.equal(request.url, '/health')
     response.end(
@@ -61,7 +63,7 @@ async function fixture(t: TestContext, createOwnedRow = false) {
         mode: 'agent',
         fanout: { path: 'bridge', reason: 'unproven' },
         faults: { hookErrors: 0, unhandledRejections: 0 },
-        upstream: {},
+        upstream,
         inflight: {},
         gpt: {
           ready,
@@ -72,6 +74,7 @@ async function fixture(t: TestContext, createOwnedRow = false) {
           accountId: SECRET,
           sourceId: SECRET,
           activeRequests: 0,
+          ...gptExtra,
         },
       }),
     )
@@ -137,6 +140,12 @@ async function fixture(t: TestContext, createOwnedRow = false) {
     current,
     unavailable: () => {
       ready = false
+    },
+    gpt: (extra: Record<string, unknown>) => {
+      gptExtra = extra
+    },
+    upstream: (value: Record<string, unknown>) => {
+      upstream = value
     },
   }
 }
@@ -282,4 +291,93 @@ test('Claude Code doctor fails missing MIT evidence and warns when the binary di
   assert.match(invalid.detail, /MIT/)
   secretFree(mismatch)
   secretFree(invalid)
+})
+
+// Real router /health (2026-10-16) and the real outage window from router.jsonl.
+const capture = JSON.parse(readFileSync('test/fixtures/router-health-2026-10-16.json', 'utf8')) as {
+  outage401: { first: string; last: string }
+  health: { upstream: Record<string, unknown>; gpt: Record<string, unknown> }
+}
+
+test('the captured health of the pre-fix router projects with no rejection claimed', async (t) => {
+  const f = await fixture(t)
+  f.gpt({ ...capture.health.gpt, generation: 1 })
+  const value = await report(f)
+  assert.equal(value.claudeCode.broker?.source, 'adapter')
+  assert.equal(value.claudeCode.broker?.rejection, null)
+  assert.equal(value.claudeCode.health, 'ready')
+})
+
+test('an open GPT 401 is named in status and doctor, with the time and the fix', async (t) => {
+  const f = await fixture(t)
+  f.gpt({
+    source: 'file',
+    reason: null,
+    rejection: { at: capture.outage401.first, endpoint: 'models', open: true },
+  })
+  const value = await report(f)
+  assert.equal(value.claudeCode.health, 'degraded')
+  assert.match(
+    value.claudeCode.warnings.join(' '),
+    /HTTP 401 on \/models at 2026-10-10T09:12:07\.078Z/,
+  )
+  const checks = await runDoctor(f.system, f.root, { codexHome: f.codex })
+  const diagnostic = checks.find((check) => check.name === 'Claude Code GPT')
+  assert.ok(diagnostic)
+  assert.equal(diagnostic.level, 'warn')
+  assert.match(diagnostic.detail, /OpenAI refused the GPT login with HTTP 401/)
+  assert.match(diagnostic.detail, /run codex login/)
+  assert.doesNotMatch(diagnostic.detail, /GPT readiness is unavailable/)
+  secretFree(checks)
+})
+
+test('a 401 the refresh already fixed stays visible but healthy', async (t) => {
+  const f = await fixture(t)
+  f.gpt({
+    source: 'file',
+    rejection: { at: capture.outage401.first, endpoint: 'responses', open: false },
+  })
+  const value = await report(f)
+  assert.equal(value.claudeCode.health, 'ready')
+  const diagnostic = (await runDoctor(f.system, f.root, { codexHome: f.codex })).find(
+    (check) => check.name === 'Claude Code GPT',
+  )
+  assert.ok(diagnostic)
+  // The fixture's credential helper keeps this check at warn; the 401 adds nothing to it.
+  assert.notEqual(diagnostic.level, 'fail')
+  assert.doesNotMatch(diagnostic.detail, /refused/)
+  assert.match(
+    diagnostic.detail,
+    /recovered from an HTTP 401 on \/responses at 2026-10-10T09:12:07\.078Z/,
+  )
+})
+
+test("the Codex face's own 401 is named in router health; a later success clears it", async (t) => {
+  const f = await fixture(t)
+  // What router-catalog-fetch records for the outage's models.upstream HTTP_401 lines.
+  f.upstream({
+    ...capture.health.upstream,
+    lastError: 'models: HTTP_401',
+    lastErrorAt: capture.outage401.last,
+    lastOkAt: '2026-10-10T09:00:00.000Z',
+  })
+  const health = async () =>
+    (await runDoctor(f.system, f.root, { codexHome: f.codex })).find(
+      (check) => check.name === 'router health',
+    )
+  const named = await health()
+  assert.ok(named)
+  assert.equal(named.level, 'fail')
+  assert.match(
+    named.detail,
+    /Codex app's own login with HTTP 401 on \/models at 2026-10-13T11:32:34\.528Z/,
+  )
+  f.upstream({
+    ...capture.health.upstream,
+    lastError: 'models: HTTP_401',
+    lastErrorAt: capture.outage401.last,
+    lastOkAt: '2026-10-13T12:07:30.000Z',
+  })
+  const cleared = await health()
+  assert.equal(cleared?.level, 'ok')
 })
