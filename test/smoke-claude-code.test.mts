@@ -314,9 +314,7 @@ test('Claude Code smoke refuses a marker symlink without touching its target or 
 
 test('hook policy detection covers every place Claude Code 2.1.301 reads it, failing closed', async () => {
   const { hooksDisabled } = await load()
-  const { mkdtempSync } = await import('node:fs')
-  const { tmpdir } = await import('node:os')
-  const base = mkdtempSync(join(tmpdir(), 'hooks-policy-'))
+  const base = await tempDir('hooks-policy-')
   const home = join(base, 'home'),
     managed = join(base, 'managed'),
     mdm = join(base, 'mdm')
