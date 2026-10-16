@@ -93,12 +93,13 @@ When scheduled smoke is enabled, `claude-code-gpt` performs one bounded Read of
 the fixed smoke marker and requires its tool result followed by PONG. It restores
 an existing marker and joins its owned process family. It then runs one more
 turn with your real settings and whole tool surface, MCP servers and claude.ai
-connectors included, and requires PONG with no tool use. In that turn a
-flag-scope PreToolUse hook refuses every tool call, so no tool runs whatever
-your allow rules say; it also runs in plan mode, for one turn, with no saved
-session. Your own session hooks still run, as for any Claude session. If your
-settings switch hooks off (`disableAllHooks`, managed-hooks-only), the refusal
-hook cannot load, so the turn is skipped and the smoke says so. Both turns pin
+connectors included, and requires PONG. In that turn a flag-scope PreToolUse
+hook refuses every tool call, so no tool runs whatever your allow rules say; a
+tool the model tries anyway must show that refusal. It also runs in plan mode,
+without Bash and Agent, for at most two turns, with no saved session. Your own
+session hooks still run, as for any Claude session. If any Claude setting
+could switch hooks off (`disableAllHooks`, managed policy, MDM, safe or simple
+mode), the turn is skipped as unknown, which keeps an earlier failure marked. Both turns pin
 the router URL in flag settings, which outrank a base URL in your own
 settings.
 

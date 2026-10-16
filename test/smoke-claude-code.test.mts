@@ -42,7 +42,9 @@ else writeFileSync(${JSON.stringify(capture)}, record)
 const emit = (value) => process.stdout.write(JSON.stringify(value) + '\\n')
 if (real) {
   emit({type:'system',subtype:'init',model:${JSON.stringify(id)},mcp_servers:[{name:'a',status:'connected'},{name:'b',status:'needs-auth'}]})
-  if (mode === 'real-tool') emit({type:'assistant',message:{content:[{type:'tool_use',id:'t',name:'Bash',input:{}}]}})
+  if (mode === 'real-tool' || mode === 'real-refused') emit({type:'assistant',message:{content:[{type:'tool_use',id:'t',name:'Read',input:{}}]}})
+  if (mode === 'real-tool') emit({type:'user',message:{content:[{type:'tool_result',tool_use_id:'t',content:'file contents'}]}})
+  if (mode === 'real-refused') emit({type:'user',message:{content:[{type:'tool_result',tool_use_id:'t',is_error:true,content:'PreToolUse:Read hook error: anyengine smoke: this turn is read-only'}]}})
   emit({type:'result',subtype:mode === 'real-error' ? 'error_during_execution' : 'success',is_error:mode === 'real-error',result:'PONG'})
   process.exit(0)
 }
@@ -164,7 +166,8 @@ test('Claude Code smoke proves one correlated Read, the fresh marker result and 
     assert.equal(real.args.includes(flag), false, flag)
   for (const [flag, value] of [
     ['--permission-mode', 'plan'],
-    ['--max-turns', '1'],
+    ['--max-turns', '2'],
+    ['--disallowedTools', 'Bash'],
     ['--model', id],
   ])
     assert.equal(real.args[real.args.indexOf(flag) + 1], value)
@@ -193,12 +196,19 @@ test('Claude Code smoke proves one correlated Read, the fresh marker result and 
 
 test('Claude Code smoke skips the real-settings turn when hooks are disabled in settings', async (t) => {
   const f = await fixture(t)
-  const home = (f.ctx.deps as unknown as { claudeHome: string }).claudeHome
+  const deps = f.ctx.deps as unknown as {
+    claudeHome: string
+    adapterEnv: (extra: NodeJS.ProcessEnv) => NodeJS.ProcessEnv
+  }
+  const home = deps.claudeHome
+  const inner = deps.adapterEnv
+  deps.adapterEnv = (extra) => ({ ...inner(extra), CLAUDE_CONFIG_DIR: join(home, '.claude') })
   mkdirSync(join(home, '.claude'), { recursive: true })
   writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ disableAllHooks: true }))
   const result = await f.runClaudeCodeSmoke(f.ctx)
-  assert.equal(result.ok, true, result.detail)
-  assert.match(result.detail, /real-settings turn skipped: hooks are disabled/)
+  // Unknown, not passed: an existing degraded mark is kept.
+  assert.equal(result.ok, null, result.detail)
+  assert.match(result.detail, /real-settings turn skipped/)
   assert.equal(existsSync(`${f.capture}.real`), false)
 })
 
@@ -210,8 +220,14 @@ test('Claude Code smoke skips the real-settings turn when the marker turn fails'
   assert.equal(existsSync(`${f.capture}.real`), false)
 })
 
+test('Claude Code smoke accepts a real-settings turn whose tool try the hook refused', async (t) => {
+  const f = await fixture(t, 'real-refused')
+  const result = await f.runClaudeCodeSmoke(f.ctx)
+  assert.equal(result.ok, true, result.detail)
+})
+
 for (const mode of ['real-tool', 'real-error'] as const)
-  test(`Claude Code smoke fails when the real-settings turn ${mode === 'real-tool' ? 'uses a tool' : 'errors'}`, async (t) => {
+  test(`Claude Code smoke fails when the real-settings turn ${mode === 'real-tool' ? 'runs a tool' : 'errors'}`, async (t) => {
     const f = await fixture(t, mode)
     const result = await f.runClaudeCodeSmoke(f.ctx)
     assert.equal(result.ok, false)
@@ -294,4 +310,55 @@ test('Claude Code smoke refuses a marker symlink without touching its target or 
   assert.equal(result.ok, false)
   assert.equal(readFileSync(outside, 'utf8'), 'retain')
   assert.equal(existsSync(f.capture), false)
+})
+
+test('hook policy detection covers every place Claude Code 2.1.301 reads it, failing closed', async () => {
+  const { hooksDisabled } = await load()
+  const { mkdtempSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const base = mkdtempSync(join(tmpdir(), 'hooks-policy-'))
+  const home = join(base, 'home'),
+    managed = join(base, 'managed'),
+    mdm = join(base, 'mdm')
+  mkdirSync(join(home, '.claude'), { recursive: true })
+  mkdirSync(join(managed, 'managed-settings.d'), { recursive: true })
+  mkdirSync(join(mdm, 'someone'), { recursive: true })
+  const env = { USER: 'someone' }
+  const check = (extra: NodeJS.ProcessEnv = {}) =>
+    hooksDisabled(home, { ...env, ...extra }, managed, mdm)
+  assert.equal(check(), false)
+  for (const flag of ['CLAUDE_CODE_SIMPLE', 'CLAUDE_CODE_SAFE_MODE']) {
+    assert.equal(check({ [flag]: '1' }), true)
+    assert.equal(check({ [flag]: '0' }), false)
+  }
+  const settings = join(home, '.claude', 'settings.json')
+  writeFileSync(settings, JSON.stringify({ allowManagedHooksOnly: true }))
+  assert.equal(check(), false, 'allowManagedHooksOnly only counts in managed settings')
+  writeFileSync(settings, JSON.stringify({ disableAllHooks: true }))
+  assert.equal(check(), true)
+  writeFileSync(settings, '{ not json')
+  assert.equal(check(), true, 'an unreadable policy fails closed')
+  writeFileSync(settings, '{}')
+  const other = join(base, 'other-config')
+  mkdirSync(other)
+  writeFileSync(join(other, 'settings.json'), JSON.stringify({ disableAllHooks: true }))
+  assert.equal(check({ CLAUDE_CONFIG_DIR: other }), true)
+  for (const body of [
+    { allowManagedHooksOnly: true },
+    { strictPluginOnlyCustomization: true },
+    { strictPluginOnlyCustomization: ['hooks'] },
+  ]) {
+    writeFileSync(join(managed, 'managed-settings.json'), JSON.stringify(body))
+    assert.equal(check(), true, JSON.stringify(body))
+  }
+  writeFileSync(join(managed, 'managed-settings.json'), '{}')
+  writeFileSync(
+    join(managed, 'managed-settings.d', '10-policy.json'),
+    JSON.stringify({ disableAllHooks: true }),
+  )
+  assert.equal(check(), true)
+  writeFileSync(join(managed, 'managed-settings.d', '10-policy.json'), '{}')
+  assert.equal(check(), false)
+  writeFileSync(join(mdm, 'someone', 'com.anthropic.claudecode.plist'), '')
+  assert.equal(check(), true, 'an MDM policy may switch hooks off')
 })

@@ -1,7 +1,14 @@
 // One installed Claude harness turn. The gateway supplies models; Claude owns Read.
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { join, resolve } from 'node:path'
 import { resolveGptModel } from './claude-models.mjs'
 import { atomicFile, digest, regularBytes, sameState, stateAt } from './control-layer-state.mjs'
@@ -35,6 +42,7 @@ const markerArgs = (model: string, router: string) => [
 // Every tool call in the real-settings turn is refused by a flag-scope hook:
 // plan mode alone still lets a Bash allow rule run, and --max-turns 1 stops
 // only the next model call, not the tools of the first reply.
+const REFUSAL = 'anyengine smoke: this turn is read-only'
 export const READ_ONLY_HOOKS = {
   hooks: {
     PreToolUse: [
@@ -47,7 +55,7 @@ export const READ_ONLY_HOOKS = {
               hookSpecificOutput: {
                 hookEventName: 'PreToolUse',
                 permissionDecision: 'deny',
-                permissionDecisionReason: 'anyengine smoke: this turn is read-only',
+                permissionDecisionReason: REFUSAL,
               },
             })}'`,
           },
@@ -77,9 +85,16 @@ const realArgs = (model: string, router: string) => [
   model,
   '--permission-mode',
   'plan',
+  // Two turns: a model that tries a tool anyway gets the hook's refusal and
+  // can still answer.
   '--max-turns',
-  '1',
+  '2',
   '--no-session-persistence',
+  // A second margin: the one tool plan mode lets an allow rule run, and the
+  // sub-agent launcher. Neither is part of the connector request shape.
+  '--disallowedTools',
+  'Bash',
+  'Agent',
   '--settings',
   readOnlySettings(router),
 ]
@@ -288,20 +303,59 @@ function verified(bytes: Buffer, project: string, markerText: string, model: str
   )
 }
 
-// The read-only hook cannot load when settings switch hooks off (user or
-// managed `disableAllHooks`, managed-hooks-only, or the CLI's simple mode).
-const MANAGED_SETTINGS = '/Library/Application Support/ClaudeCode/managed-settings.json'
-function hooksDisabled(home: string): boolean {
-  if (process.env.CLAUDE_CODE_SIMPLE) return true
-  for (const path of [join(home, '.claude', 'settings.json'), MANAGED_SETTINGS]) {
-    let value: Event
+// The read-only hook cannot load when settings switch hooks off. Claude Code
+// 2.1.301 reads hook policy from the user's config dir, managed settings and
+// their drop-ins, MDM plists and a cached server policy; safe and simple
+// modes drop flag hooks too. Any of these, or any file it cannot read, skips
+// the real-settings turn (fail closed).
+export const CLAUDE_MANAGED_ROOT = '/Library/Application Support/ClaudeCode'
+const MDM = '/Library/Managed Preferences'
+const on = (value: string | undefined) =>
+  value !== undefined && !['', '0', 'false', 'no'].includes(value.toLowerCase())
+function policyOff(value: Event, managed: boolean): boolean {
+  const strict = value?.strictPluginOnlyCustomization
+  return (
+    value?.disableAllHooks === true ||
+    (managed &&
+      (value?.allowManagedHooksOnly === true ||
+        strict === true ||
+        (Array.isArray(strict) && strict.includes('hooks'))))
+  )
+}
+export function hooksDisabled(
+  home: string,
+  env: NodeJS.ProcessEnv = process.env,
+  managedRoot = CLAUDE_MANAGED_ROOT,
+  mdm = MDM,
+): boolean {
+  if (on(env.CLAUDE_CODE_SIMPLE) || on(env.CLAUDE_CODE_SAFE_MODE)) return true
+  const config = env.CLAUDE_CONFIG_DIR || join(home, '.claude')
+  const user = env.USER ?? ''
+  for (const path of [
+    join(config, 'remote-settings.json'),
+    join(mdm, 'com.anthropic.claudecode.plist'),
+    join(mdm, user, 'com.anthropic.claudecode.plist'),
+  ])
+    if (existsSync(path)) return true
+  let dropIns: string[] = []
+  try {
+    dropIns = readdirSync(join(managedRoot, 'managed-settings.d'))
+      .filter((name) => name.endsWith('.json'))
+      .map((name) => join(managedRoot, 'managed-settings.d', name))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return true
+  }
+  const files: Array<[string, boolean]> = [
+    [join(config, 'settings.json'), false],
+    [join(managedRoot, 'managed-settings.json'), true],
+    ...dropIns.map((path): [string, boolean] => [path, true]),
+  ]
+  for (const [path, managed] of files) {
     try {
-      value = JSON.parse(readFileSync(path, 'utf8'))
+      if (policyOff(JSON.parse(readFileSync(path, 'utf8')), managed)) return true
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
-      return true
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return true
     }
-    if (value?.disableAllHooks === true || value?.allowManagedHooksOnly === true) return true
   }
   return false
 }
@@ -314,15 +368,26 @@ function events(bytes: Buffer): Event[] | null {
     ? parsed
     : null
 }
-// PONG with no tool use; returns the connected MCP server count for the detail.
+// PONG, and every tool the model tried was refused by the read-only hook;
+// returns the connected MCP server count for the detail.
 function verifiedReal(bytes: Buffer, model: string): number | null {
   const all = events(bytes)
   if (!all) return null
   const init = all.find((event) => event.type === 'system' && event.subtype === 'init')
-  const used = all.some(
-    (event) =>
-      event.type === 'assistant' && content(event).some((block) => block.type === 'tool_use'),
+  const tried = all.flatMap((event) =>
+    event.type === 'assistant' ? content(event).filter((block) => block.type === 'tool_use') : [],
   )
+  const outcomes = all.flatMap((event) =>
+    event.type === 'user' ? content(event).filter((block) => block.type === 'tool_result') : [],
+  )
+  const used =
+    outcomes.length !== tried.length ||
+    outcomes.some(
+      (block) =>
+        block.is_error !== true ||
+        !tried.some((call) => call.id === block.tool_use_id) ||
+        !resultText(block.content).includes(REFUSAL),
+    )
   const completed = all.filter((event) => event.type === 'result')
   const terminal = completed[0]
   if (
@@ -376,10 +441,12 @@ export async function runClaudeCodeSmoke(ctx: PathContext): Promise<PathResult> 
         false,
         'Claude Code GPT tool/terminal evidence failed; codex login or anyengine off',
       )
-    if (hooksDisabled(ctx.deps.claudeHome))
+    // Unknown, not passed: an existing degraded mark for this path is kept.
+    // Judge the policy with the environment the CLI child gets.
+    if (hooksDisabled(ctx.deps.claudeHome, ctx.deps.adapterEnv({})))
       return result(
-        true,
-        'Claude Code GPT one Read marker result then PONG verified; real-settings turn skipped: hooks are disabled in your Claude settings, so it could not be kept read-only',
+        null,
+        'Claude Code GPT one Read marker result then PONG verified; real-settings turn skipped: Claude settings can switch hooks off here, so it could not be kept read-only',
       )
     let servers: number | null = null
     try {
