@@ -13,6 +13,14 @@
 // there, is "cannot tell", not "quiet". The quiet report lists each place it
 // looked and what it found, so a check pointed at the wrong home shows.
 //
+// One absence is an answer: on a first install no adapter has ever run with
+// this Codex home, so its default adapter home (<codex home>/anyengine) does
+// not exist at all, and there is no adapter log or turn table to read. Then
+// the adapter side is "nothing ran" and the app's own rollouts and Sparkle
+// decide. Only that exact case: an adapter home that exists without its log,
+// a dangling link in its place, or one that cannot be looked at still cannot
+// tell.
+//
 // A restart also installs a staged app update. ChatGPT.app updates itself
 // with Sparkle 2 (2.9.1 in 26.928): an update downloads in the background and
 // installs when the app quits, so the quit a flip needs installed one on
@@ -43,6 +51,7 @@ import {
   closeSync,
   constants,
   fstatSync,
+  lstatSync,
   openSync,
   readdirSync,
   readSync,
@@ -103,6 +112,15 @@ function isDirectory(path) {
 function statOrNull(path) {
   try {
     return statSync(path)
+  } catch (error) {
+    if (error.code === 'ENOENT') return null
+    throw error
+  }
+}
+
+function lstatOrNull(path) {
+  try {
+    return lstatSync(path)
   } catch (error) {
     if (error.code === 'ENOENT') return null
     throw error
@@ -444,12 +462,19 @@ try {
     if (isAppRollout(file.path)) appRollouts.push(file)
     else execRollouts.push(file)
   }
-  const debugLog = adapterLogActivity(logPath, now - quietMs)
-  const turns = inProgressTurns(statePath)
+  // A first install: the default adapter home is not there at all (lstat, so
+  // a dangling link is not absence). See the header.
+  const neverRan = namedAdapterHome === undefined && lstatOrNull(adapterHome) === null
+  const debugLog = neverRan
+    ? { activity: 0, background: 0, reachesStart: true }
+    : adapterLogActivity(logPath, now - quietMs)
+  const turns = neverRan ? null : inProgressTurns(statePath)
 
   const busy = appRollouts.map((file) => `${file.path} was written ${ago(file)}`)
   busy.push(...heldByAppServer(execRollouts.map((file) => file.path)))
-  const logReport = `${logPath}: ${debugLog.activity} turn-activity events in the window, ${debugLog.background} background events ignored`
+  const logReport = neverRan
+    ? `${adapterHome}: absent (no AnyEngine adapter has run with this Codex home)`
+    : `${logPath}: ${debugLog.activity} turn-activity events in the window, ${debugLog.background} background events ignored`
   if (debugLog.activity > 0) busy.push(logReport)
   else console.log(`  ${logReport}`)
   if (!debugLog.reachesStart) {
@@ -474,7 +499,8 @@ try {
   console.log(
     `  ${sessions}: ${appRollouts.length} app rollouts in the window, ${execRollouts.length} recent rollouts ignored (not the app's)`,
   )
-  console.log(`  ${statePath}: ${turns === null ? 'absent' : `${turns} turns in progress`}`)
+  if (!neverRan)
+    console.log(`  ${statePath}: ${turns === null ? 'absent' : `${turns} turns in progress`}`)
   for (const line of staged.seen) console.log(`  ${line}`)
 } catch (error) {
   // Not being able to look is not the same as nothing being there.

@@ -34,7 +34,9 @@ const logPath = (root: string, id: string) => join(root, 'state', `flip-${id}.lo
 async function confirm(yes: boolean, dryRun: boolean): Promise<void> {
   if (yes || dryRun) return
   if (!process.stdin.isTTY || !process.stdout.isTTY)
-    throw new Error('restart needs --yes outside a terminal')
+    throw new Error(
+      'this quits and reopens ChatGPT.app and asks first, but input or output is not an interactive terminal (piped, redirected or run by a script); run it in a terminal without redirection to be asked, or add --yes to agree to the restart now',
+    )
   const input = createInterface({ input: process.stdin, output: process.stdout })
   try {
     if (!/^y(es)?$/i.test((await input.question('Restart ChatGPT.app? [y/N] ')).trim()))
@@ -244,6 +246,13 @@ async function runOwned(
         say(
           `resumed an interrupted ${original.op} (it stopped at ${original.phase}); run the command again if you still want it\n`,
         )
+    } else if (!original && op === 'on' && marker.phase === 'preflight') {
+      // runOn writes its first marker phase ('prepare') before any change, so
+      // an on that ends in preflight read only: nothing to resume or recover.
+      finishSharedMarker(root, handedOff)
+      say(
+        'on stopped before changing anything; nothing to recover. Run the same command again once the cause above is fixed\n',
+      )
     } else recoveryNotice(ctx)
     return code
   } catch (error) {

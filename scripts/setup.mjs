@@ -35,6 +35,16 @@ export function setup(args, options = {}) {
     throw new Error('setup requires macOS and Node.js 24 or newer')
   if (!['zsh', 'bash'].includes((env.SHELL ?? '').split('/').pop()))
     throw new Error('setup supports zsh or bash; set SHELL to your login shell')
+  // Enabling quits and reopens ChatGPT.app and asks first, which needs a real
+  // terminal on both input and output. Say so before staging anything.
+  const interactive = options.interactive ?? (process.stdin.isTTY && process.stdout.isTTY)
+  if (!args.includes('--yes') && !args.includes('--stage-only') && !interactive)
+    throw new Error(
+      'setup quits and reopens ChatGPT.app and asks you first, but this is not an interactive ' +
+        'terminal (input or output is piped, redirected or run by a script). Run setup in a ' +
+        'terminal without redirection to be asked, or run "setup --yes" to agree to the restart ' +
+        'now. Nothing was changed.',
+    )
   env.PATH = `${dirname(process.execPath)}:${env.PATH ?? '/usr/bin:/bin'}`
   env.ANYENGINE_ROOT = root
   env.ANYENGINE_NODE = process.execPath
@@ -87,7 +97,8 @@ export function setup(args, options = {}) {
   ]
   if (args.includes('--stage-only')) {
     say(
-      `Staged only. To enable: ANYENGINE_ROOT=${quote(root)} /bin/bash ${activate.map(quote).join(' ')}`,
+      `Staged only. To enable: ANYENGINE_ROOT=${quote(root)} /bin/bash ${activate.map(quote).join(' ')}` +
+        '\nAdd --yes when it runs without an interactive terminal (it restarts ChatGPT.app).',
     )
     return 0
   }

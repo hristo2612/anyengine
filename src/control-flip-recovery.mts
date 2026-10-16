@@ -81,7 +81,11 @@ export async function quiet(
       return
     if (attempt >= minutes * 12)
       throw new Error(
-        `app is not quiet: ${check.text}; resume waits for a quiet app; run again or use --force`,
+        recovery
+          ? `app is not quiet: ${check.text}; resume waits for a quiet app; run again or use --force`
+          : // --force skips this wait only for off and recovery (control.md); a
+            // forward on or restart quits the app, so it always needs quiet.
+            `app is not quiet: ${check.text}; wait until it is and run the same command again, or add --wait-quiet <minutes> to keep checking (--force does not skip this check for on or restart)`,
       )
     await ctx.system.sleep(5000)
   }

@@ -22,6 +22,7 @@ async function fixture(failure = '', dirty = false) {
   const options = {
     source,
     platform: 'darwin',
+    interactive: true,
     env: { HOME: home, SHELL: '/bin/zsh', ANYENGINE_ROOT: join(home, 'engine') },
     say: (message: string) => messages.push(message),
     run: (command: string, args: string[], settings: { env: NodeJS.ProcessEnv }) => {
@@ -139,4 +140,21 @@ test('stage-only installs no routing and help/invalid arguments make no subproce
     assert.equal(setup([...args], g.options), code)
     assert.equal(g.calls.length, 0)
   }
+})
+
+test('outside an interactive terminal setup refuses before staging unless --yes or --stage-only', async () => {
+  const f = await fixture()
+  const options = { ...f.options, interactive: false }
+  assert.throws(
+    () => setup([], options),
+    /not an interactive terminal .*setup --yes.*Nothing was changed/s,
+  )
+  assert.deepEqual(f.calls, [], 'no git, npm, staging or activation call')
+  assert.equal(setup(['--stage-only'], options), 0)
+  assert.ok(
+    f.messages.some((m) => /Add --yes when it runs without an interactive terminal/.test(m)),
+  )
+  const yes = await fixture()
+  assert.equal(setup(['--yes'], { ...yes.options, interactive: false }), 0)
+  assert.ok(yes.calls.at(-1)?.args.includes('--yes'))
 })

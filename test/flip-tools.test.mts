@@ -11,6 +11,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  unlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
@@ -629,6 +630,66 @@ test('preflip-check does not say quiet about a home it could not find', () => {
       empty.stdout,
     )
     assert.ok(empty.stdout.includes(`${join(adapterHome, 'state.sqlite')}: absent`), empty.stdout)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+// 2026-10-16, the MacBook's first install: no adapter had ever run, so
+// ~/.codex/anyengine did not exist and every on stopped at "cannot tell".
+test('preflip-check calls a first install quiet when the default adapter home was never created, and only then', () => {
+  const root = mkdtempSync(join(tmpdir(), 'anyengine-preflip-'))
+  try {
+    const codexHome = join(root, 'codex')
+    const adapterHome = join(codexHome, 'anyengine')
+    const day = join(codexHome, 'sessions', '2026', '10', '16')
+    mkdirSync(day, { recursive: true })
+    const run = (extra: Record<string, string> = {}) =>
+      spawnSync(process.execPath, [preflip, '--codex-home', codexHome, '--quiet-seconds', '120'], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          HOME: root,
+          ANYENGINE_HOME: '',
+          ANYENGINE_CHATGPT_APP: fakeApp('com.example.first'),
+          PATH: launchctlPath(),
+          ...extra,
+        },
+      })
+
+    const first = run()
+    assert.equal(first.status, 0, first.stderr)
+    assert.match(first.stdout, /preflip-check: quiet/)
+    assert.ok(
+      first.stdout.includes(
+        `${adapterHome}: absent (no AnyEngine adapter has run with this Codex home)`,
+      ),
+      first.stdout,
+    )
+
+    // The other signals still decide: a fresh app rollout is not quiet.
+    const rollout = join(day, 'rollout-first.jsonl')
+    writeFileSync(rollout, '{}\n')
+    const busy = run()
+    assert.equal(busy.status, 1)
+    assert.match(busy.stderr, /rollout-first\.jsonl was written/)
+    const old = new Date(Date.now() - 600_000)
+    utimesSync(rollout, old, old)
+    assert.equal(run().status, 0)
+
+    // Fail closed when the home is missing for any other reason.
+    const named = run({ ANYENGINE_HOME: join(root, 'named-but-absent') })
+    assert.equal(named.status, 1)
+    assert.match(named.stderr, /cannot tell/)
+    symlinkSync(join(root, 'gone'), adapterHome)
+    const dangling = run()
+    assert.equal(dangling.status, 1, 'a dangling link where the home should be is not absence')
+    assert.match(dangling.stderr, /cannot tell/)
+    unlinkSync(adapterHome)
+    mkdirSync(adapterHome)
+    const noLog = run()
+    assert.equal(noLog.status, 1, 'an adapter home without its log cannot tell')
+    assert.match(noLog.stderr, /cannot tell .*debug\.jsonl/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

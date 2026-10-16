@@ -184,7 +184,7 @@ for (const check of [
   { quiet: true, staged: true, text: 'staged' },
   { quiet: false, staged: false, text: 'busy' },
 ])
-  test(`on ${check.text} does not alter targets or quit`, async () => {
+  test(`on ${check.text} does not alter targets or quit, and leaves nothing to resume`, async () => {
     const s = await setup()
     const before = readFileSync(join(s.home, 'bin/codex'))
     s.deps.preflip = () => check
@@ -192,6 +192,21 @@ for (const check of [
     assert.deepEqual(restarts(s), [])
     assert.deepEqual(readFileSync(join(s.home, 'bin/codex')), before)
     assert.equal(readLayers(s.root).layers.length, 0)
+    // 2026-10-16 MacBook: a refused preflight left flip.json behind, so the
+    // next run only "resumed" it and a third was needed; and the advice said
+    // --force, which never skips a forward on's quiet check.
+    const out = s.out.join('')
+    assert.equal(readFlipMarker(s.root), null, out)
+    assert.match(out, /on stopped before changing anything; nothing to recover/)
+    assert.doesNotMatch(out, /Recovery retained/)
+    if (!check.staged) {
+      assert.match(out, /--force does not skip this check for on or restart/)
+      assert.doesNotMatch(out, /run again or use --force/)
+    }
+    s.out.length = 0
+    s.deps.preflip = () => ({ quiet: true, staged: false, text: 'quiet' })
+    assert.equal(await s.run('on'), 0, s.out.join(''))
+    assert.doesNotMatch(s.out.join(''), /resumed an interrupted/)
   })
 
 test('dry-run proves real Bash rollback without creating lock, marker, log or changing target metadata', async () => {
