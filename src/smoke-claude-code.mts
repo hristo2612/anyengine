@@ -1,14 +1,8 @@
 // One installed Claude harness turn. The gateway supplies models; Claude owns Read.
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
+import { userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
 import { resolveGptModel } from './claude-models.mjs'
 import { atomicFile, digest, regularBytes, sameState, stateAt } from './control-layer-state.mjs'
@@ -73,7 +67,8 @@ export const readOnlySettings = (router: string) =>
 // included. With `--tools` restricted Claude Code lists every tool up front;
 // unrestricted it adds connector tools inline, a request shape only real
 // setups send (it broke GPT on 2026-10-16). No tool runs (the hook above);
-// plan mode, one turn and no saved session are extra margins. The user's own
+// plan mode, no Bash or Agent, two turns at most and no saved session are
+// extra margins. The user's own
 // session hooks still run, as for any session.
 const realArgs = (model: string, router: string) => [
   '-p',
@@ -304,55 +299,50 @@ function verified(bytes: Buffer, project: string, markerText: string, model: str
 }
 
 // The read-only hook cannot load when settings switch hooks off. Claude Code
-// 2.1.301 reads hook policy from the user's config dir, managed settings and
-// their drop-ins, MDM plists and a cached server policy; safe and simple
-// modes drop flag hooks too. Any of these, or any file it cannot read, skips
-// the real-settings turn (fail closed).
+// 2.1.301 takes hook policy from managed settings (static keys, drop-ins, or a
+// policy helper command whose output becomes policy), MDM plists, a cached
+// server policy, the user's config dir, the project's settings, Cowork
+// settings, and safe or simple mode. Any managed, MDM or server policy at all,
+// any disableAllHooks, or any file it cannot read skips the real-settings
+// turn (fail closed).
+export interface ClaudePolicyPaths {
+  managedRoot?: string
+  mdm?: string
+  user?: string
+  project?: string
+}
 export const CLAUDE_MANAGED_ROOT = '/Library/Application Support/ClaudeCode'
 const MDM = '/Library/Managed Preferences'
 const on = (value: string | undefined) =>
-  value !== undefined && !['', '0', 'false', 'no'].includes(value.toLowerCase())
-function policyOff(value: Event, managed: boolean): boolean {
-  const strict = value?.strictPluginOnlyCustomization
-  return (
-    value?.disableAllHooks === true ||
-    (managed &&
-      (value?.allowManagedHooksOnly === true ||
-        strict === true ||
-        (Array.isArray(strict) && strict.includes('hooks'))))
-  )
-}
+  value !== undefined && !['', '0', 'false', 'no', 'off'].includes(value.toLowerCase())
 export function hooksDisabled(
   home: string,
   env: NodeJS.ProcessEnv = process.env,
-  managedRoot = CLAUDE_MANAGED_ROOT,
-  mdm = MDM,
+  paths: ClaudePolicyPaths = {},
 ): boolean {
   if (on(env.CLAUDE_CODE_SIMPLE) || on(env.CLAUDE_CODE_SAFE_MODE)) return true
   const config = env.CLAUDE_CONFIG_DIR || join(home, '.claude')
-  const user = env.USER ?? ''
+  const managed = paths.managedRoot ?? CLAUDE_MANAGED_ROOT
+  const mdm = paths.mdm ?? MDM
+  const user = paths.user ?? userInfo().username
   for (const path of [
-    join(config, 'remote-settings.json'),
+    join(managed, 'managed-settings.json'),
+    join(managed, 'managed-settings.d'),
     join(mdm, 'com.anthropic.claudecode.plist'),
     join(mdm, user, 'com.anthropic.claudecode.plist'),
+    join(config, 'remote-settings.json'),
   ])
     if (existsSync(path)) return true
-  let dropIns: string[] = []
-  try {
-    dropIns = readdirSync(join(managedRoot, 'managed-settings.d'))
-      .filter((name) => name.endsWith('.json'))
-      .map((name) => join(managedRoot, 'managed-settings.d', name))
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return true
-  }
-  const files: Array<[string, boolean]> = [
-    [join(config, 'settings.json'), false],
-    [join(managedRoot, 'managed-settings.json'), true],
-    ...dropIns.map((path): [string, boolean] => [path, true]),
-  ]
-  for (const [path, managed] of files) {
+  const files = [join(config, 'settings.json')]
+  if (paths.project)
+    files.push(
+      join(paths.project, '.claude', 'settings.json'),
+      join(paths.project, '.claude', 'settings.local.json'),
+    )
+  if (on(env.CLAUDE_CODE_USE_COWORK_PLUGINS)) files.push(join(config, 'cowork_settings.json'))
+  for (const path of files) {
     try {
-      if (policyOff(JSON.parse(readFileSync(path, 'utf8')), managed)) return true
+      if ((JSON.parse(readFileSync(path, 'utf8')) as Event)?.disableAllHooks === true) return true
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return true
     }
@@ -443,7 +433,12 @@ export async function runClaudeCodeSmoke(ctx: PathContext): Promise<PathResult> 
       )
     // Unknown, not passed: an existing degraded mark for this path is kept.
     // Judge the policy with the environment the CLI child gets.
-    if (hooksDisabled(ctx.deps.claudeHome, ctx.deps.adapterEnv({})))
+    if (
+      hooksDisabled(ctx.deps.claudeHome, ctx.deps.adapterEnv({}), {
+        ...ctx.deps.claudePolicy,
+        project: ctx.deps.project,
+      })
+    )
       return result(
         null,
         'Claude Code GPT one Read marker result then PONG verified; real-settings turn skipped: Claude settings can switch hooks off here, so it could not be kept read-only',

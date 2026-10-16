@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import http from 'node:http'
 import { join } from 'node:path'
 import test, { after, type TestContext } from 'node:test'
@@ -42,9 +50,11 @@ else writeFileSync(${JSON.stringify(capture)}, record)
 const emit = (value) => process.stdout.write(JSON.stringify(value) + '\\n')
 if (real) {
   emit({type:'system',subtype:'init',model:${JSON.stringify(id)},mcp_servers:[{name:'a',status:'connected'},{name:'b',status:'needs-auth'}]})
-  if (mode === 'real-tool' || mode === 'real-refused') emit({type:'assistant',message:{content:[{type:'tool_use',id:'t',name:'Read',input:{}}]}})
+  if (['real-tool', 'real-refused', 'real-plain-error', 'real-wrong-id'].includes(mode)) emit({type:'assistant',message:{content:[{type:'tool_use',id:'t',name:'Read',input:{}}]}})
   if (mode === 'real-tool') emit({type:'user',message:{content:[{type:'tool_result',tool_use_id:'t',content:'file contents'}]}})
   if (mode === 'real-refused') emit({type:'user',message:{content:[{type:'tool_result',tool_use_id:'t',is_error:true,content:'PreToolUse:Read hook error: anyengine smoke: this turn is read-only'}]}})
+  if (mode === 'real-plain-error') emit({type:'user',message:{content:[{type:'tool_result',tool_use_id:'t',is_error:true,content:'some other failure'}]}})
+  if (mode === 'real-wrong-id') emit({type:'user',message:{content:[{type:'tool_result',tool_use_id:'other',is_error:true,content:'anyengine smoke: this turn is read-only'}]}})
   emit({type:'result',subtype:mode === 'real-error' ? 'error_during_execution' : 'success',is_error:mode === 'real-error',result:'PONG'})
   process.exit(0)
 }
@@ -101,7 +111,15 @@ if(mode === 'descendant') child.unref()
       project,
       runDir,
       claudeHome: home,
-      adapterEnv: (extra: NodeJS.ProcessEnv) => ({ ...process.env, HOME: home, ...extra }),
+      claudePolicy: { managedRoot: join(home, 'no-managed'), mdm: join(home, 'no-mdm'), user: 'u' },
+      adapterEnv: (extra: NodeJS.ProcessEnv) => ({
+        ...process.env,
+        HOME: home,
+        CLAUDE_CONFIG_DIR: join(home, '.claude'),
+        CLAUDE_CODE_SIMPLE: '',
+        CLAUDE_CODE_SAFE_MODE: '',
+        ...extra,
+      }),
     },
     verify: () => ({}),
     cohort: [],
@@ -194,17 +212,18 @@ test('Claude Code smoke proves one correlated Read, the fresh marker result and 
   assert.equal(hooks.env.ANTHROPIC_BASE_URL, `http://127.0.0.1:${f.ctx.config.router.port}`)
 })
 
-test('Claude Code smoke skips the real-settings turn when hooks are disabled in settings', async (t) => {
+test('Claude Code smoke judges hook policy with the child env and skips as unknown', async (t) => {
   const f = await fixture(t)
   const deps = f.ctx.deps as unknown as {
     claudeHome: string
     adapterEnv: (extra: NodeJS.ProcessEnv) => NodeJS.ProcessEnv
   }
-  const home = deps.claudeHome
+  // A config dir only the child env names, not the default under HOME.
+  const config = join(deps.claudeHome, 'other-config')
+  mkdirSync(config, { recursive: true })
+  writeFileSync(join(config, 'settings.json'), JSON.stringify({ disableAllHooks: true }))
   const inner = deps.adapterEnv
-  deps.adapterEnv = (extra) => ({ ...inner(extra), CLAUDE_CONFIG_DIR: join(home, '.claude') })
-  mkdirSync(join(home, '.claude'), { recursive: true })
-  writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ disableAllHooks: true }))
+  deps.adapterEnv = (extra) => ({ ...inner(extra), CLAUDE_CONFIG_DIR: config })
   const result = await f.runClaudeCodeSmoke(f.ctx)
   // Unknown, not passed: an existing degraded mark is kept.
   assert.equal(result.ok, null, result.detail)
@@ -226,8 +245,8 @@ test('Claude Code smoke accepts a real-settings turn whose tool try the hook ref
   assert.equal(result.ok, true, result.detail)
 })
 
-for (const mode of ['real-tool', 'real-error'] as const)
-  test(`Claude Code smoke fails when the real-settings turn ${mode === 'real-tool' ? 'runs a tool' : 'errors'}`, async (t) => {
+for (const mode of ['real-tool', 'real-error', 'real-plain-error', 'real-wrong-id'] as const)
+  test(`Claude Code smoke fails when the real-settings turn shows ${mode}`, async (t) => {
     const f = await fixture(t, mode)
     const result = await f.runClaudeCodeSmoke(f.ctx)
     assert.equal(result.ok, false)
@@ -316,47 +335,54 @@ test('hook policy detection covers every place Claude Code 2.1.301 reads it, fai
   const { hooksDisabled } = await load()
   const base = await tempDir('hooks-policy-')
   const home = join(base, 'home'),
+    config = join(home, '.claude'),
     managed = join(base, 'managed'),
-    mdm = join(base, 'mdm')
-  mkdirSync(join(home, '.claude'), { recursive: true })
-  mkdirSync(join(managed, 'managed-settings.d'), { recursive: true })
+    mdm = join(base, 'mdm'),
+    project = join(base, 'project')
+  mkdirSync(config, { recursive: true })
+  mkdirSync(join(project, '.claude'), { recursive: true })
   mkdirSync(join(mdm, 'someone'), { recursive: true })
-  const env = { USER: 'someone' }
-  const check = (extra: NodeJS.ProcessEnv = {}) =>
-    hooksDisabled(home, { ...env, ...extra }, managed, mdm)
+  const paths = { managedRoot: managed, mdm, user: 'someone', project }
+  const env = { CLAUDE_CONFIG_DIR: config }
+  const check = (extra: NodeJS.ProcessEnv = {}) => hooksDisabled(home, { ...env, ...extra }, paths)
+  const toggle = (path: string, body: string, expect: boolean, label: string) => {
+    writeFileSync(path, body)
+    assert.equal(check(), expect, label)
+  }
   assert.equal(check(), false)
   for (const flag of ['CLAUDE_CODE_SIMPLE', 'CLAUDE_CODE_SAFE_MODE']) {
-    assert.equal(check({ [flag]: '1' }), true)
-    assert.equal(check({ [flag]: '0' }), false)
+    assert.equal(check({ [flag]: '1' }), true, flag)
+    assert.equal(check({ [flag]: '0' }), false, flag)
   }
-  const settings = join(home, '.claude', 'settings.json')
-  writeFileSync(settings, JSON.stringify({ allowManagedHooksOnly: true }))
-  assert.equal(check(), false, 'allowManagedHooksOnly only counts in managed settings')
-  writeFileSync(settings, JSON.stringify({ disableAllHooks: true }))
-  assert.equal(check(), true)
-  writeFileSync(settings, '{ not json')
-  assert.equal(check(), true, 'an unreadable policy fails closed')
-  writeFileSync(settings, '{}')
-  const other = join(base, 'other-config')
-  mkdirSync(other)
-  writeFileSync(join(other, 'settings.json'), JSON.stringify({ disableAllHooks: true }))
-  assert.equal(check({ CLAUDE_CONFIG_DIR: other }), true)
-  for (const body of [
-    { allowManagedHooksOnly: true },
-    { strictPluginOnlyCustomization: true },
-    { strictPluginOnlyCustomization: ['hooks'] },
-  ]) {
-    writeFileSync(join(managed, 'managed-settings.json'), JSON.stringify(body))
-    assert.equal(check(), true, JSON.stringify(body))
+  const settings = join(config, 'settings.json')
+  toggle(settings, JSON.stringify({ allowManagedHooksOnly: true }), false, 'user scope ignores it')
+  toggle(settings, JSON.stringify({ disableAllHooks: true }), true, 'user disableAllHooks')
+  toggle(settings, '{ not json', true, 'unreadable fails closed')
+  toggle(settings, '{}', false, 'clean user settings')
+  for (const name of ['settings.json', 'settings.local.json']) {
+    const path = join(project, '.claude', name)
+    toggle(path, JSON.stringify({ disableAllHooks: true }), true, `project ${name}`)
+    toggle(path, '{}', false, `clean project ${name}`)
   }
+  writeFileSync(join(config, 'cowork_settings.json'), JSON.stringify({ disableAllHooks: true }))
+  assert.equal(check(), false, 'cowork settings only count with Cowork plugins on')
+  assert.equal(check({ CLAUDE_CODE_USE_COWORK_PLUGINS: '1' }), true)
+  // Any managed, MDM or cached server policy may switch hooks off (a policy
+  // helper's output is not visible in the file), so its presence alone skips.
+  const present = [
+    join(config, 'remote-settings.json'),
+    join(mdm, 'com.anthropic.claudecode.plist'),
+    join(mdm, 'someone', 'com.anthropic.claudecode.plist'),
+  ]
+  for (const path of present) {
+    writeFileSync(path, '{}')
+    assert.equal(check(), true, path)
+    rmSync(path)
+  }
+  mkdirSync(managed)
   writeFileSync(join(managed, 'managed-settings.json'), '{}')
-  writeFileSync(
-    join(managed, 'managed-settings.d', '10-policy.json'),
-    JSON.stringify({ disableAllHooks: true }),
-  )
-  assert.equal(check(), true)
-  writeFileSync(join(managed, 'managed-settings.d', '10-policy.json'), '{}')
-  assert.equal(check(), false)
-  writeFileSync(join(mdm, 'someone', 'com.anthropic.claudecode.plist'), '')
-  assert.equal(check(), true, 'an MDM policy may switch hooks off')
+  assert.equal(check(), true, 'managed settings file')
+  rmSync(join(managed, 'managed-settings.json'))
+  mkdirSync(join(managed, 'managed-settings.d'))
+  assert.equal(check(), true, 'managed drop-in directory')
 })

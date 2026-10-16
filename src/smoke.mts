@@ -104,6 +104,8 @@ export interface SmokeDeps {
   project: string
   runDir: string
   claudeHome: string
+  // Test seam: where Claude Code's managed and MDM policy would live.
+  claudePolicy?: { managedRoot?: string; mdm?: string; user?: string }
   verifyLib: FlipDeps['verifyLib']
   currentSnapshot: FlipDeps['currentSnapshot']
   runners?: Partial<Record<SmokePathName, (ctx: PathContext) => Promise<PathResult>>>
