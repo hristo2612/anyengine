@@ -3,14 +3,28 @@
 All notable changes to `anyengine-cli` are summarized here. Versions follow
 semver; while the major version is 0, a minor version may change behavior.
 
-## 0.1.1 (2026-10-16)
+## 0.1.2 (2026-10-17)
 
 First npm release. Install with `npx anyengine-cli@latest setup` (macOS, Node.js
-24 or newer); see [Getting started](docs/guide/getting-started.md). 0.1.0 was
-packed but never published: its first real install, on a second Mac, found the
-first-install bugs fixed below.
+24 or newer); see [Getting started](docs/guide/getting-started.md). 0.1.0 and
+0.1.1 were packed but never published: their first real installs, on a second
+Mac, found the first-install bugs fixed below.
 
 ### First install
+
+- **The rollback proof works with macOS's temporary folder.** `TMPDIR` is
+  `/var/folders/...` and `/var` links to `/private/var`; the proof refuses a
+  scratch path with a link among its parents, so every `on` stopped with
+  "indirect scratch/source parent: /var". Its scratch parent is now resolved
+  first; every path it copies keeps the check.
+- **A Codex database opened after the account overlay is built no longer
+  stops the first `on`.** SQLite opens a linked database at its real path, so
+  its `-wal`, `-shm` and `-journal` files appear next to the file in
+  `~/.codex`, not in the overlay. The overlay check accepted only entries it
+  had linked, and a memories database opened during setup created two new
+  ones. A sidecar of a linked database now needs no link of its own; any other
+  new entry, or a sidecar written into the overlay itself, still counts as
+  unshared.
 
 - **A Mac where no adapter has ever run counts as quiet.** The pre-restart check
   read the adapter's log and called its absence "cannot tell", so every first

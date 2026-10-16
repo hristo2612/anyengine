@@ -6,7 +6,7 @@ import { readConfig, setConfigValue } from '../src/anyengine-config.mjs'
 import { runControl } from '../src/control-cli.mjs'
 import { fakeSystem } from './helpers/fake-system.mjs'
 import { m0Home } from './helpers/m0-home.mjs'
-import { removeTempDirs } from './helpers/tmp.mjs'
+import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
 
 after(removeTempDirs)
 
@@ -42,7 +42,9 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  realpathSync,
   renameSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -639,4 +641,65 @@ test('a pre-quit restart resume fails when the app will not reopen', async () =>
   assert.equal(await s.run('restart', ['--yes']), 1)
   assert.match(s.out.join(''), /app did not reopen during resume/)
   assert.ok(readFlipMarker(s.root), 'the marker stays for another try')
+})
+
+// 2026-10-16, the MacBook: TMPDIR is /var/folders/.../T and /var links to
+// /private/var, so the scratch proof refused 'indirect scratch/source parent:
+// /var' on every Mac. The same shape here: TMPDIR under a linked parent.
+test('on proves rollback when TMPDIR sits under a symlinked parent, as on macOS', async () => {
+  const s = await setup()
+  // Outside the observed home and root, as the proof requires.
+  const outside = await tempDir('linked-tmp-')
+  const real = join(outside, 'private-var')
+  mkdirSync(join(real, 'folders', 'T'), { recursive: true })
+  symlinkSync(real, join(outside, 'var'))
+  const saved = process.env.TMPDIR
+  process.env.TMPDIR = join(outside, 'var', 'folders', 'T')
+  try {
+    assert.equal(await s.run('on'), 0, s.out.join(''))
+    const out = s.out.join('')
+    assert.doesNotMatch(out, /indirect scratch\/source parent/)
+    assert.ok(
+      out.includes(
+        `copied independently to ${join(realpathSync(real), 'folders', 'T')}/rollback-proof-`,
+      ),
+      out,
+    )
+  } finally {
+    if (saved === undefined) delete process.env.TMPDIR
+    else process.env.TMPDIR = saved
+  }
+})
+
+// The MacBook's journal after 0.1.1's second run (captured 2026-10-17): the
+// accounts bootstrap failed after the quit, the app was reopened, nothing was
+// installed. Resuming must not quit the app again, and the next on is fresh.
+test('the captured open-phase journal of a refused first install resumes without a quit, then on runs', async () => {
+  const s = await setup()
+  writeFlipMarker(s.root, {
+    id: '152c1ba9-98a8-498e-a723-13d4afd3d087',
+    op: 'on',
+    args: ['--lib', '0.1.1', '--auto-rollback', '--yes'],
+    pid: 50_344,
+    processStart: '2026-10-16T22:21:23.000Z',
+    runner: 'detached',
+    phase: 'open',
+    startedAt: '2026-10-16T22:21:23.947Z',
+    updatedAt: '2026-10-16T22:21:45.718Z',
+    log: join(s.root, 'state/flip-152c1ba9-98a8-498e-a723-13d4afd3d087.log'),
+    state: {
+      runnerId: '152c1ba9-98a8-498e-a723-13d4afd3d087',
+      routerLayerWasNew: true,
+      appVersionBefore: '26.1013.31256',
+      mutationsStarted: false,
+      quitDone: true,
+    },
+  })
+  s.system.calls.length = 0
+  assert.equal(await s.run('on'), 1, s.out.join(''))
+  assert.deepEqual(installedRestarts(s), [], s.out.join(''))
+  assert.match(s.out.join(''), /resumed an interrupted on \(it stopped at open\)/)
+  assert.equal(readFlipMarker(s.root), null)
+  s.out.length = 0
+  assert.equal(await s.run('on'), 0, s.out.join(''))
 })

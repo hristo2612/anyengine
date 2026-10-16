@@ -37,14 +37,24 @@ export function sharedLink(p: AccountPaths, name: string): void {
       throw new Error(`Overlay conflict: ${name}`)
   } else symlinkSync(source, dest)
 }
+// SQLite opens a linked database at its real path, so a shared database's
+// -wal, -shm and -journal files live next to the canonical file, appearing and
+// vanishing as connections open and close (2026-10-16: the official app-server
+// created memories_1.sqlite-wal/-shm after the overlay was built). The overlay
+// needs no link for them while the database itself is linked.
+const SQLITE_SIDECAR = /^(.+\.(?:sqlite3?|db))-(?:wal|shm|journal)$/i
+function linked(p: AccountPaths, name: string): boolean {
+  const dest = join(p.overlay, name)
+  return !!entry(dest)?.isSymbolicLink() && readlinkSync(dest) === join(p.canonical, name)
+}
 export function verifyOverlay(p: AccountPaths, registry = loadAccounts(p)): string[] {
   const errors: string[] = []
   for (const name of new Set([...readdirSync(p.canonical), ...readdirSync(p.overlay)])) {
     if (name === 'auth.json') continue
-    const dest = join(p.overlay, name)
-    const s = entry(dest)
-    if (!s?.isSymbolicLink() || readlinkSync(dest) !== join(p.canonical, name))
-      errors.push(`Unshared overlay entry: ${name}`)
+    if (linked(p, name)) continue
+    const base = SQLITE_SIDECAR.exec(name)?.[1]
+    if (base && !entry(join(p.overlay, name)) && linked(p, base)) continue
+    errors.push(`Unshared overlay entry: ${name}`)
   }
   const auth = join(p.overlay, 'auth.json'),
     s = entry(auth)

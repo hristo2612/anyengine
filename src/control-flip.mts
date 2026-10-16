@@ -2,6 +2,7 @@
 // writes. Actual installation owns jobs, so it runs only after confirmed quit.
 // Immutable initial layers and immediate last-good checkpoints remain distinct.
 
+import { realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { bootstrapBeforeInstall, returnHomeBeforeOff } from './control-accounts-bootstrap.mjs'
@@ -119,7 +120,10 @@ function bridge(ctx: FlipContext, file: string | null): void {
 function proof(ctx: FlipContext, plan: ReturnType<typeof resolvePlan>): void {
   const result = proveRollback(ctx.system, ctx.root, plan, {
     paths: flipPaths(ctx.system),
-    scratchParent: tmpdir(),
+    // macOS's TMPDIR is /var/folders/..., and /var links to /private/var. The
+    // proof refuses a scratch path with a link among its parents, so resolve
+    // this one directory first; every path it copies keeps that check.
+    scratchParent: realpathSync(tmpdir()),
   })
   for (const line of result.lines) ctx.say(`${line}\n`)
   if (!result.ok) throw new Error('scratch rollback proof failed')

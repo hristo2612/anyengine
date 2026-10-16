@@ -1,6 +1,6 @@
 {
   "name": "anyengine-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Use Claude in ChatGPT/Codex and GPT in Claude Code with your existing subscriptions.",
   "license": "MIT",
   "homepage": "https://github.com/hristo2612/anyengine",

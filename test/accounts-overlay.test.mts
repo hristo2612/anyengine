@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   chmodSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   statSync,
@@ -9,6 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import test, { after } from 'node:test'
 import { prepareOverlay, verifyOverlay } from '../src/accounts-overlay.mjs'
 import { reconcileOverlay } from '../src/accounts-overlay-reconcile.mjs'
@@ -70,4 +72,65 @@ test('conflicting edits preserve both files and detached SQLite never replaces s
   assert.throws(() => reconcileOverlay(clean, m), /stop families/)
   reconcileOverlay(clean, m, { familiesStopped: true })
   assert.deepEqual(verifyOverlay(clean), [])
+})
+
+// 2026-10-16, the MacBook: ~/.codex held memories_1.sqlite with no sidecars
+// while the overlay was built (ChatGPT.app keeps state_5/logs_2/goals_1/
+// queue_1 open, so theirs existed). The official app-server then opened it
+// through the overlay link, SQLite put -wal/-shm next to the real file, and
+// every on stopped at 'Unshared overlay entry: memories_1.sqlite-shm'.
+test('a linked database opened through the overlay keeps its sidecars canonical, and that verifies', async () => {
+  const p = await fixture()
+  for (const db of ['state_5.sqlite', 'logs_2.sqlite', 'goals_1.sqlite', 'queue_1.sqlite']) {
+    writeFileSync(join(p.canonical, db), '')
+    for (const suffix of ['-shm', '-wal']) writeFileSync(join(p.canonical, `${db}${suffix}`), '')
+  }
+  const memories = new DatabaseSync(join(p.canonical, 'memories_1.sqlite'))
+  memories.exec('CREATE TABLE m (v TEXT); INSERT INTO m VALUES (1)')
+  memories.close()
+  prepareOverlay(p)
+  // What the official app-server does: open the overlay path, WAL, write, stay open.
+  const viaOverlay = new DatabaseSync(join(p.overlay, 'memories_1.sqlite'))
+  try {
+    viaOverlay.exec("PRAGMA journal_mode=WAL; INSERT INTO m VALUES ('from overlay')")
+    const canonical = readdirSync(p.canonical).filter((name) => name.startsWith('memories_1'))
+    assert.deepEqual(canonical.sort(), [
+      'memories_1.sqlite',
+      'memories_1.sqlite-shm',
+      'memories_1.sqlite-wal',
+    ])
+    assert.ok(
+      !readdirSync(p.overlay).some((name) => /^memories_1\.sqlite-/.test(name)),
+      'SQLite resolved the link: no sidecar in the overlay',
+    )
+    assert.deepEqual(verifyOverlay(p), [])
+  } finally {
+    viaOverlay.close()
+  }
+  // Both homes read the same rows: nothing was detached.
+  const reread = new DatabaseSync(join(p.canonical, 'memories_1.sqlite'), { readOnly: true })
+  assert.equal(reread.prepare('SELECT COUNT(*) AS n FROM m').get()?.n, 2)
+  reread.close()
+})
+
+test('only a linked database excuses a missing sidecar link', async () => {
+  const p = await fixture()
+  prepareOverlay(p)
+  // A sidecar whose database is not shared, a stray non-database file, and a
+  // sidecar that exists in the overlay as a real file all stay unshared.
+  writeFileSync(join(p.canonical, 'orphan.sqlite-wal'), '')
+  writeFileSync(join(p.canonical, 'new-state.json'), '{}')
+  writeFileSync(join(p.canonical, 'kept.sqlite'), '')
+  prepareOverlay(p)
+  writeFileSync(join(p.canonical, 'kept.sqlite-wal'), '')
+  writeFileSync(join(p.overlay, 'kept.sqlite-wal'), 'detached')
+  writeFileSync(join(p.canonical, 'later.json'), '{}')
+  assert.deepEqual(verifyOverlay(p).sort(), [
+    'Unshared overlay entry: kept.sqlite-wal',
+    'Unshared overlay entry: later.json',
+  ])
+  unlinkSync(join(p.overlay, 'kept.sqlite-wal'))
+  unlinkSync(join(p.canonical, 'later.json'))
+  writeFileSync(join(p.canonical, 'unshared.sqlite-shm'), '')
+  assert.deepEqual(verifyOverlay(p), ['Unshared overlay entry: unshared.sqlite-shm'])
 })
