@@ -58,11 +58,12 @@ first-install bugs fixed below.
   Shipped fixtures are named in one module (`src/fixture-pins.mts`); the two
   copies (the startup helper and package.json `files`) are checked by a test.
   The package previously listed fixtures that no longer existed.
-- **Compatibility follows ChatGPT.app 26.1007.** Pins and CI now use codex
-  `0.162.0-alpha.17.2`. Its zero-spend wire, spawn and auth recordings match
-  the `0.162.0-alpha.2` ones except for the version, and the posture and Rust
-  protocol fixture checks pass against it. The `0.162.0-alpha.2` wire and spawn
-  recordings are kept. A Mac whose ChatGPT.app bundles another codex fails the
+- **Compatibility follows ChatGPT.app 26.1013.** Pins and CI now use codex
+  `0.163.0-alpha.10.2`. Its zero-spend wire and spawn recordings add one
+  request field (`history_initialization`) the router does not read; the auth
+  recording matches; the posture and Rust protocol fixture checks pass. The
+  `0.162.0-alpha.2` and `0.162.0-alpha.17.2` (ChatGPT.app 26.1002 and 26.1007)
+  wire and spawn recordings are kept. A Mac whose ChatGPT.app bundles another codex fails the
   doctor's pin check, and so `setup`, until a release pins that version.
 - **Other front ends.** The managed shell block reaches any program that imports
   a `CODEX_SHELL` login environment; the deployment guide says how a separate

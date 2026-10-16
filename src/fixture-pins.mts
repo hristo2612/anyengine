@@ -9,7 +9,7 @@
 /** Claude Code version the posture and Messages captures were taken from. */
 export const CLAUDE_FIXTURE_VERSION = '2.1.301'
 /** Codex version the official auth RPC capture was taken from. */
-export const CODEX_AUTH_FIXTURE_VERSION = '0.162.0-alpha.17.2'
+export const CODEX_AUTH_FIXTURE_VERSION = '0.163.0-alpha.10.2'
 
 export const FIXTURE_NAMES = {
   codexAuth: `codex-auth-${CODEX_AUTH_FIXTURE_VERSION}.json`,

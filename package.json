@@ -25,7 +25,7 @@
     "npm-shrinkwrap.json",
     "test/fixtures/claude-permission-modes.json",
     "test/fixtures/posture-schema.json",
-    "test/fixtures/codex-auth-0.162.0-alpha.17.2.json",
+    "test/fixtures/codex-auth-0.163.0-alpha.10.2.json",
     "test/fixtures/codex-accounts-0.160.0.json",
     "test/fixtures/claude-messages-2.1.301.json",
     "test/fixtures/claude-posture-2.1.301.json",

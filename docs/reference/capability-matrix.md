@@ -94,8 +94,8 @@ required protocol fixtures; the update gate also requires installed terminal
 work before publishing success. These checks cover the supported contract and
 do not establish exhaustive protocol coverage. Installed/native acceptance
 remains pending. When the bundled codex cannot be asked, the
-adapter reports the version this release is pinned to `0.162.0-alpha.17.2`
-(ChatGPT.app 26.1007.71326); override with `ANYENGINE_COMPAT_VERSION`. Move every
+adapter reports the version this release is pinned to `0.163.0-alpha.10.2`
+(ChatGPT.app 26.1013.31256); override with `ANYENGINE_COMPAT_VERSION`. Move every
 written pin with `node scripts/sync-codex-compat.mjs`; `npm run doctor` fails
 while the bundled codex and the pin differ, or while an explicit
 `ANYENGINE_COMPAT_VERSION` does. Unimplemented optional methods
