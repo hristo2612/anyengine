@@ -166,7 +166,8 @@ plain `.mjs` / shell.
   move (`sync-codex-compat.mjs`): run `capture-codex-wire.mjs`,
   `capture-codex-spawn.mjs` and `capture-codex-auth.mjs --codex <bundled>`
   for the new version, set `CODEX_AUTH_FIXTURE_VERSION` and its two copies
-  (test/fixture-pins.test.mts checks it equals the pin).
+  (test/fixture-pins.test.mts checks it equals the pin), delete the old auth
+  capture, and scan the new files for paths, names and tokens.
 - `lib/spawn-recording.mjs`: how the spawn capture labels ids and shapes a
   pass's notifications and requests into the fixture.
 - `lib/codex-probe.mjs`, `lib/codex-probe-runner.mjs`: use `isolatedCommand`
