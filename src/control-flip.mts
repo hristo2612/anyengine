@@ -392,15 +392,22 @@ export async function resumeFlip(
       )
     ) {
       // Nothing installed yet: re-entry must not tear down a working M1 baseline.
-      await quiet(ctx, options.waitQuietMinutes, true, options.force)
+      // It never quits the app, so it needs no quiet check (on a first install
+      // that check could not tell without --first-install, and setup cannot
+      // pass --force).
       if (!ctx.system.appRunning()) ctx.system.openApp()
       if (!ctx.system.appRunning()) throw new Error('app did not reopen during resume')
       ctx.marker('complete')
-    } else if (marker.op === 'restart' && ['preflight', 'prepare'].includes(marker.phase)) {
-      // It stopped before quitting the app, so there is nothing to finish. Do
-      // not restart here: recovery's quiet rules accept a staged update and
+    } else if (
+      marker.op === 'restart' &&
+      (['preflight', 'prepare', 'restart'].includes(marker.phase) ||
+        (marker.phase === 'quit' && marker.state.quitDone !== true && ctx.system.appRunning()))
+    ) {
+      // It stopped before the app quit, so there is nothing to finish. Do not
+      // restart here: recovery's quiet rules accept a staged update and
       // --force, and only a forward restart may decide to quit the app.
       if (!ctx.system.appRunning()) ctx.system.openApp()
+      if (!ctx.system.appRunning()) throw new Error('app did not reopen during resume')
       ctx.marker('complete')
     } else if (marker.op === 'restart') {
       const before = beforeVersion(ctx)

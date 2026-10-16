@@ -51,6 +51,7 @@ import { readLayers } from '../src/control-layers.mjs'
 import { readM2Journal, writeM2Journal } from '../src/control-m2-recovery-state.mjs'
 import { prepareM2Upgrade } from '../src/control-m2-upgrade.mjs'
 import { clearFlipMarker, readFlipMarker, writeFlipMarker } from '../src/control-marker.mjs'
+import { realFlipDeps } from '../src/control-postflight.mjs'
 import { ON, setup } from './helpers/flip-controller.mjs'
 import { fakeLib } from './helpers/m0-home.mjs'
 
@@ -202,10 +203,7 @@ for (const check of [
     assert.doesNotMatch(out, /Recovery retained/)
     for (const path of ['recovery', 'RECOVER.txt', 'state/layers.json'])
       assert.equal(existsSync(join(s.root, path)), false, `${path} was written before prepare`)
-    if (!check.staged) {
-      assert.match(out, /--force does not skip this check for on or restart/)
-      assert.doesNotMatch(out, /run again or use --force/)
-    }
+    if (!check.staged) assert.match(out, /--force does not skip this check for on or restart/)
     s.out.length = 0
     s.deps.preflip = () => ({ quiet: true, staged: false, text: 'quiet' })
     assert.equal(await s.run('on'), 0, s.out.join(''))
@@ -469,4 +467,83 @@ test('a restart interrupted before it quit the app resumes without quitting it',
     assert.deepEqual(installedRestarts(s), [], `${phase}: ${s.out.join('')}`)
     assert.equal(readFlipMarker(s.root), null)
   }
+})
+
+test('a restart refused at its second check, or whose quit failed, resumes without quitting the app', async () => {
+  for (const how of ['second check', 'failed quit']) {
+    const s = await setup()
+    assert.equal(await s.run('on'), 0, s.out.join(''))
+    s.system.calls.length = 0
+    let checks = 0
+    if (how === 'second check')
+      s.deps.preflip = () =>
+        ++checks > 1
+          ? {
+              quiet: false,
+              staged: false,
+              text: 'preflip-check: not quiet; wait, then run again:\n busy',
+            }
+          : { quiet: true, staged: false, text: 'quiet' }
+    else s.system.quitResult = false
+    assert.equal(await s.run('restart'), 1, s.out.join(''))
+    const kept = readFlipMarker(s.root)
+    assert.ok(kept, `${how}: the marker stays (recovery files may exist)`)
+    s.system.quitResult = true
+    s.system.calls.length = 0
+    s.deps.preflip = () => ({
+      quiet: false,
+      staged: true,
+      text: 'preflip-check: not quiet: an app update is staged and would install on restart:\n x',
+    })
+    assert.equal(await s.run('restart', ['--yes', '--force']), 1)
+    assert.deepEqual(installedRestarts(s), [], `${how}: ${s.out.join('')}`)
+    assert.equal(readFlipMarker(s.root), null, `${how}: resumed to complete`)
+  }
+})
+
+test('an on stopped after prepare with nothing installed resumes without a quiet check', async () => {
+  // A first install that stopped at its second check leaves this marker; its
+  // resume used to ask preflight without --first-install, which on a real
+  // first install can never be quiet, and setup cannot pass --force.
+  const s = await setup()
+  writeFlipMarker(s.root, {
+    id: 'first-install-prepare',
+    op: 'on',
+    args: ON,
+    pid: 999_999,
+    processStart: '2026-10-16T00:00:00.000Z',
+    runner: 'foreground',
+    phase: 'prepare',
+    startedAt: '2026-10-16T00:00:00.000Z',
+    updatedAt: '2026-10-16T00:00:00.000Z',
+    log: join(s.root, 'state/flip-first-install.log'),
+    state: { mutationsStarted: false },
+  })
+  let checks = 0
+  s.deps.preflip = () => {
+    checks += 1
+    return { quiet: false, staged: false, text: 'preflip-check: cannot tell' }
+  }
+  assert.equal(await s.run('on'), 1, s.out.join(''))
+  assert.equal(checks, 0, 'the resume asked no quiet question')
+  assert.deepEqual(installedRestarts(s), [])
+  assert.equal(readFlipMarker(s.root), null, s.out.join(''))
+  assert.doesNotMatch(s.out.join(''), /resume failed/)
+})
+
+test('the real preflight passes --first-install only when asked', () => {
+  const system = fakeSystem('/home/u')
+  const calls: string[][] = []
+  system.exec = (_command, args) => {
+    calls.push(args)
+    return { status: 0, stdout: 'preflip-check: quiet', stderr: '' }
+  }
+  const deps = realFlipDeps(system, '/home/u/.anyengine', '/lib/v')
+  deps.preflip(30, { firstInstall: true })
+  deps.preflip(30, { firstInstall: false })
+  deps.preflip(30)
+  assert.deepEqual(
+    calls.map((args) => args.includes('--first-install')),
+    [true, false, false],
+  )
 })

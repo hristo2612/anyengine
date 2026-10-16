@@ -692,9 +692,20 @@ test('preflip-check calls a first install quiet only with --first-install and al
     const busy = run()
     assert.equal(busy.status, 1)
     assert.match(busy.stderr, /rollout-first\.jsonl was written/)
-    const old = new Date(Date.now() - 600_000)
+    // With no turn table, a first install looks back ten minutes, whatever
+    // --quiet-seconds says: a turn idle on an approval writes nothing.
+    const fiveMinutes = new Date(Date.now() - 5 * 60_000)
+    utimesSync(rollout, fiveMinutes, fiveMinutes)
+    assert.equal(
+      run().status,
+      1,
+      'a session touched five minutes ago is still busy on a first install',
+    )
+    const old = new Date(Date.now() - 11 * 60_000)
     utimesSync(rollout, old, old)
-    assert.equal(run().status, 0)
+    const quietAgain = run()
+    assert.equal(quietAgain.status, 0, quietAgain.stderr)
+    assert.match(quietAgain.stdout, /no Codex or adapter activity in the last 600s/)
 
     // An adapter serving an app-server that logs elsewhere (its own
     // ANYENGINE_HOME) is not "nothing ran". ps is a stand-in: the real one

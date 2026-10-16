@@ -14,11 +14,13 @@
 // looked and what it found, so a check pointed at the wrong home shows.
 //
 // One absence is an answer, and only when the caller says it is a first
-// install (--first-install, which `on` passes only when nothing of AnyEngine
-// is installed yet): no adapter has ever run with this Codex home, so its
+// install (--first-install, which `on` passes only with no AnyEngine layers
+// and no M0 receipts): no adapter has ever run with this Codex home, so its
 // default adapter home (<codex home>/anyengine) does not exist at all and
 // there is no adapter log or turn table to read. Then the adapter side is
-// "nothing ran" and the app's own rollouts and Sparkle decide. It also
+// "nothing ran" and the app's own rollouts and Sparkle decide, over at least
+// FIRST_INSTALL_WINDOW (there is no turn table to show a turn that has been
+// idle, say waiting on an approval; one idle for longer is not seen). It also
 // needs the Codex home's sessions folder (something to look at), no
 // claude-codex adapter home next to it, and no adapter serving an app-server
 // anywhere (one with its own ANYENGINE_HOME would write where this check does
@@ -99,6 +101,8 @@ if (!/^\d+(\.\d+)?$/.test(quietSeconds)) {
   usageError(`--quiet-seconds needs a number of seconds, got ${JSON.stringify(quietSeconds)}`)
 }
 const quietMs = Number(quietSeconds) * 1000
+// How far back a first install looks for the app's own sessions (header).
+const FIRST_INSTALL_WINDOW_MS = 10 * 60_000
 const codexHome = options['codex-home'] ?? (process.env.CODEX_HOME || join(homedir(), '.codex'))
 const namedAdapterHome = options['adapter-home'] ?? (process.env.ANYENGINE_HOME || undefined)
 const adapterHome = namedAdapterHome ?? join(codexHome, 'anyengine')
@@ -226,7 +230,7 @@ function probe(command, args) {
   const stderr = result.stderr?.trim()
   if (result.error || result.signal || (result.status !== 0 && result.status !== 1) || stderr) {
     const why = result.error?.message ?? result.signal ?? (stderr || `exit ${result.status}`)
-    throw new Error(`${command} gave no usable answer about the exec rollouts (${why})`)
+    throw new Error(`${command} gave no usable answer (${why})`)
   }
   return result.stdout
 }
@@ -264,15 +268,19 @@ function adapterAppServers() {
 // The first-install exception's evidence (see the header); throws when it
 // does not hold, so the check cannot tell.
 function firstInstall(sessions) {
-  if (!lstatOrNull(sessions)?.isDirectory())
-    throw new Error(`${sessions} is not there, so there is nothing to look at`)
+  if (!statOrNull(sessions)?.isDirectory())
+    throw new Error(
+      `${sessions} is not there, so there is nothing to look at: open ChatGPT.app, send one message, then run on again`,
+    )
   const legacy = join(codexHome, 'claude-codex-adapter')
   if (lstatOrNull(legacy))
-    throw new Error(`${legacy} exists: a claude-codex adapter ran here and logs there`)
+    throw new Error(
+      `${legacy} exists: a claude-codex adapter ran here and logs there; if it no longer runs, rename that folder and run on again`,
+    )
   const servers = adapterAppServers()
   if (servers.length > 0)
     throw new Error(
-      `an adapter is serving an app-server (pid ${servers.join(', ')}) while ${adapterHome} does not exist; it logs elsewhere`,
+      `an adapter is serving an app-server (pid ${servers.join(', ')}) while ${adapterHome} does not exist, so it logs elsewhere; stop it and run on again`,
     )
 }
 
@@ -492,12 +500,6 @@ try {
   const sessions = join(codexHome, 'sessions')
   const logPath = join(adapterHome, 'debug.jsonl')
   const statePath = join(adapterHome, 'state.sqlite')
-  const appRollouts = []
-  const execRollouts = []
-  for (const file of recentFiles(sessions, 4, now - quietMs)) {
-    if (isAppRollout(file.path)) appRollouts.push(file)
-    else execRollouts.push(file)
-  }
   // A first install: the default adapter home is not there at all (lstat, so
   // a dangling link is not absence), and the rest of the evidence holds. See
   // the header.
@@ -506,6 +508,13 @@ try {
     namedAdapterHome === undefined &&
     lstatOrNull(adapterHome) === null
   if (neverRan) firstInstall(sessions)
+  const windowMs = neverRan ? Math.max(quietMs, FIRST_INSTALL_WINDOW_MS) : quietMs
+  const appRollouts = []
+  const execRollouts = []
+  for (const file of recentFiles(sessions, 4, now - windowMs)) {
+    if (isAppRollout(file.path)) appRollouts.push(file)
+    else execRollouts.push(file)
+  }
   const debugLog = neverRan
     ? { activity: 0, background: 0, reachesStart: true }
     : adapterLogActivity(logPath, now - quietMs)
@@ -536,7 +545,7 @@ try {
     )
   }
   if (busy.length > 0 || staged.found.length > 0) process.exit(1)
-  console.log(`preflip-check: quiet (no Codex or adapter activity in the last ${quietMs / 1000}s)`)
+  console.log(`preflip-check: quiet (no Codex or adapter activity in the last ${windowMs / 1000}s)`)
   console.log(
     `  ${sessions}: ${appRollouts.length} app rollouts in the window, ${execRollouts.length} recent rollouts ignored (not the app's)`,
   )
