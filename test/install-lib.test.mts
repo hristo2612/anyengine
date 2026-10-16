@@ -24,6 +24,7 @@ import { DEFAULT_CONFIG } from '../src/anyengine-config.mjs'
 import { runDoctor } from '../src/control-doctor.mjs'
 import { LayerWriter, readLayers, writeLayers } from '../src/control-layers.mjs'
 import { readM2Baseline } from '../src/control-m2-upgrade.mjs'
+import { M2_FIXTURES } from '../src/fixture-pins.mjs'
 import { codexCompatVersion } from '../src/util.mjs'
 import { killChildren, spawn, waitForOutput } from './helpers/children.mjs'
 import { startFakeBackend } from './helpers/fake-backend.mjs'
@@ -64,13 +65,8 @@ function makeSource(root: string): string {
   cpSync(resolve('vendor/claude-code-proxy'), join(source, 'vendor/claude-code-proxy'), {
     recursive: true,
   })
-  for (const name of [
-    'codex-auth-0.162.0-alpha.2.json',
-    'claude-messages-2.1.292.json',
-    'claude-posture-2.1.289.json',
-    'raine-translation-v0.1.42.json',
-  ]) {
-    cpSync(resolve('test/fixtures', name), join(source, 'test/fixtures', name))
+  for (const path of M2_FIXTURES) {
+    cpSync(resolve(path), join(source, path))
   }
   writeFileSync(join(source, 'package-lock.json'), '{}\n')
   writeFileSync(join(source, 'LICENSE'), 'MIT\n')
@@ -140,16 +136,11 @@ test('install-lib installs, verifies and points current at the new version', () 
       readFileSync(resolve(reference, 'UPSTREAM.md'), 'utf8'),
       'the installed manifest retains the pinned source provenance',
     )
-    for (const name of [
-      'codex-auth-0.162.0-alpha.2.json',
-      'claude-messages-2.1.292.json',
-      'claude-posture-2.1.289.json',
-      'raine-translation-v0.1.42.json',
-    ]) {
+    for (const path of M2_FIXTURES) {
       assert.equal(
-        readFileSync(join(lib, 'v1', 'test/fixtures', name), 'utf8'),
-        readFileSync(resolve('test/fixtures', name), 'utf8'),
-        `the installed validators receive the exact captured contract: ${name}`,
+        readFileSync(join(lib, 'v1', path), 'utf8'),
+        readFileSync(resolve(path), 'utf8'),
+        `the installed validators receive the exact captured contract: ${path}`,
       )
     }
     assert.ok(!existsSync(join(lib, 'v1', 'dist', 'test')), 'only dist/src ships')

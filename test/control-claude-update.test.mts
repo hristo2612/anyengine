@@ -4,12 +4,13 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import test, { after } from 'node:test'
 import { markDegraded, markProven, readDegraded, readProof } from '../src/degraded.mjs'
+import { FIXTURE_NAMES } from '../src/fixture-pins.mjs'
 import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
 
 after(removeTempDirs)
 const load = () => import('../src/' + 'control-claude-update.mjs')
-const authName = 'codex-auth-0.162.0-alpha.2.json'
-const messagesName = 'claude-messages-2.1.292.json'
+const authName = FIXTURE_NAMES.codexAuth
+const messagesName = FIXTURE_NAMES.claudeMessages
 const selected = { codex: '/selected/codex', claude: '/selected/claude' }
 const key = { lib: 'm2', appVersion: '26.930.1', codexVersion: '0.160.0', settings: 'fixture' }
 const reason = 'Claude Code GPT update capture is incompatible'

@@ -14,6 +14,7 @@ import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 import test, { after } from 'node:test'
 import { markProven, readDegraded, readProof } from '../src/degraded.mjs'
+import { M2_FIXTURES } from '../src/fixture-pins.mjs'
 import { killChildren, spawn } from './helpers/children.mjs'
 import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
 
@@ -410,12 +411,7 @@ test('schema observer hashes every generated JSON artifact, uses the short versi
 test('M2 suite identity includes immutable capture fixtures while an M1 source remains compatible', async () => {
   const { REQUIRED_HELPERS, REQUIRED_FIXTURES, REQUIRED_M2_FIXTURES, suiteIdentity } =
     createRequire(import.meta.url)('../../scripts/lib/startup-schema.mjs')
-  assert.deepEqual(REQUIRED_M2_FIXTURES, [
-    'test/fixtures/codex-auth-0.162.0-alpha.2.json',
-    'test/fixtures/claude-messages-2.1.292.json',
-    'test/fixtures/claude-posture-2.1.289.json',
-    'test/fixtures/raine-translation-v0.1.42.json',
-  ])
+  assert.deepEqual(REQUIRED_M2_FIXTURES, M2_FIXTURES)
   const lib = await tempDir('m2-suite-')
   for (const name of [...REQUIRED_HELPERS, ...REQUIRED_FIXTURES]) {
     mkdirSync(join(lib, name, '..'), { recursive: true })

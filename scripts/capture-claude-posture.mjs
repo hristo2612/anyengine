@@ -21,6 +21,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { renderGptAgent } from '../dist/src/claude-agents.mjs'
 import { buildClaudeSettings } from '../dist/src/claude-settings.mjs'
+import { CLAUDE_FIXTURE_VERSION } from '../dist/src/fixture-pins.mjs'
 import {
   joinCaptureGroup as joinGroup,
   captureGroupMembers as members,
@@ -237,7 +238,7 @@ async function backend(c) {
 function prepare(c, url) {
   const onboarding = {
     hasCompletedOnboarding: true,
-    lastOnboardingVersion: c.version ?? '2.1.289',
+    lastOnboardingVersion: c.version ?? CLAUDE_FIXTURE_VERSION,
     theme: 'dark',
     customApiKeyResponses: { approved: [fakeKey.slice(-20)], rejected: [] },
     projects: { [c.work]: { hasTrustDialogAccepted: true } },
@@ -659,7 +660,11 @@ export async function captureClaudePosture(args = process.argv.slice(2)) {
       return value
     }
     const { version } = await run('version')
-    assert.equal(version, '2.1.289', 'posture test fixture must match actual CLI version')
+    assert.equal(
+      version,
+      CLAUDE_FIXTURE_VERSION,
+      'posture test fixture must match actual CLI version; change src/fixture-pins.mts first',
+    )
     const modes = {}
     const selected = args[5]
     for (const mode of ['default', 'plan', 'dontAsk'])

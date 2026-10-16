@@ -80,10 +80,12 @@ export const REQUIRED_HELPERS = [
   'scripts/lib/codex-probe-runner.mjs',
   'dist/src/posture.mjs',
 ]
+// A copy of M2_FIXTURES in src/fixture-pins.mts (this helper runs alone in an
+// installed lib); test/fixture-pins.test.mts fails when they disagree.
 export const REQUIRED_M2_FIXTURES = [
   'test/fixtures/codex-auth-0.162.0-alpha.2.json',
-  'test/fixtures/claude-messages-2.1.292.json',
-  'test/fixtures/claude-posture-2.1.289.json',
+  'test/fixtures/claude-messages-2.1.301.json',
+  'test/fixtures/claude-posture-2.1.301.json',
   'test/fixtures/raine-translation-v0.1.42.json',
 ]
 function m2Fixtures(lib) {

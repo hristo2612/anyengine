@@ -37,6 +37,7 @@ import {
   retainedM2Libraries,
 } from '../dist/src/control-m2-upgrade.mjs'
 import { realSystem } from '../dist/src/control-system.mjs'
+import { SHIPPED_FIXTURES } from '../dist/src/fixture-pins.mjs'
 import { suiteIdentity } from './lib/startup-schema.mjs'
 import { verifyLib, writeManifest } from './lib-verify.mjs'
 
@@ -46,13 +47,7 @@ const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const COPY = [
   'dist/src',
   'scripts',
-  'test/fixtures/claude-permission-modes.json',
-  'test/fixtures/posture-schema.json',
-  'test/fixtures/codex-auth-0.162.0-alpha.2.json',
-  'test/fixtures/codex-accounts-0.160.0.json',
-  'test/fixtures/claude-messages-2.1.292.json',
-  'test/fixtures/claude-posture-2.1.289.json',
-  'test/fixtures/raine-translation-v0.1.42.json',
+  ...SHIPPED_FIXTURES,
   'crates/anyengine-protocol/fixtures',
   'vendor/claude-code-proxy',
   'package.json',

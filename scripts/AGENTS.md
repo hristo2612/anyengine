@@ -151,6 +151,18 @@ plain `.mjs` / shell.
   or a child request does not name its thread and parent as
   `src/codex-wire.mts` reads them. `--login apikey` shows the API-key wire
   for comparison.
+- `capture-claude-posture.mjs`, `capture-claude-messages.mjs`,
+  `capture-codex-auth.mjs`: zero-spend captures of the real binaries (fake
+  credentials, generated homes, loopback fakes, `sandbox-exec`). Their
+  fixtures ship in every lib: the doctor compares the installed Claude
+  version with the posture capture, and the update gate compares a fresh
+  Messages and auth capture with the shipped ones. After a Claude Code
+  update: set `CLAUDE_FIXTURE_VERSION` in `src/fixture-pins.mts`, build, run
+  both Claude captures with `--claude` pointing at that exact version
+  (`~/.local/share/claude/versions/<v>`, so an auto-update cannot slip in),
+  delete the old pair, update the copy in `lib/startup-schema.mjs` and
+  package.json `files` (test/fixture-pins.test.mts fails until they agree),
+  and scan the new files for paths, names and tokens.
 - `lib/spawn-recording.mjs`: how the spawn capture labels ids and shapes a
   pass's notifications and requests into the fixture.
 - `lib/codex-probe.mjs`, `lib/codex-probe-runner.mjs`: use `isolatedCommand`

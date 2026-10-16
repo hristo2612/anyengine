@@ -8,6 +8,7 @@ import { applyClaudeLayer } from '../src/control-claude-layer.mjs'
 import { runDoctor } from '../src/control-doctor.mjs'
 import { LayerWriter } from '../src/control-layers.mjs'
 import { formatStatus, gatherStatus } from '../src/control-status.mjs'
+import { CLAUDE_FIXTURE_VERSION, FIXTURE_NAMES, fixturePath } from '../src/fixture-pins.mjs'
 import { fakeSystem } from './helpers/fake-system.mjs'
 import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
 
@@ -41,13 +42,17 @@ async function fixture(t: TestContext, createOwnedRow = false) {
   )
   writeFileSync(join(lib, 'THIRD_PARTY_NOTICES.md'), readFileSync('THIRD_PARTY_NOTICES.md'))
   writeFileSync(
-    join(lib, 'test/fixtures/claude-posture-2.1.289.json'),
-    JSON.stringify({ version: 1, claudeVersion: '2.1.289' }),
+    join(lib, fixturePath(FIXTURE_NAMES.claudePosture)),
+    JSON.stringify({ version: 1, claudeVersion: CLAUDE_FIXTURE_VERSION }),
   )
   const system = fakeSystem(home)
   const cli = join(home, 'fake-claude')
   writeFileSync(cli, 'controlled executable fixture', { mode: 0o700 })
-  system.execs.set(`${cli} --version`, { status: 0, stdout: '2.1.289 (Claude Code)\n', stderr: '' })
+  system.execs.set(`${cli} --version`, {
+    status: 0,
+    stdout: `${CLAUDE_FIXTURE_VERSION} (Claude Code)\n`,
+    stderr: '',
+  })
   setConfigValue(root, 'claude.cli', cli)
   let ready = true
   let gptExtra: Record<string, unknown> = {}
@@ -281,7 +286,9 @@ test('Claude Code doctor fails missing MIT evidence and warns when the binary di
   )
   assert.ok(mismatch)
   assert.equal(mismatch.level, 'warn')
-  assert.match(mismatch.detail, /2\.1\.999.*fixture 2\.1\.289/)
+  assert.ok(
+    mismatch.detail.includes(`2.1.999 differs from installed fixture ${CLAUDE_FIXTURE_VERSION}`),
+  )
   writeFileSync(join(f.lib, 'vendor/claude-code-proxy/LICENSE'), SECRET)
   const invalid = (await runDoctor(f.system, f.root, { codexHome: f.codex })).find(
     (check) => check.name === 'Claude Code GPT',

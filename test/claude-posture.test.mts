@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { renderGptAgent } from '../src/claude-agents.mjs'
+import { CLAUDE_FIXTURE_VERSION, FIXTURE_NAMES, fixturePath } from '../src/fixture-pins.mjs'
 import { decide, fromClaudePermissionMode, type Posture } from '../src/posture.mjs'
 import { sessionKey, translateRequest } from '../src/vendor/claude-code-proxy/request.mjs'
 import type { Obj } from '../src/vendor/claude-code-proxy/types.mjs'
@@ -53,7 +54,7 @@ interface Fixture {
 const capture = (): Fixture =>
   JSON.parse(
     readFileSync(
-      new URL('../../test/fixtures/claude-posture-2.1.289.json', import.meta.url),
+      new URL(`../../${fixturePath(FIXTURE_NAMES.claudePosture)}`, import.meta.url),
       'utf8',
     ),
   )
@@ -68,7 +69,7 @@ const where = { cwd: '/fake/project', tmpdir: '/fake/tmp', slashTmp: '/tmp' }
 
 test('real CLI posture fixture publishes only after all isolated owned groups have joined', () => {
   const fixture = capture()
-  assert.equal(fixture.claudeVersion, '2.1.289')
+  assert.equal(fixture.claudeVersion, CLAUDE_FIXTURE_VERSION)
   assert.deepEqual(fixture.isolation, {
     fakeCredentials: true,
     loopbackOnly: true,

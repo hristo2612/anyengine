@@ -112,7 +112,7 @@ tools; the text of such a system message still reaches it. Failure degrades only
 that path and uses the existing once-until-pass notification. Disabling smoke
 prevents this scheduled model work.
 
-The isolated Claude 2.1.289 posture capture proves default and dontAsk child
+The isolated Claude 2.1.301 posture capture proves default and dontAsk child
 inheritance with native tool denials. Plan denied Agent launch, so its child
 checks remain unexercised. The interactive picker displayed GPT and Claude rows,
 and a session-only GPT selection passed without changing the saved default.

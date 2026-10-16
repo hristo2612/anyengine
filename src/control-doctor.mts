@@ -26,6 +26,7 @@ import { regularBytes } from './control-layer-state.mjs'
 import { gatherStatus } from './control-status.mjs'
 import { brokerProblem } from './control-status-evidence.mjs'
 import { adapterArguments, type System } from './control-system.mjs'
+import { FIXTURE_NAMES, fixturePath } from './fixture-pins.mjs'
 import { resolveRuntimeConfig } from './runtime-config.mjs'
 import { codexHome } from './util.mjs'
 
@@ -155,7 +156,7 @@ function claudeInstalled(c: DoctorContext): string {
       c.status.claudeCode.translationVersion !== '0.1.42'
     )
       throw new Error('missing attribution or pin')
-    const fixture: unknown = JSON.parse(decode('test/fixtures/claude-posture-2.1.289.json'))
+    const fixture: unknown = JSON.parse(decode(fixturePath(FIXTURE_NAMES.claudePosture)))
     if (
       !fixture ||
       typeof fixture !== 'object' ||

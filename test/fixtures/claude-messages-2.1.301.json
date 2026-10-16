@@ -1,5 +1,5 @@
 {
-  "claudeVersion": "2.1.292",
+  "claudeVersion": "2.1.301",
   "isolation": {
     "fakeCredentials": true,
     "loopbackOnly": true,
@@ -84,7 +84,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -115,7 +115,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5917
+              "bytes": 6001
             },
             "tools": [
               {
@@ -252,7 +252,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -575,6 +575,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -1040,7 +1047,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2513
+                      "bytes": 2557
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -1075,7 +1082,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -1106,7 +1113,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5917
+              "bytes": 6001
             },
             "tools": [
               {
@@ -1243,7 +1250,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1566,6 +1573,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -2028,7 +2042,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 2513
+                  "bytes": 2557
                 }
               },
               {
@@ -2113,7 +2127,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -2144,7 +2158,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5935
+              "bytes": 6019
             },
             "tools": [
               {
@@ -2281,7 +2295,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2604,6 +2618,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -3069,7 +3090,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2674
+                      "bytes": 2718
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -3104,7 +3125,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -3180,6 +3201,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -3201,7 +3229,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 816
+                      "bytes": 860
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -3236,7 +3264,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -3267,7 +3295,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5935
+              "bytes": 6019
             },
             "tools": [
               {
@@ -3404,7 +3432,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3727,6 +3755,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -4189,7 +4224,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 2674
+                  "bytes": 2718
                 }
               },
               {
@@ -4219,11 +4254,11 @@
                         "type": "text",
                         "text": {
                           "type": "string",
-                          "bytes": 1082
+                          "bytes": 1126
                         },
                         "agentLaunch": {
                           "agentId": "agent_id_1",
-                          "outputFile": "<PROBE>/tmp/claude-<UID>/-private-tmp-claude-messages-capture-SN68OM-agent-default-project/<UUID>/tasks/agent_id_1.output"
+                          "outputFile": "<PROBE>/tmp/claude-<UID>/<PROJECT_KEY>/<UUID>/tasks/agent_id_1.output"
                         }
                       }
                     ]
@@ -4272,7 +4307,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -4348,6 +4383,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -4366,7 +4408,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 816
+                  "bytes": 860
                 }
               },
               {
@@ -4435,7 +4477,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -4466,7 +4508,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5935
+              "bytes": 6019
             },
             "tools": [
               {
@@ -4603,7 +4645,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4926,6 +4968,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -5388,7 +5437,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 2674
+                  "bytes": 2718
                 }
               },
               {
@@ -5422,18 +5471,18 @@
                         "type": "text",
                         "text": {
                           "type": "string",
-                          "bytes": 1082
+                          "bytes": 1126
                         },
                         "agentLaunch": {
                           "agentId": "agent_id_1",
-                          "outputFile": "<PROBE>/tmp/claude-<UID>/-private-tmp-claude-messages-capture-SN68OM-agent-default-project/<UUID>/tasks/agent_id_1.output"
+                          "outputFile": "<PROBE>/tmp/claude-<UID>/<PROJECT_KEY>/<UUID>/tasks/agent_id_1.output"
                         }
                       }
                     ]
                   },
                   {
                     "type": "text",
-                    "text": "<system-reminder omitted; 1270 bytes>"
+                    "text": "<system-reminder omitted; 1314 bytes>"
                   }
                 ]
               },
@@ -5495,7 +5544,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,dangerous-tool-use-2026-09-03,afk-mode-2026-01-31",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,dangerous-tool-use-2026-09-03,afk-mode-2026-01-31",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -5527,7 +5576,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5929
+              "bytes": 6013
             },
             "tools": [
               {
@@ -5664,7 +5713,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -5987,6 +6036,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -6452,7 +6508,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 7718
+                      "bytes": 7812
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -6514,7 +6570,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 141218
+              "bytes": 142069
             },
             "tools": [],
             "messages": [
@@ -6612,7 +6668,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 141218
+              "bytes": 142069
             },
             "tools": [],
             "messages": [
@@ -6710,7 +6766,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 141218
+              "bytes": 142069
             },
             "tools": [],
             "messages": [
@@ -6808,7 +6864,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 141218
+              "bytes": 142069
             },
             "tools": [],
             "messages": [
@@ -6906,7 +6962,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 141218
+              "bytes": 142069
             },
             "tools": [],
             "messages": [
@@ -7003,7 +7059,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 141218
+              "bytes": 142069
             },
             "tools": [],
             "messages": [
@@ -7100,7 +7156,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 141218
+              "bytes": 142069
             },
             "tools": [],
             "messages": [
@@ -7197,7 +7253,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 141218
+              "bytes": 142069
             },
             "tools": [],
             "messages": [
@@ -7294,7 +7350,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 141218
+              "bytes": 142069
             },
             "tools": [],
             "messages": [
@@ -7391,7 +7447,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 141218
+              "bytes": 142069
             },
             "tools": [],
             "messages": [
@@ -7462,7 +7518,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,dangerous-tool-use-2026-09-03,afk-mode-2026-01-31",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24,dangerous-tool-use-2026-09-03,afk-mode-2026-01-31",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -7493,7 +7549,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5929
+              "bytes": 6013
             },
             "tools": [
               {
@@ -7630,7 +7686,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -7953,6 +8009,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -8415,7 +8478,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 7718
+                  "bytes": 7812
                 }
               },
               {
@@ -8505,7 +8568,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -8536,7 +8599,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5935
+              "bytes": 6019
             },
             "tools": [
               {
@@ -8673,7 +8736,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -8996,6 +9059,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -9461,7 +9531,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2674
+                      "bytes": 2718
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -9496,7 +9566,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -9572,6 +9642,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -9593,7 +9670,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 816
+                      "bytes": 860
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -9628,7 +9705,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -9659,7 +9736,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5935
+              "bytes": 6019
             },
             "tools": [
               {
@@ -9796,7 +9873,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -10119,6 +10196,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -10581,7 +10665,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 2674
+                  "bytes": 2718
                 }
               },
               {
@@ -10611,11 +10695,11 @@
                         "type": "text",
                         "text": {
                           "type": "string",
-                          "bytes": 1082
+                          "bytes": 1126
                         },
                         "agentLaunch": {
                           "agentId": "agent_id_2",
-                          "outputFile": "<PROBE>/tmp/claude-<UID>/-private-tmp-claude-messages-capture-SN68OM-agent-dontAsk-project/<UUID>/tasks/agent_id_2.output"
+                          "outputFile": "<PROBE>/tmp/claude-<UID>/<PROJECT_KEY>/<UUID>/tasks/agent_id_2.output"
                         }
                       }
                     ]
@@ -10664,7 +10748,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -10740,6 +10824,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -10758,7 +10849,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 816
+                  "bytes": 860
                 }
               },
               {
@@ -10827,7 +10918,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,per-turn-control-2026-07-01,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -10858,7 +10949,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5935
+              "bytes": 6019
             },
             "tools": [
               {
@@ -10995,7 +11086,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -11318,6 +11409,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -11780,7 +11878,7 @@
                 "role": "system",
                 "content": {
                   "type": "string",
-                  "bytes": 2674
+                  "bytes": 2718
                 }
               },
               {
@@ -11814,18 +11912,18 @@
                         "type": "text",
                         "text": {
                           "type": "string",
-                          "bytes": 1082
+                          "bytes": 1126
                         },
                         "agentLaunch": {
                           "agentId": "agent_id_2",
-                          "outputFile": "<PROBE>/tmp/claude-<UID>/-private-tmp-claude-messages-capture-SN68OM-agent-dontAsk-project/<UUID>/tasks/agent_id_2.output"
+                          "outputFile": "<PROBE>/tmp/claude-<UID>/<PROJECT_KEY>/<UUID>/tasks/agent_id_2.output"
                         }
                       }
                     ]
                   },
                   {
                     "type": "text",
-                    "text": "<system-reminder omitted; 1270 bytes>"
+                    "text": "<system-reminder omitted; 1314 bytes>"
                   }
                 ]
               },
@@ -11887,7 +11985,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -11918,7 +12016,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5919
+              "bytes": 6003
             },
             "tools": [
               {
@@ -12055,7 +12153,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -12378,6 +12476,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -12843,7 +12948,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2514
+                      "bytes": 2558
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -12882,7 +12987,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -12913,7 +13018,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5919
+              "bytes": 6003
             },
             "tools": [
               {
@@ -13050,7 +13155,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -13373,6 +13478,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -13838,7 +13950,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2514
+                      "bytes": 2558
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -13877,7 +13989,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -13908,7 +14020,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5919
+              "bytes": 6003
             },
             "tools": [
               {
@@ -14045,7 +14157,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -14368,6 +14480,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -14833,7 +14952,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2514
+                      "bytes": 2558
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -14872,7 +14991,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -14903,7 +15022,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5919
+              "bytes": 6003
             },
             "tools": [
               {
@@ -15040,7 +15159,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -15363,6 +15482,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -15828,7 +15954,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2514
+                      "bytes": 2558
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -15867,7 +15993,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -15898,7 +16024,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5919
+              "bytes": 6003
             },
             "tools": [
               {
@@ -16035,7 +16161,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -16358,6 +16484,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -16823,7 +16956,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2514
+                      "bytes": 2558
                     },
                     "cache_control": {
                       "type": "ephemeral"
@@ -16862,7 +16995,7 @@
             "x-stainless-runtime": "node",
             "x-stainless-runtime-version": "v26.3.0",
             "x-stainless-timeout": "600",
-            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
+            "anthropic-beta": "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-tool-changes-2026-07-01,effort-2025-11-24",
             "anthropic-dangerous-direct-browser-access": "true",
             "anthropic-version": "2023-06-01",
             "x-app": "cli",
@@ -16893,7 +17026,7 @@
             },
             "system": {
               "type": "array",
-              "bytes": 5919
+              "bytes": 6003
             },
             "tools": [
               {
@@ -17030,7 +17163,7 @@
                 "name": "CronCreate",
                 "description": {
                   "type": "string",
-                  "bytes": 3043
+                  "bytes": 3242
                 },
                 "input_schema": {
                   "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -17353,6 +17486,13 @@
                         "bytes": 121
                       },
                       "type": "string"
+                    },
+                    "allow_large": {
+                      "description": {
+                        "type": "string",
+                        "bytes": 283
+                      },
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -17818,7 +17958,7 @@
                     "type": "text",
                     "text": {
                       "type": "string",
-                      "bytes": 2514
+                      "bytes": 2558
                     },
                     "cache_control": {
                       "type": "ephemeral"
