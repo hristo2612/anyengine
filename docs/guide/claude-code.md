@@ -93,8 +93,10 @@ When scheduled smoke is enabled, `claude-code-gpt` performs one bounded Read of
 the fixed smoke marker and requires its tool result followed by PONG. It restores
 an existing marker and joins its owned process family. It then runs one more
 turn with your real settings and whole tool surface, MCP servers and claude.ai
-connectors included, and requires PONG with no tool use. That turn runs in plan
-mode, for one turn, with no saved session, so it changes nothing.
+connectors included, and requires PONG with no tool use. In that turn a
+flag-scope PreToolUse hook refuses every tool call, so no tool runs whatever
+your allow rules say; it also runs in plan mode, for one turn, with no saved
+session. Your own session hooks still run, as for any Claude session.
 
 Claude Code 2.1.30x can change its tool set mid-conversation: a `system`
 message adds tools (`tool_addition`) or removes them (`tool_removal`), tools

@@ -30,12 +30,42 @@ const markerArgs = (model: string) => [
   '--no-session-persistence',
   '--disable-slash-commands',
 ]
+// Every tool call in the real-settings turn is refused by a flag-scope hook:
+// plan mode alone still lets a Bash allow rule run, and --max-turns 1 stops
+// only the next model call, not the tools of the first reply.
+export const READ_ONLY_HOOKS = {
+  hooks: {
+    PreToolUse: [
+      {
+        matcher: '*',
+        hooks: [
+          {
+            type: 'command',
+            command: `echo '${JSON.stringify({
+              hookSpecificOutput: {
+                hookEventName: 'PreToolUse',
+                permissionDecision: 'deny',
+                permissionDecisionReason: 'anyengine smoke: this turn is read-only',
+              },
+            })}'`,
+          },
+        ],
+      },
+    ],
+  },
+}
+// Flag settings outrank the user's, so the router URL is pinned here too: a
+// user settings.json that sets ANTHROPIC_BASE_URL would otherwise decide where
+// this turn goes.
+export const readOnlySettings = (router: string) =>
+  JSON.stringify({ ...READ_ONLY_HOOKS, env: { ANTHROPIC_BASE_URL: router } })
 // The user's own settings and whole tool surface, claude.ai connectors
 // included. With `--tools` restricted Claude Code lists every tool up front;
 // unrestricted it adds connector tools inline, a request shape only real
-// setups send (it broke GPT on 2026-10-16). Plan mode, one turn and no saved
-// session keep this turn read-only.
-const realArgs = (model: string) => [
+// setups send (it broke GPT on 2026-10-16). No tool runs (the hook above);
+// plan mode, one turn and no saved session are extra margins. The user's own
+// session hooks still run, as for any session.
+const realArgs = (model: string, router: string) => [
   '-p',
   REAL_PROMPT,
   '--output-format',
@@ -48,6 +78,8 @@ const realArgs = (model: string) => [
   '--max-turns',
   '1',
   '--no-session-persistence',
+  '--settings',
+  readOnlySettings(router),
 ]
 const MAX_OUTPUT = 8 * 1024 * 1024
 type Event = Record<string, any>
@@ -323,8 +355,17 @@ export async function runClaudeCodeSmoke(ctx: PathContext): Promise<PathResult> 
         false,
         'Claude Code GPT tool/terminal evidence failed; codex login or anyengine off',
       )
-    const real = await cliTurn(ctx, realArgs(model), controller.signal)
-    const servers = real.code === 0 ? verifiedReal(real.bytes, model) : null
+    let servers: number | null = null
+    try {
+      const real = await cliTurn(
+        ctx,
+        realArgs(model, `http://127.0.0.1:${ctx.config.router.port}`),
+        controller.signal,
+      )
+      servers = real.code === 0 ? verifiedReal(real.bytes, model) : null
+    } catch {
+      servers = null
+    }
     ctx.verify()
     return servers === null
       ? result(

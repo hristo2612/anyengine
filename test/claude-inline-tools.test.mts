@@ -69,8 +69,14 @@ test('connector tools added by a system message become GPT tools; deferred ones 
       ),
     )
   }
-  // The input is never mutated.
-  assert.ok(blockTypes(first).includes('tool_addition'))
+})
+
+test('folding never mutates its input', () => {
+  for (const request of capture.requests) {
+    const before = structuredClone(request)
+    foldInlineTools(request)
+    assert.deepEqual(request, before)
+  }
 })
 
 test('a ToolSearch result turns on the deferred tools it names and says so to the model', () => {
@@ -131,4 +137,84 @@ test('a request without inline tools is passed through untouched', () => {
   }
   // Malformed tool lists stay for the translator to refuse.
   assert.equal(foldInlineTools(duplicate), duplicate)
+})
+
+const def = (name: string, description = name): Obj => ({
+  name,
+  description,
+  input_schema: { type: 'object' },
+})
+const add = (tool: Obj): Obj => ({
+  type: 'tool_addition',
+  tool: { type: 'tool_definition', definition: tool },
+})
+const remove = (name: string): Obj => ({
+  type: 'tool_removal',
+  tool: { type: 'tool_reference', name },
+})
+
+test('later messages override earlier ones; ToolSearch can turn a removed tool back on', () => {
+  const folded = foldInlineTools({
+    model: 'gpt-5.6-luna',
+    tools: [def('Read')],
+    messages: [
+      { role: 'user', content: 'hi' },
+      { role: 'system', content: [add(def('Late'))] },
+      { role: 'system', content: [remove('Late'), { type: 'text', text: 'note after' }] },
+      {
+        role: 'assistant',
+        content: [{ type: 'tool_use', id: 'c1', name: 'ToolSearch', input: {} }],
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'c1',
+            content: [
+              { type: 'tool_reference', tool_name: 'Late' },
+              { type: 'tool_reference', tool_name: 'Nowhere' },
+            ],
+          },
+        ],
+      },
+    ],
+  })
+  assert.deepEqual(names(folded.tools), ['Read', 'Late'])
+  const messages = folded.messages as Obj[]
+  // A system message keeps its other content, in order.
+  assert.deepEqual(messages[1]?.content, [{ type: 'text', text: 'note after' }])
+  const result = ((messages.at(-1)?.content as Obj[])[0] as Obj).content
+  assert.deepEqual(result, [
+    { type: 'text', text: '[tool loaded: Late]' },
+    { type: 'text', text: '[tool unavailable: Nowhere]' },
+  ])
+  assert.doesNotThrow(() => translateRequest(folded, context()))
+})
+
+test('a redefinition replaces the tool but keeps its first position', () => {
+  const folded = foldInlineTools({
+    model: 'gpt-5.6-luna',
+    tools: [def('Read'), def('Grep')],
+    messages: [
+      { role: 'user', content: 'hi' },
+      { role: 'system', content: [add(def('Read', 'Read v2'))] },
+    ],
+  })
+  assert.deepEqual(names(folded.tools), ['Read', 'Grep'])
+  assert.equal((folded.tools as Obj[])[0]?.description, 'Read v2')
+})
+
+test('deferred tools alone are dropped; string system content is left as it is', () => {
+  const folded = foldInlineTools({
+    model: 'gpt-5.6-luna',
+    tools: [def('Read'), { ...def('DeferredToolPlaceholder'), defer_loading: true }],
+    messages: [
+      { role: 'user', content: 'hi' },
+      { role: 'system', content: 'plain system note' },
+    ],
+  })
+  assert.deepEqual(names(folded.tools), ['Read'])
+  assert.equal((folded.messages as Obj[])[1]?.content, 'plain system note')
+  assert.doesNotThrow(() => translateRequest(folded, context()))
 })

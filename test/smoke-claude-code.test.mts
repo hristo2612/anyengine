@@ -29,14 +29,14 @@ async function fixture(t: TestContext, behavior = 'success') {
   writeFileSync(
     cli,
     `#!${process.execPath}
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 await new Promise((done) => { process.stdin.once('end', done); process.stdin.resume() })
 const args = process.argv.slice(2), mode = ${JSON.stringify(behavior)}
 const child = mode === 'descendant' ? spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio:'inherit'}) : null
 const real = args.includes('plan')
-const record = JSON.stringify({ args, cwd: process.cwd(), base: process.env.ANTHROPIC_BASE_URL, pid: process.pid, childPid:child?.pid })
+const record = JSON.stringify({ args, cwd: process.cwd(), base: process.env.ANTHROPIC_BASE_URL, pid: process.pid, childPid:child?.pid, marker: existsSync(join(process.cwd(), 'anyengine-smoke-marker.txt')) })
 if (real) appendFileSync(${JSON.stringify(capture)} + '.real', record)
 else writeFileSync(${JSON.stringify(capture)}, record)
 const emit = (value) => process.stdout.write(JSON.stringify(value) + '\\n')
@@ -169,6 +169,22 @@ test('Claude Code smoke proves one correlated Read, the fresh marker result and 
   ])
     assert.equal(real.args[real.args.indexOf(flag) + 1], value)
   assert.ok(real.args.includes('--no-session-persistence'))
+  // The marker is restored before this turn, and a flag-scope hook refuses every tool.
+  assert.equal(real.marker, false)
+  const hooks = JSON.parse(real.args[real.args.indexOf('--settings') + 1])
+  const hook = hooks.hooks.PreToolUse[0]
+  assert.equal(hook.matcher, '*')
+  assert.match(hook.hooks[0].command, /"permissionDecision":"deny"/)
+  // The configured router wins over a base URL in the user's own settings.
+  assert.equal(hooks.env.ANTHROPIC_BASE_URL, `http://127.0.0.1:${f.ctx.config.router.port}`)
+})
+
+test('Claude Code smoke skips the real-settings turn when the marker turn fails', async (t) => {
+  const f = await fixture(t, 'no-read')
+  const result = await f.runClaudeCodeSmoke(f.ctx)
+  assert.equal(result.ok, false)
+  assert.match(result.detail, /tool\/terminal evidence failed/)
+  assert.equal(existsSync(`${f.capture}.real`), false)
 })
 
 for (const mode of ['real-tool', 'real-error'] as const)

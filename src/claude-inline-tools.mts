@@ -8,7 +8,8 @@
 // claude.ai connectors arrive this way, so without this every GPT request from
 // a Claude Code with connectors failed as unsupported_content. The fold keeps
 // the tools that are on at the end of the conversation, in first-seen order,
-// and leaves every other block for the translator to judge.
+// and leaves every other block for the translator to judge. A request with
+// neither inline blocks nor deferred tools is returned as it came.
 import type { Json, Obj } from './vendor/claude-code-proxy/types.mjs'
 
 function record(value: Json | undefined): Obj | null {
@@ -57,12 +58,15 @@ function systemContent(content: Json[], state: ToolState): Json[] {
   return kept
 }
 
-// A ToolSearch result names the tools it loaded; the model sees which ones.
+// A ToolSearch result names the tools it loaded; the model sees which ones,
+// and is told when a named tool has no definition it could call.
 function loaded(entry: Json, state: ToolState): Json {
   const part = record(entry)
   if (part?.type !== 'tool_reference' || typeof part.tool_name !== 'string') return entry
   state.folded = true
-  if (state.defined.has(part.tool_name)) state.on.add(part.tool_name)
+  if (!state.defined.has(part.tool_name))
+    return { type: 'text', text: `[tool unavailable: ${part.tool_name}]` }
+  state.on.add(part.tool_name)
   return { type: 'text', text: `[tool loaded: ${part.tool_name}]` }
 }
 
