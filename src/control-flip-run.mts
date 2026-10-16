@@ -137,6 +137,34 @@ function milestoneMarkerState(original: FlipMarker | null): Record<string, unkno
     recoveryCommand: original.state.recoveryCommand,
   }
 }
+// What a finished run keeps and says. A completed run clears the shared marker.
+// So does a forward on that ended in preflight: runOn records its first phase
+// ('prepare') before any change, so it only read and there is nothing to
+// resume or recover. Anything else keeps the marker and names the recovery.
+function settle(
+  ctx: FlipContext,
+  run: {
+    op: FlipOp
+    original: FlipMarker | null
+    phase: string
+    terminal: boolean
+    handedOff: boolean
+  },
+): void {
+  const { original } = run
+  if (run.terminal) {
+    finishSharedMarker(ctx.root, run.handedOff)
+    if (original)
+      ctx.say(
+        `resumed an interrupted ${original.op} (it stopped at ${original.phase}); run the command again if you still want it\n`,
+      )
+  } else if (!original && run.op === 'on' && run.phase === 'preflight') {
+    finishSharedMarker(ctx.root, run.handedOff)
+    ctx.say(
+      'on stopped before changing anything; nothing to recover. Run the same command again once the cause above is fixed\n',
+    )
+  } else recoveryNotice(ctx)
+}
 async function runOwned(
   op: FlipOp,
   args: string[],
@@ -240,20 +268,7 @@ async function runOwned(
         : op === 'off'
           ? await runOff(ctx, options)
           : await runRestart(ctx, options)
-    if (terminal) {
-      finishSharedMarker(root, handedOff)
-      if (original)
-        say(
-          `resumed an interrupted ${original.op} (it stopped at ${original.phase}); run the command again if you still want it\n`,
-        )
-    } else if (!original && op === 'on' && marker.phase === 'preflight') {
-      // runOn writes its first marker phase ('prepare') before any change, so
-      // an on that ends in preflight read only: nothing to resume or recover.
-      finishSharedMarker(root, handedOff)
-      say(
-        'on stopped before changing anything; nothing to recover. Run the same command again once the cause above is fixed\n',
-      )
-    } else recoveryNotice(ctx)
+    settle(ctx, { op, original, phase: marker.phase, terminal, handedOff })
     return code
   } catch (error) {
     say(`flip failed: ${message(error)}\n`)
