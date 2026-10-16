@@ -1,7 +1,8 @@
-// One installed Claude harness turn. The gateway supplies models; Claude owns Read.
+// Two installed Claude harness turns: a Read marker turn, then one read-only turn
+// with the user's real settings. The gateway supplies models; Claude owns tools.
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
+import { lstatSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
 import { userInfo } from 'node:os'
 import { join, resolve } from 'node:path'
 import { resolveGptModel } from './claude-models.mjs'
@@ -311,7 +312,8 @@ export interface ClaudePolicyPaths {
   user?: string
   project?: string
 }
-export const CLAUDE_MANAGED_ROOT = '/Library/Application Support/ClaudeCode'
+export const CLAUDE_MANAGED_ROOT =
+  process.platform === 'darwin' ? '/Library/Application Support/ClaudeCode' : '/etc/claude-code'
 const MDM = '/Library/Managed Preferences'
 const on = (value: string | undefined) =>
   value !== undefined && !['', '0', 'false', 'no', 'off'].includes(value.toLowerCase())
@@ -324,7 +326,21 @@ export function hooksDisabled(
   const config = env.CLAUDE_CONFIG_DIR || join(home, '.claude')
   const managed = paths.managedRoot ?? CLAUDE_MANAGED_ROOT
   const mdm = paths.mdm ?? MDM
-  const user = paths.user ?? userInfo().username
+  let user: string
+  try {
+    user = paths.user ?? userInfo().username
+  } catch {
+    return true // no account entry: the per-user MDM path cannot be checked
+  }
+  // Present unless the path is certainly absent; a stat error fails closed.
+  const present = (path: string) => {
+    try {
+      lstatSync(path)
+      return true
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code !== 'ENOENT'
+    }
+  }
   for (const path of [
     join(managed, 'managed-settings.json'),
     join(managed, 'managed-settings.d'),
@@ -332,7 +348,7 @@ export function hooksDisabled(
     join(mdm, user, 'com.anthropic.claudecode.plist'),
     join(config, 'remote-settings.json'),
   ])
-    if (existsSync(path)) return true
+    if (present(path)) return true
   const files = [join(config, 'settings.json')]
   if (paths.project)
     files.push(
