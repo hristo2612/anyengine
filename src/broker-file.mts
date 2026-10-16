@@ -18,6 +18,8 @@ const REFRESH_MARGIN = 60_000
 // handed back without another launch, so a retrying client cannot spend the
 // shared single-use refresh token over and over. A new login on disk ends it.
 export const REFRESH_COOLDOWN = 5 * 60_000
+// A refresh that failed outright (no answer) may have been transient: wait less.
+export const FAILED_REFRESH_COOLDOWN = 60_000
 // Codex may be rewriting auth.json; a torn read is retried once after this.
 const TORN_READ_DELAY = 50
 const decoder = new TextDecoder('utf-8', { fatal: true })
@@ -106,12 +108,16 @@ export function createFileAuthSource(input: {
     return status
   }
   // The served bearer came from an official refresh moments ago (or that refresh failed).
-  const cooling = () => last !== null && now() - last.at < REFRESH_COOLDOWN && last.token === served
+  const cooling = () =>
+    last !== null &&
+    now() - last.at < (last.status ? REFRESH_COOLDOWN : FAILED_REFRESH_COOLDOWN) &&
+    last.token === served
   function officialRefresh(): Promise<AuthStatus> {
     if (!refreshing) {
       const flight = input.official.status(home, input.generation, true).then(
         (status) => {
-          last = { at: now(), token: status.authToken, status }
+          // An answer without a bearer still cools down the bearer that was refused.
+          last = { at: now(), token: status.authToken ?? served, status }
           return status
         },
         (error: unknown) => {

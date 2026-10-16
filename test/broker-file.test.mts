@@ -295,6 +295,30 @@ test('a failed official refresh is not retried within the cooldown', async () =>
   assert.deepEqual(s.calls, [{ refreshToken: true }])
 })
 
+test('a refresh that returns no bearer still cools down; a failed one retries after a minute', async () => {
+  const { FAILED_REFRESH_COOLDOWN } = await load()
+  const s = await setup()
+  await s.ask(false)
+  s.official(() => ({ authMethod: 'chatgpt', authToken: null, requiresOpenaiAuth: true }))
+  await s.ask(true)
+  await s.ask(true)
+  assert.equal(s.calls.length, 1)
+  const t = await setup()
+  await t.ask(false)
+  t.official(() => {
+    throw new Error('official refresh failed')
+  })
+  await assert.rejects(t.ask(true), /official refresh failed/)
+  t.advance(FAILED_REFRESH_COOLDOWN + 1)
+  t.official(() => ({
+    authMethod: 'chatgpt',
+    authToken: t.token('second'),
+    requiresOpenaiAuth: true,
+  }))
+  assert.equal((await t.ask(true)).authToken, t.token('second'))
+  assert.equal(t.calls.length, 2)
+})
+
 test('keyring logins share one official refresh and honour the cooldown', async () => {
   const root = await tempDir('bf-')
   const home = join(root, 'codex')

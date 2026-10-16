@@ -78,7 +78,9 @@ not refreshed again, so a retrying client cannot spend the shared single-use
 refresh token in a loop; a new login on disk is used at once. No app, adapter or
 codex-anywhere process is borrowed, so their restarts no longer decide which
 bearer the router holds. Each GPT request gets at most one fresh read after a
-401; a second refusal returns HTTP 401 `gpt_login_refused`.
+401; a second refusal returns HTTP 401 (`gpt_login_refused` from the model
+catalog, `authentication_required` from Responses), which clients do not retry
+in a loop. After a refresh that failed outright, the next one waits a minute.
 
 `anyengine doctor` then says so plainly: "OpenAI refused the GPT login with
 HTTP 401 on /models at <time> and no GPT call has succeeded since ... run codex

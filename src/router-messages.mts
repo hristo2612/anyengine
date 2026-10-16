@@ -79,7 +79,12 @@ function error(res: ServerResponse, status: number, code: string, message: strin
   sendJson(res, status, {
     type: 'error',
     error: {
-      type: status === 400 || status === 413 ? 'invalid_request_error' : 'api_error',
+      type:
+        status === 400 || status === 413
+          ? 'invalid_request_error'
+          : status === 401
+            ? 'authentication_error'
+            : 'api_error',
       code,
       message,
     },
