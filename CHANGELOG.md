@@ -3,10 +3,29 @@
 All notable changes to `anyengine-cli` are summarized here. Versions follow
 semver; while the major version is 0, a minor version may change behavior.
 
-## 0.1.0 (2026-10-16)
+## 0.1.1 (2026-10-16)
 
 First npm release. Install with `npx anyengine-cli@latest setup` (macOS, Node.js
-24 or newer); see [Getting started](docs/guide/getting-started.md).
+24 or newer); see [Getting started](docs/guide/getting-started.md). 0.1.0 was
+packed but never published: its first real install, on a second Mac, found the
+first-install bugs fixed below.
+
+### First install
+
+- **A Mac where no adapter has ever run counts as quiet.** The pre-restart check
+  read the adapter's log and called its absence "cannot tell", so every first
+  `on` stopped. An adapter home that was never created now means nothing ran;
+  the app's own sessions and a staged update still decide. An adapter home
+  without its log, a named one that is missing, or anything unreadable still
+  stops the restart.
+- **A refused `on` leaves nothing to resume.** One that stops before its first
+  change clears its journal and says nothing changed, instead of claiming
+  retained recovery and spending the next run on a resume.
+- **Clearer advice.** A busy app no longer suggests `--force`, which does not
+  skip that check for `on` or `restart`; it suggests waiting or `--wait-quiet`.
+  `setup` refuses before staging when it cannot ask about the ChatGPT.app
+  restart (output piped or run by a script) and says to run it in a terminal
+  or pass `--yes`.
 
 ### GPT login, claude.ai connectors and packaging
 
@@ -40,10 +59,11 @@ First npm release. Install with `npx anyengine-cli@latest setup` (macOS, Node.js
   a `CODEX_SHELL` login environment; the deployment guide says how a separate
   front end keeps its own Codex CLI or opts in to the shim.
 
-## Development history before 0.1.0
+## Development history before the first release
 
-The entries below record the private milestones that led to 0.1.0. Versions and
-pins they name were current at the time; 0.1.0 pins are listed above.
+The entries below record the private milestones that led to the first release.
+Versions and pins they name were current at the time; current pins are listed
+above.
 
 ### Setup and guides
 

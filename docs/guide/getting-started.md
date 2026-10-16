@@ -10,7 +10,7 @@ available through its experimental CLI backend.
 
 You need macOS, Node.js 24 or newer with npm, ChatGPT.app, and the official
 Claude Code CLI. Each AnyEngine release supports the ChatGPT.app build whose
-bundled codex it pins (0.1.0: ChatGPT.app 26.1007, codex 0.162.0-alpha.17.2);
+bundled codex it pins (0.1.1: ChatGPT.app 26.1007, codex 0.162.0-alpha.17.2);
 `anyengine doctor` reports a mismatch, and setup then rolls back. Use zsh or bash as your login shell. Sign in to ChatGPT.app and
 Claude Code through their normal login flows before setup. Grok is optional.
 
