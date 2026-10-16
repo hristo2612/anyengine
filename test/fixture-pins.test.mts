@@ -10,6 +10,10 @@ import {
   SHIPPED_FIXTURES,
 } from '../src/fixture-pins.mjs'
 
+// The default the adapter advertises without ANYENGINE_COMPAT_VERSION.
+const codexCompatVersionDefault = () =>
+  /const DEFAULT_CODEX_COMPAT_VERSION = '([^']+)'/.exec(readFileSync('src/util.mts', 'utf8'))?.[1]
+
 // The suites run from the repository root (scripts/test-hermetic.mjs).
 const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as { files: string[] }
 
@@ -25,6 +29,11 @@ test('every pinned fixture exists and names the version it was captured from', (
     CODEX_AUTH_FIXTURE_VERSION,
     'a renamed auth capture must be recaptured',
   )
+})
+
+test('the auth capture the update gate compares with is of the pinned codex', () => {
+  // sync-codex-compat.mjs moves the compat pin; the auth capture must follow it.
+  assert.equal(CODEX_AUTH_FIXTURE_VERSION, codexCompatVersionDefault())
 })
 
 test('the npm package ships exactly the pinned fixtures and nothing it lists is missing', () => {

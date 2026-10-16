@@ -671,12 +671,17 @@ export async function captureClaudePosture(args = process.argv.slice(2)) {
       if (!selected || mode === selected) modes[mode] = await run(mode, version)
     const picker = !selected || selected === 'picker' ? await run('picker', version) : null,
       opens = []
-    // A parent that refused the Agent launch itself (plan mode) leaves the
-    // child contracts unexercised, not failed; say which.
-    const denied =
-      'The native plan parent denied the owned Agent launch; no GPT child or child tool attempt occurred.'
+    // A parent that refused the Agent launch itself (plan mode today) leaves
+    // the child contracts unexercised, not failed; say which.
+    const tools = ['outsideRead', 'write', 'command']
     for (const [mode, row] of Object.entries(modes)) {
-      const unexercised = row.agentPermissionDenied === true && row.childPermissionMode === null
+      const denied = `The native ${mode} parent denied the owned Agent launch; no GPT child or child tool attempt occurred.`
+      const unexercised =
+        row.agentPermissionDenied === true &&
+        row.childPermissionMode === null &&
+        !row.agentLoaded &&
+        !row.childModelObserved &&
+        tools.every((tool) => row[tool].source === null)
       if (
         !row.agentLoaded ||
         !row.childModelObserved ||
