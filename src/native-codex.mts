@@ -1,14 +1,9 @@
 // Build the actual child and its process-scoped services before eager startup.
-import { realpathSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { captureHomeIdentity, HomeDesktopIdentity } from './accounts-identity.mjs'
 import { managedAccounts } from './accounts-managed.mjs'
 import { AccountObservations } from './accounts-observations.mjs'
 import { AccountWork } from './accounts-work.mjs'
-import { anyengineRoot } from './anyengine-config.mjs'
 import { registerSandboxUpstream } from './bridge-exec.mjs'
-import { registerAdapterBrokerSource } from './broker-adapter.mjs'
 import type { MuxLocalServer } from './codex-mux.mjs'
 import { NativeCodexMux, type NativeCodexMuxOptions } from './codex-mux.mjs'
 import { CodexUpstream, type CodexUpstreamOptions } from './codex-upstream.mjs'
@@ -31,7 +26,7 @@ export function localCodexSurface(
 }
 
 export function createNativeCodexMux(
-  input: Omit<NativeCodexMuxOptions, 'upstream' | 'brokerSource'> & {
+  input: Omit<NativeCodexMuxOptions, 'upstream'> & {
     child: Omit<CodexUpstreamOptions, 'onMessage'>
     eager: boolean
   },
@@ -76,21 +71,9 @@ export function createNativeCodexMux(
     upstream.onChildLifecycle((event) => {
       if (event.type === 'exit') observations.close()
     })
-  const brokerSource = registerAdapterBrokerSource({
-    root: anyengineRoot(env),
-    enabled: env.ANYENGINE_MOCK !== '1',
-    account: accounts
-      ? () => accounts.account()
-      : () => ({
-          home: realpathSync(env.CODEX_HOME || join(env.HOME || homedir(), '.codex')),
-          generation: 1,
-        }),
-    upstream,
-  })
   mux = new NativeCodexMux({
     ...input,
     upstream,
-    brokerSource,
     ...(accountWork ? { accountWork } : {}),
     ...(identity
       ? {

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import type { ChildProcess } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import readline from 'node:readline'
 import test, { after } from 'node:test'
-import { readBrokerSources } from '../src/broker-source.mjs'
 import { SessionStore } from '../src/store.mjs'
 import { killChildren, spawn } from './helpers/children.mjs'
 
@@ -200,15 +200,10 @@ test('native-codex mux: a named codex that moved is skipped for the app layout, 
     assert.equal(init.result.userAgent, 'codex_app_server/0.153.4 (fake)', 'the GPT child is up')
     const auth = await client.request('getAuthStatus', { includeToken: false }, 42)
     assert.equal(auth.result.fake, true)
-    const account = { home, generation: 1 }
-    const deadline = Date.now() + 5000
-    while (!readBrokerSources(root, account).length && Date.now() < deadline)
-      await new Promise((done) => setTimeout(done, 20))
-    const [source] = readBrokerSources(root, account)
-    assert.ok(source, 'desktop initialize without a notification registers the ready child')
     client.send({ jsonrpc: '2.0', method: 'initialized', params: {} })
     await client.request('getAuthStatus', { includeToken: false })
-    assert.equal(readBrokerSources(root, account)[0]?.id, source.id)
+    // The adapter publishes no bearer socket: the router reads the login itself.
+    assert.equal(existsSync(join(root, 'broker')), false)
     const events = (await readFile(join(home, 'debug.jsonl'), 'utf8'))
       .trim()
       .split('\n')

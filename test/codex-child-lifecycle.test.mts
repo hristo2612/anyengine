@@ -4,8 +4,6 @@ import { mkdirSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import test, { after, type TestContext } from 'node:test'
-import { registerAdapterBrokerSource } from '../src/broker-adapter.mjs'
-import { connectBrokerSource, readBrokerSources } from '../src/broker-source.mjs'
 import { CodexUpstream } from '../src/codex-upstream.mjs'
 import type { WireMessage } from '../src/types.mjs'
 import { stopProcess } from './helpers/children.mjs'
@@ -151,64 +149,6 @@ async function harness(t: TestContext) {
     },
   }
 }
-
-test('adapter sockets unregister held A on actual exit and register B only after internal handshake', async (t) => {
-  const h = await harness(t)
-  const home = join(h.root, 'h')
-  mkdirSync(home, { mode: 0o700 })
-  const account = { home, generation: 1 }
-  const registration = registerAdapterBrokerSource({
-    root: h.root,
-    account: () => account,
-    upstream: h.upstream,
-    enabled: true,
-  })
-  t.after(() => registration.close())
-  await h.start()
-  await h.initialize()
-  assert.deepEqual(readBrokerSources(h.root, account), [])
-  h.upstream.markInitialized()
-  await registration.settled()
-  const [a] = readBrokerSources(h.root, account)
-  assert.ok(a)
-  const client = await connectBrokerSource(a, () => {})
-  t.after(() => client.close())
-  const held = assert.rejects(
-    client.request('getAuthStatus', { includeToken: true, refreshToken: false }),
-    /broker\.source-unavailable/,
-  )
-  await h.message('fake/held-seen', a.pid)
-  h.upstream.notify('fake/exit', {})
-  await h.lifecycle((event) => event.type === 'exit' && event.childId === a.childId)
-  await registration.settled()
-  await held
-  assert.deepEqual(readBrokerSources(h.root, account), [])
-  const bStarted = await h.message('fake/started', undefined, a.pid)
-  assert.ok('params' in bStarted)
-  const bPid = (bStarted.params as { pid: number }).pid
-  await h.message('fake/initialize-seen', bPid)
-  assert.deepEqual(readBrokerSources(h.root, account), [])
-  h.upstream.notify('fake/release-initialize', {})
-  await h.lifecycle((event) => event.type === 'ready' && event.pid === bPid)
-  await registration.settled()
-  const [b] = readBrokerSources(h.root, account)
-  assert.ok(b)
-  assert.notEqual(a.id, b.id)
-  assert.notEqual(a.childId, b.childId)
-  const replacement = await connectBrokerSource(b, () => {})
-  t.after(() => replacement.close())
-  const response = replacement.request('getAuthStatus', { includeToken: true, refreshToken: true })
-  await h.message('fake/held-seen', b.pid)
-  h.upstream.notify('fake/release-auth', {})
-  assert.deepEqual(await response, {
-    authMethod: 'chatgpt',
-    authToken: 'fake-memory-only',
-    requiresOpenaiAuth: true,
-  })
-  await h.upstream.stop()
-  await registration.settled()
-  assert.deepEqual(readBrokerSources(h.root, account), [])
-})
 
 test('real-child readiness waits for successful initialize and initialized; stop invalidates synchronously', async (t) => {
   const h = await harness(t)

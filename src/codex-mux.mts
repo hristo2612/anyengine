@@ -91,7 +91,6 @@ export interface NativeCodexMuxOptions {
   // Optional line for child lifecycle instructions (docs/guide/bridge.md).
   // Direct known-child handover resumes preserve stored instructions; null = off.
   bridgeLine?: () => string | null
-  brokerSource?: { close(): Promise<void> }
   accountWork?: AccountWork
   desktopIdentity?: (method: string, params: unknown) => Promise<unknown>
 }
@@ -105,7 +104,6 @@ export class NativeCodexMux {
   private readonly local: MuxLocalServer
   private readonly onNotification: NativeCodexMuxOptions['onNotification'] | null
   private readonly bridgeLine: NativeCodexMuxOptions['bridgeLine'] | null
-  private readonly brokerSource: NativeCodexMuxOptions['brokerSource']
   private readonly desktopIdentity: NativeCodexMuxOptions['desktopIdentity']
   private readonly continuity: AccountThreadRetry | null
   private readonly replay: AccountReplay | null
@@ -133,7 +131,6 @@ export class NativeCodexMux {
     this.local = options.local
     this.onNotification = options.onNotification ?? null
     this.bridgeLine = options.bridgeLine ?? null
-    this.brokerSource = options.brokerSource
     this.desktopIdentity = options.desktopIdentity
     this.continuity = options.accountWork
       ? new AccountThreadRetry(options.accountWork.runtime, this.upstream, {
@@ -240,7 +237,6 @@ export class NativeCodexMux {
 
   async stop(): Promise<void> {
     this.stopped = true
-    await this.brokerSource?.close()
     await this.claims.stop()
     await this.upstream.stop()
   }
