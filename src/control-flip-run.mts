@@ -17,6 +17,7 @@ import {
 import { admitEvidence, executingLib, outsideApp, parseFlipArgs } from './control-flip-options.mjs'
 import { message, recoveryNotice, type Stop } from './control-flip-recovery.mjs'
 import { jsonAt, regularBytes, statAt } from './control-layer-state.mjs'
+import { readLayers } from './control-layers.mjs'
 import { rollbackM2 } from './control-m2-rollback.mjs'
 import {
   clearFlipMarker,
@@ -138,9 +139,9 @@ function milestoneMarkerState(original: FlipMarker | null): Record<string, unkno
   }
 }
 // What a finished run keeps and says. A completed run clears the shared marker.
-// So does a forward on that ended in preflight: runOn records its first phase
-// ('prepare') before any change, so it only read and there is nothing to
-// resume or recover. Anything else keeps the marker and names the recovery.
+// So does a forward on or restart that ended in preflight: both record their
+// 'prepare' phase before any change, so it only read and there is nothing to
+// resume. Anything else keeps the marker and names the recovery.
 function settle(
   ctx: FlipContext,
   run: {
@@ -158,11 +159,13 @@ function settle(
       ctx.say(
         `resumed an interrupted ${original.op} (it stopped at ${original.phase}); run the command again if you still want it\n`,
       )
-  } else if (!original && run.op === 'on' && run.phase === 'preflight') {
+  } else if (!original && ['on', 'restart'].includes(run.op) && run.phase === 'preflight') {
     finishSharedMarker(ctx.root, run.handedOff)
     ctx.say(
-      'on stopped before changing anything; nothing to recover. Run the same command again once the cause above is fixed\n',
+      `${run.op} stopped before changing anything; this run changed nothing. Run the same command again once the cause above is fixed\n`,
     )
+    // An existing installation keeps its own recovery; name it.
+    if (readLayers(ctx.root).layers.length) recoveryNotice(ctx)
   } else recoveryNotice(ctx)
 }
 async function runOwned(

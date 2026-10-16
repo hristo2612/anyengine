@@ -13,13 +13,18 @@
 // there, is "cannot tell", not "quiet". The quiet report lists each place it
 // looked and what it found, so a check pointed at the wrong home shows.
 //
-// One absence is an answer: on a first install no adapter has ever run with
-// this Codex home, so its default adapter home (<codex home>/anyengine) does
-// not exist at all, and there is no adapter log or turn table to read. Then
-// the adapter side is "nothing ran" and the app's own rollouts and Sparkle
-// decide. Only that exact case: an adapter home that exists without its log,
-// a dangling link in its place, or one that cannot be looked at still cannot
-// tell.
+// One absence is an answer, and only when the caller says it is a first
+// install (--first-install, which `on` passes only when nothing of AnyEngine
+// is installed yet): no adapter has ever run with this Codex home, so its
+// default adapter home (<codex home>/anyengine) does not exist at all and
+// there is no adapter log or turn table to read. Then the adapter side is
+// "nothing ran" and the app's own rollouts and Sparkle decide. It also
+// needs the Codex home's sessions folder (something to look at), no
+// claude-codex adapter home next to it, and no adapter serving an app-server
+// anywhere (one with its own ANYENGINE_HOME would write where this check does
+// not look). Without the flag, or when any of that fails, an absent log
+// cannot tell, as does an adapter home without its log, a dangling link in
+// its place, a named home that is missing, or one that cannot be looked at.
 //
 // A restart also installs a staged app update. ChatGPT.app updates itself
 // with Sparkle 2 (2.9.1 in 26.928): an update downloads in the background and
@@ -41,10 +46,11 @@
 // could not tell. Exit 2: a bad option.
 //
 // It asks /usr/sbin/lsof and /bin/ps (the ones on PATH where those are
-// missing); ANYENGINE_LSOF names another lsof.
+// missing); ANYENGINE_LSOF names another lsof, and ANYENGINE_PS another ps for
+// the first-install adapter scan.
 //
 // Usage: node scripts/preflip-check.mjs [--codex-home DIR] [--adapter-home DIR]
-//          [--quiet-seconds N] [--app DIR]
+//          [--quiet-seconds N] [--app DIR] [--first-install]
 import { spawnSync } from 'node:child_process'
 import {
   accessSync,
@@ -63,7 +69,7 @@ import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
 
 const USAGE =
-  'usage: node scripts/preflip-check.mjs [--codex-home DIR] [--adapter-home DIR] [--quiet-seconds N] [--app DIR]'
+  'usage: node scripts/preflip-check.mjs [--codex-home DIR] [--adapter-home DIR] [--quiet-seconds N] [--app DIR] [--first-install]'
 
 function usageError(message) {
   console.error(`preflip-check: ${message}\n${USAGE}`)
@@ -78,6 +84,7 @@ try {
       'adapter-home': { type: 'string' },
       'quiet-seconds': { type: 'string' },
       app: { type: 'string' },
+      'first-install': { type: 'boolean' },
     },
     strict: true,
     allowPositionals: false,
@@ -238,6 +245,35 @@ function holdersOf(paths) {
     } else if (line.startsWith('n') && names) names.add(line.slice(1))
   }
   return held
+}
+
+// Processes serving an app-server through an adapter (AnyEngine's or the
+// older claude-codex one): node .../dist/src/adapter.mjs ... app-server.
+// Control commands (on, flip-run, router) are not app-servers.
+function adapterAppServers() {
+  const listing = probe(tool('/bin/ps', process.env.ANYENGINE_PS), ['-axww', '-o', 'pid=,args='])
+  const servers = []
+  for (const line of listing.split('\n')) {
+    const match = /^\s*(\d+)\s+(.*)$/.exec(line)
+    if (match && /\/dist\/src\/adapter\.mjs\s.*\bapp-server\b/.test(match[2]))
+      servers.push(match[1])
+  }
+  return servers
+}
+
+// The first-install exception's evidence (see the header); throws when it
+// does not hold, so the check cannot tell.
+function firstInstall(sessions) {
+  if (!lstatOrNull(sessions)?.isDirectory())
+    throw new Error(`${sessions} is not there, so there is nothing to look at`)
+  const legacy = join(codexHome, 'claude-codex-adapter')
+  if (lstatOrNull(legacy))
+    throw new Error(`${legacy} exists: a claude-codex adapter ran here and logs there`)
+  const servers = adapterAppServers()
+  if (servers.length > 0)
+    throw new Error(
+      `an adapter is serving an app-server (pid ${servers.join(', ')}) while ${adapterHome} does not exist; it logs elsewhere`,
+    )
 }
 
 function heldByAppServer(paths) {
@@ -463,8 +499,13 @@ try {
     else execRollouts.push(file)
   }
   // A first install: the default adapter home is not there at all (lstat, so
-  // a dangling link is not absence). See the header.
-  const neverRan = namedAdapterHome === undefined && lstatOrNull(adapterHome) === null
+  // a dangling link is not absence), and the rest of the evidence holds. See
+  // the header.
+  const neverRan =
+    options['first-install'] === true &&
+    namedAdapterHome === undefined &&
+    lstatOrNull(adapterHome) === null
+  if (neverRan) firstInstall(sessions)
   const debugLog = neverRan
     ? { activity: 0, background: 0, reachesStart: true }
     : adapterLogActivity(logPath, now - quietMs)

@@ -14,13 +14,18 @@ first-install bugs fixed below.
 
 - **A Mac where no adapter has ever run counts as quiet.** The pre-restart check
   read the adapter's log and called its absence "cannot tell", so every first
-  `on` stopped. An adapter home that was never created now means nothing ran;
-  the app's own sessions and a staged update still decide. An adapter home
-  without its log, a named one that is missing, or anything unreadable still
-  stops the restart.
-- **A refused `on` leaves nothing to resume.** One that stops before its first
-  change clears its journal and says nothing changed, instead of claiming
-  retained recovery and spending the next run on a resume.
+  `on` stopped. For an `on` with nothing of AnyEngine installed, an adapter
+  home that was never created now means nothing ran, provided the Codex
+  sessions folder exists, there is no claude-codex adapter home and no adapter
+  is serving an app-server; the app's own sessions and a staged update still
+  decide. Everywhere else an absent log, an adapter home without its log, a
+  named one that is missing, or anything unreadable still stops the restart.
+- **A refused `on` or `restart` leaves nothing to resume.** One that stops
+  before its first change clears its journal and says this run changed
+  nothing, instead of claiming retained recovery and spending the next run on
+  a resume. A `restart` interrupted before it quit the app now resumes without
+  quitting it: before, running `restart` again after a refusal could quit the
+  app onto a staged update or past a busy check under `--force`.
 - **Clearer advice.** A busy app no longer suggests `--force`, which does not
   skip that check for `on` or `restart`; it suggests waiting or `--wait-quiet`.
   `setup` refuses before staging when it cannot ask about the ChatGPT.app

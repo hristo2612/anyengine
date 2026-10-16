@@ -64,7 +64,10 @@ export interface PostflightSnapshot {
   degraded: string[]
 }
 export interface FlipDeps {
-  preflip(quietSeconds: number): { quiet: boolean; staged: boolean; text: string }
+  preflip(
+    quietSeconds: number,
+    options?: { firstInstall?: boolean },
+  ): { quiet: boolean; staged: boolean; text: string }
   verifyLib(libDir: string): string[]
   doctor(): Promise<{ ok: boolean; text: string }>
   smoke: ((paths: string[]) => Promise<{ ok: boolean; text: string }>) | null

@@ -637,25 +637,40 @@ test('preflip-check does not say quiet about a home it could not find', () => {
 
 // 2026-10-16, the MacBook's first install: no adapter had ever run, so
 // ~/.codex/anyengine did not exist and every on stopped at "cannot tell".
-test('preflip-check calls a first install quiet when the default adapter home was never created, and only then', () => {
+test('preflip-check calls a first install quiet only with --first-install and all of its evidence', () => {
   const root = mkdtempSync(join(tmpdir(), 'anyengine-preflip-'))
   try {
     const codexHome = join(root, 'codex')
     const adapterHome = join(codexHome, 'anyengine')
     const day = join(codexHome, 'sessions', '2026', '10', '16')
     mkdirSync(day, { recursive: true })
-    const run = (extra: Record<string, string> = {}) =>
-      spawnSync(process.execPath, [preflip, '--codex-home', codexHome, '--quiet-seconds', '120'], {
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          HOME: root,
-          ANYENGINE_HOME: '',
-          ANYENGINE_CHATGPT_APP: fakeApp('com.example.first'),
-          PATH: launchctlPath(),
-          ...extra,
+    const fakePs = join(root, 'ps')
+    writeFileSync(fakePs, '#!/bin/sh\nprintf "%s\\n" "$FAKE_PS_OUTPUT"\n', { mode: 0o755 })
+    const run = (extra: Record<string, string> = {}, flag = true) =>
+      spawnSync(
+        process.execPath,
+        [
+          preflip,
+          '--codex-home',
+          codexHome,
+          '--quiet-seconds',
+          '120',
+          ...(flag ? ['--first-install'] : []),
+        ],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            HOME: root,
+            ANYENGINE_HOME: '',
+            ANYENGINE_CHATGPT_APP: fakeApp('com.example.first'),
+            ANYENGINE_PS: fakePs,
+            FAKE_PS_OUTPUT: '',
+            PATH: launchctlPath(),
+            ...extra,
+          },
         },
-      })
+      )
 
     const first = run()
     assert.equal(first.status, 0, first.stderr)
@@ -666,8 +681,12 @@ test('preflip-check calls a first install quiet when the default adapter home wa
       ),
       first.stdout,
     )
+    // Without the flag (restart, off, resume, doctor) an absent log cannot tell.
+    const unflagged = run({}, false)
+    assert.equal(unflagged.status, 1)
+    assert.match(unflagged.stderr, /cannot tell .*debug\.jsonl/)
 
-    // The other signals still decide: a fresh app rollout is not quiet.
+    // The app's own signals still decide: a fresh app rollout is not quiet.
     const rollout = join(day, 'rollout-first.jsonl')
     writeFileSync(rollout, '{}\n')
     const busy = run()
@@ -676,6 +695,27 @@ test('preflip-check calls a first install quiet when the default adapter home wa
     const old = new Date(Date.now() - 600_000)
     utimesSync(rollout, old, old)
     assert.equal(run().status, 0)
+
+    // An adapter serving an app-server that logs elsewhere (its own
+    // ANYENGINE_HOME) is not "nothing ran". ps is a stand-in: the real one
+    // lists whatever adapters this machine runs.
+    const serving = run({
+      FAKE_PS_OUTPUT:
+        '  4242 /usr/bin/node /x/dist/src/adapter.mjs -c a=b app-server --analytics-default-enabled',
+    })
+    assert.equal(serving.status, 1)
+    assert.match(serving.stderr, /adapter is serving an app-server \(pid 4242\)/)
+    const control = run({
+      FAKE_PS_OUTPUT: '  4243 /usr/bin/node /x/dist/src/adapter.mjs flip-run abc on --yes',
+    })
+    assert.equal(control.status, 0, `a control command is not an app-server: ${control.stderr}`)
+
+    // A claude-codex adapter home logs where this check does not look.
+    mkdirSync(join(codexHome, 'claude-codex-adapter'))
+    const legacy = run()
+    assert.equal(legacy.status, 1)
+    assert.match(legacy.stderr, /claude-codex-adapter exists/)
+    rmSync(join(codexHome, 'claude-codex-adapter'), { recursive: true })
 
     // Fail closed when the home is missing for any other reason.
     const named = run({ ANYENGINE_HOME: join(root, 'named-but-absent') })
@@ -690,6 +730,13 @@ test('preflip-check calls a first install quiet when the default adapter home wa
     const noLog = run()
     assert.equal(noLog.status, 1, 'an adapter home without its log cannot tell')
     assert.match(noLog.stderr, /cannot tell .*debug\.jsonl/)
+    rmSync(adapterHome, { recursive: true })
+
+    // Nothing to look at is not quiet.
+    rmSync(join(codexHome, 'sessions'), { recursive: true })
+    const empty = run()
+    assert.equal(empty.status, 1)
+    assert.match(empty.stderr, /sessions is not there, so there is nothing to look at/)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

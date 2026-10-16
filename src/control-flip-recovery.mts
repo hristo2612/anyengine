@@ -62,10 +62,11 @@ export async function quiet(
   minutes: number,
   recovery: boolean,
   force = false,
+  firstInstall = false,
 ): Promise<void> {
   for (let attempt = 0; ; attempt += 1) {
     if (!recovery) interrupted(ctx)
-    const check = ctx.deps.preflip(30)
+    const check = ctx.deps.preflip(30, { firstInstall })
     if (check.staged) {
       if (!recovery) throw new Error(`staged update: ${check.text}`)
       ctx.say(`staged update expected on the way back: ${check.text}\n`)
@@ -82,7 +83,7 @@ export async function quiet(
     if (attempt >= minutes * 12)
       throw new Error(
         recovery
-          ? `app is not quiet: ${check.text}; resume waits for a quiet app; run again or use --force`
+          ? `app is not quiet: ${check.text}; this waits for a quiet app; run again, or use --force to skip the wait`
           : // --force skips this wait only for off and recovery (control.md); a
             // forward on or restart quits the app, so it always needs quiet.
             `app is not quiet: ${check.text}; wait until it is and run the same command again, or add --wait-quiet <minutes> to keep checking (--force does not skip this check for on or restart)`,

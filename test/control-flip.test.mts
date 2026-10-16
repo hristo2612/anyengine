@@ -42,6 +42,7 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  renameSync,
   writeFileSync,
 } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -197,8 +198,10 @@ for (const check of [
     // --force, which never skips a forward on's quiet check.
     const out = s.out.join('')
     assert.equal(readFlipMarker(s.root), null, out)
-    assert.match(out, /on stopped before changing anything; nothing to recover/)
+    assert.match(out, /on stopped before changing anything; this run changed nothing/)
     assert.doesNotMatch(out, /Recovery retained/)
+    for (const path of ['recovery', 'RECOVER.txt', 'state/layers.json'])
+      assert.equal(existsSync(join(s.root, path)), false, `${path} was written before prepare`)
     if (!check.staged) {
       assert.match(out, /--force does not skip this check for on or restart/)
       assert.doesNotMatch(out, /run again or use --force/)
@@ -387,4 +390,83 @@ test('missing mandatory producer rolls back to vanilla', async () => {
   assert.match(s.out.join(''), /Task27 mandatory installed deployment gate/)
   assert.deepEqual(readLayers(s.root).layers, [])
   assert.equal(s.system.running, true)
+})
+
+test('only a fresh on asks preflight for the first-install exception', async () => {
+  const s = await setup()
+  const seen: unknown[] = []
+  s.deps.preflip = (_seconds, options) => {
+    seen.push(options?.firstInstall)
+    return { quiet: false, staged: false, text: 'busy' }
+  }
+  assert.equal(await s.run('on'), 1)
+  assert.deepEqual(seen, [false], 'an M0 home is not a first install')
+  for (const name of readdirSync(s.root))
+    if (name.startsWith('rollback-')) renameSync(join(s.root, name), join(s.home, `kept-${name}`))
+  seen.length = 0
+  assert.equal(await s.run('on'), 1)
+  assert.deepEqual(seen, [true], 'nothing installed: the exception may apply')
+})
+
+const installedRestarts = (s: Awaited<ReturnType<typeof setup>>) =>
+  s.system.calls.filter((call) => ['quitApp', 'openApp'].includes(call))
+
+// Review 2026-10-16: a refused restart kept its marker, and running restart
+// again resumed it under recovery's quiet rules, which accept a staged update
+// and --force: the app quit onto a staged update, or past a busy check.
+for (const check of [
+  {
+    quiet: false,
+    staged: true,
+    text: 'preflip-check: not quiet: an app update is staged and would install on restart:\n x',
+    again: [] as string[],
+  },
+  {
+    quiet: false,
+    staged: false,
+    text: 'preflip-check: not quiet; wait, then run again:\n busy',
+    again: ['--yes', '--force'],
+  },
+])
+  test(`a refused restart (${check.staged ? 'staged' : 'busy'}) leaves no marker and the next one checks afresh`, async () => {
+    const s = await setup()
+    assert.equal(await s.run('on'), 0, s.out.join(''))
+    s.system.calls.length = 0
+    s.deps.preflip = () => check
+    assert.equal(await s.run('restart'), 1)
+    assert.equal(readFlipMarker(s.root), null, s.out.join(''))
+    assert.match(s.out.join(''), /restart stopped before changing anything/)
+    s.out.length = 0
+    assert.equal(await s.run('restart', check.again), 1)
+    assert.deepEqual(installedRestarts(s), [], s.out.join(''))
+    assert.doesNotMatch(s.out.join(''), /resumed an interrupted/)
+  })
+
+test('a restart interrupted before it quit the app resumes without quitting it', async () => {
+  const s = await setup()
+  assert.equal(await s.run('on'), 0, s.out.join(''))
+  for (const phase of ['preflight', 'prepare']) {
+    s.system.calls.length = 0
+    writeFlipMarker(s.root, {
+      id: `stale-restart-${phase}`,
+      op: 'restart',
+      args: ['--yes'],
+      pid: 999_999,
+      processStart: '2026-10-16T00:00:00.000Z',
+      runner: 'foreground',
+      phase,
+      startedAt: '2026-10-16T00:00:00.000Z',
+      updatedAt: '2026-10-16T00:00:00.000Z',
+      log: join(s.root, 'state/flip-stale.log'),
+      state: {},
+    })
+    s.deps.preflip = () => ({
+      quiet: false,
+      staged: true,
+      text: 'preflip-check: not quiet: an app update is staged and would install on restart:\n x',
+    })
+    assert.equal(await s.run('restart', ['--yes', '--force']), 1)
+    assert.deepEqual(installedRestarts(s), [], `${phase}: ${s.out.join('')}`)
+    assert.equal(readFlipMarker(s.root), null)
+  }
 })

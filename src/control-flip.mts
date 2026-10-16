@@ -167,7 +167,7 @@ export async function runOn(ctx: FlipContext, options: OnOptions): Promise<numbe
     const before = beforeVersion(ctx)
     const other = baselineOther(ctx)
     if (options.noRestart && !options.dryRun) down(ctx)
-    await quiet(ctx, options.waitQuietMinutes, false)
+    await quiet(ctx, options.waitQuietMinutes, false, false, fresh)
     const planned = applyOnFiles(ctx.system, ctx.root, plan, {
       dryRun: true,
       paths: flipPaths(ctx.system),
@@ -190,7 +190,7 @@ export async function runOn(ctx: FlipContext, options: OnOptions): Promise<numbe
       changed = true
     }
     prepareRecovery(ctx, plan.libDir)
-    await quiet(ctx, options.waitQuietMinutes, false)
+    await quiet(ctx, options.waitQuietMinutes, false, false, fresh)
     interrupted(ctx)
     let frozen: FrozenIdentity | undefined
     let expected: Expect = 'router'
@@ -326,6 +326,8 @@ export async function runRestart(ctx: FlipContext, options: RestartOptions): Pro
     const other = baselineOther(ctx)
     const frozen = freeze(ctx, expected)
     await quiet(ctx, options.waitQuietMinutes, false)
+    // Like on: preflight stays read-only, so a refusal there leaves no marker.
+    ctx.marker('prepare')
     prepareRecovery(ctx)
     await quiet(ctx, options.waitQuietMinutes, false)
     interrupted(ctx)
@@ -393,6 +395,12 @@ export async function resumeFlip(
       await quiet(ctx, options.waitQuietMinutes, true, options.force)
       if (!ctx.system.appRunning()) ctx.system.openApp()
       if (!ctx.system.appRunning()) throw new Error('app did not reopen during resume')
+      ctx.marker('complete')
+    } else if (marker.op === 'restart' && ['preflight', 'prepare'].includes(marker.phase)) {
+      // It stopped before quitting the app, so there is nothing to finish. Do
+      // not restart here: recovery's quiet rules accept a staged update and
+      // --force, and only a forward restart may decide to quit the app.
+      if (!ctx.system.appRunning()) ctx.system.openApp()
       ctx.marker('complete')
     } else if (marker.op === 'restart') {
       const before = beforeVersion(ctx)

@@ -68,7 +68,11 @@ plain `.mjs` / shell.
   explicitly a `codex exec` session's (or is one an app-server holds open, as
   `lsof` and `ps` tell), the adapter log or an in-progress adapter turn shows
   activity, while ChatGPT.app has a Sparkle update staged (the restart would
-  install it), or when it cannot tell; run it before an app restart.
+  install it), or when it cannot tell; run it before an app restart. With
+  `--first-install` (only `on` passes it, and only with nothing of AnyEngine
+  installed) a default adapter home that was never created counts as nothing
+  ran, provided the sessions folder exists, there is no claude-codex adapter
+  home and no adapter serves an app-server anywhere.
 - `sync-codex-compat.mjs`: moves the codex version pin (adapter, shim, CI,
   docs) to the bundled codex's version, or `--check`s that every site agrees.
 - `smoke-real-claude.mjs` — round-trips a real Claude turn (`npm run smoke:real`).

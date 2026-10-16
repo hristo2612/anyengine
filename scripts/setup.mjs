@@ -42,8 +42,9 @@ export function setup(args, options = {}) {
     throw new Error(
       'setup quits and reopens ChatGPT.app and asks you first, but this is not an interactive ' +
         'terminal (input or output is piped, redirected or run by a script). Run setup in a ' +
-        'terminal without redirection to be asked, or run "setup --yes" to agree to the restart ' +
-        'now. Nothing was changed.',
+        'terminal without redirection to be asked, or add --yes to agree to the restart now ' +
+        '("npx anyengine-cli@latest setup --yes", or "npm run setup -- --yes" in a checkout). ' +
+        'Nothing was changed.',
     )
   env.PATH = `${dirname(process.execPath)}:${env.PATH ?? '/usr/bin:/bin'}`
   env.ANYENGINE_ROOT = root

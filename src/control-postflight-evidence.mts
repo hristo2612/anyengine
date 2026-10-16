@@ -342,7 +342,7 @@ export function realFlipDeps(system: System, root: string, libDir: string): Flip
     ANYENGINE_ADAPTER: join(libDir, 'dist/src/adapter.mjs'),
   }
   const deps: FlipDeps = {
-    preflip: (quietSeconds) => {
+    preflip: (quietSeconds, preflipOptions) => {
       const result = system.exec(
         process.execPath,
         [
@@ -353,6 +353,7 @@ export function realFlipDeps(system: System, root: string, libDir: string): Flip
           system.app,
           '--codex-home',
           codex,
+          ...(preflipOptions?.firstInstall ? ['--first-install'] : []),
         ],
         { timeoutMs: 30_000, env },
       )
