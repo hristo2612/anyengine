@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import test, { after } from 'node:test'
 import type { AuthStatus } from '../src/broker-types.mjs'
+import { FIXTURE_NAMES, fixturePath } from '../src/fixture-pins.mjs'
 import { removeTempDirs, tempDir } from './helpers/tmp.mjs'
 
 after(removeTempDirs)
@@ -227,12 +228,10 @@ test('unsafe, oversized or malformed logins fail closed; an API-key login is not
 })
 
 test('the official refresh contract this source relies on matches the captured real binary', () => {
-  // capture-codex-auth.mjs ran the real codex 0.162.0-alpha.2 against fake
-  // homes: getAuthStatus with refreshToken true refreshed, returned the
-  // replacement bearer and persisted it to auth.json for the next disk read.
-  const capture = JSON.parse(
-    readFileSync('test/fixtures/codex-auth-0.162.0-alpha.2.json', 'utf8'),
-  ) as {
+  // capture-codex-auth.mjs ran the real pinned codex against fake homes:
+  // getAuthStatus with refreshToken true refreshed, returned the replacement
+  // bearer and persisted it to auth.json for the next disk read.
+  const capture = JSON.parse(readFileSync(fixturePath(FIXTURE_NAMES.codexAuth), 'utf8')) as {
     homes: { home: string; refresh?: Record<string, unknown> }[]
   }
   for (const name of ['fresh-fake', 'stale-fake']) {

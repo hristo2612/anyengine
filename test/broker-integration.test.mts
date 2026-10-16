@@ -168,7 +168,7 @@ test(
   async (t) => {
     const f = await fixture(t)
     f.onRefresh(() => {
-      // The real client persists the replacement (captured 0.162.0-alpha.2 contract).
+      // The real client persists the replacement (the captured codex-auth contract).
       writeLogin(f.home, token('C'))
       return { authMethod: 'chatgpt', authToken: token('C'), requiresOpenaiAuth: true }
     })

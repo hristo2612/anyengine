@@ -1,5 +1,5 @@
 {
-  "codexVersion": "0.162.0-alpha.2",
+  "codexVersion": "0.162.0-alpha.17.2",
   "protocol": [
     "initialize",
     "initialized",

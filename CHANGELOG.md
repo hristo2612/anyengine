@@ -26,6 +26,12 @@ First npm release. Install with `npx anyengine-cli@latest setup` (macOS, Node.js
   captures were rerun, so `anyengine doctor` and the update gate accept 2.1.301.
   Every shipped fixture is named once (`src/fixture-pins.mts`); the package
   previously listed fixtures that no longer existed.
+- **Compatibility follows ChatGPT.app 26.1007.** Pins and CI now use codex
+  `0.162.0-alpha.17.2`. Its zero-spend wire, spawn and auth recordings match
+  the `0.162.0-alpha.2` ones except for the version, and the posture and Rust
+  protocol fixture checks pass against it. The `0.162.0-alpha.2` wire and spawn
+  recordings are kept. A Mac whose ChatGPT.app bundles another codex fails the
+  doctor's pin check, and so `setup`, until a release pins that version.
 - **Other front ends.** The managed shell block reaches any program that imports
   a `CODEX_SHELL` login environment; the deployment guide says how a separate
   front end keeps its own Codex CLI or opts in to the shim.
