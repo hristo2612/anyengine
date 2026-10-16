@@ -400,12 +400,18 @@ export async function resumeFlip(
       ctx.marker('complete')
     } else if (
       marker.op === 'restart' &&
+      // Postflight writes expect and rollback writes route: either means the
+      // app did quit and something must be finished or rolled back.
+      marker.state.expect === undefined &&
+      marker.state.route === undefined &&
       (['preflight', 'prepare', 'restart'].includes(marker.phase) ||
         (marker.phase === 'quit' && marker.state.quitDone !== true && ctx.system.appRunning()))
     ) {
-      // It stopped before the app quit, so there is nothing to finish. Do not
-      // restart here: recovery's quiet rules accept a staged update and
-      // --force, and only a forward restart may decide to quit the app.
+      // The forward restart stopped before its quit took effect (or the user
+      // reopened the app before the next marker), and it changes no files
+      // before then, so there is nothing to finish. Do not restart here:
+      // recovery's quiet rules accept a staged update and --force, and only a
+      // forward restart may decide to quit the app.
       if (!ctx.system.appRunning()) ctx.system.openApp()
       if (!ctx.system.appRunning()) throw new Error('app did not reopen during resume')
       ctx.marker('complete')

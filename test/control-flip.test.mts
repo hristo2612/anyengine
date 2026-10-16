@@ -443,7 +443,7 @@ for (const check of [
 test('a restart interrupted before it quit the app resumes without quitting it', async () => {
   const s = await setup()
   assert.equal(await s.run('on'), 0, s.out.join(''))
-  for (const phase of ['preflight', 'prepare']) {
+  for (const phase of ['preflight', 'prepare', 'restart']) {
     s.system.calls.length = 0
     writeFlipMarker(s.root, {
       id: `stale-restart-${phase}`,
@@ -546,4 +546,76 @@ test('the real preflight passes --first-install only when asked', () => {
     calls.map((args) => args.includes('--first-install')),
     [true, false, false],
   )
+})
+
+test('a restart marker at quit resumes without quitting only if the app runs and no postflight or rollback began', async () => {
+  const stale = (s: Awaited<ReturnType<typeof setup>>, state: Record<string, unknown>) =>
+    writeFlipMarker(s.root, {
+      id: 'stale-restart-quit',
+      op: 'restart',
+      args: ['--yes'],
+      pid: 999_999,
+      processStart: '2026-10-16T00:00:00.000Z',
+      runner: 'foreground',
+      phase: 'quit',
+      startedAt: '2026-10-16T00:00:00.000Z',
+      updatedAt: '2026-10-16T00:00:00.000Z',
+      log: join(s.root, 'state/flip-stale.log'),
+      state,
+    })
+  const quiet = { quiet: true, staged: false, text: 'quiet' }
+  // Its quit failed and the app still runs: nothing to finish.
+  const kept = await setup()
+  assert.equal(await kept.run('on'), 0, kept.out.join(''))
+  kept.system.calls.length = 0
+  stale(kept, { quitDone: false })
+  kept.deps.preflip = () => quiet
+  assert.equal(await kept.run('restart', ['--yes']), 1)
+  assert.deepEqual(installedRestarts(kept), [], kept.out.join(''))
+  // A rollback's quit (route, expect in the state) is not a forward restart's.
+  const rolled = await setup()
+  assert.equal(await rolled.run('on'), 0, rolled.out.join(''))
+  rolled.system.calls.length = 0
+  stale(rolled, { quitDone: false, expect: 'router', route: 'router' })
+  rolled.deps.preflip = () => quiet
+  await rolled.run('restart', ['--yes'])
+  assert.ok(
+    installedRestarts(rolled).includes('quitApp'),
+    `rollback resumes for real: ${rolled.out.join('')}`,
+  )
+  // The app is not running: the quit may have happened, so it is finished for real.
+  const down = await setup()
+  assert.equal(await down.run('on'), 0, down.out.join(''))
+  down.system.calls.length = 0
+  stale(down, { quitDone: false })
+  down.system.running = false
+  down.deps.preflip = () => quiet
+  await down.run('restart', ['--yes'])
+  assert.ok(installedRestarts(down).includes('openApp'), down.out.join(''))
+  assert.doesNotMatch(down.out.join(''), /app did not reopen during resume/)
+})
+
+test('a pre-quit restart resume fails when the app will not reopen', async () => {
+  const s = await setup()
+  assert.equal(await s.run('on'), 0, s.out.join(''))
+  writeFlipMarker(s.root, {
+    id: 'stale-restart-closed',
+    op: 'restart',
+    args: ['--yes'],
+    pid: 999_999,
+    processStart: '2026-10-16T00:00:00.000Z',
+    runner: 'foreground',
+    phase: 'prepare',
+    startedAt: '2026-10-16T00:00:00.000Z',
+    updatedAt: '2026-10-16T00:00:00.000Z',
+    log: join(s.root, 'state/flip-stale.log'),
+    state: {},
+  })
+  s.system.running = false
+  s.system.openApp = () => {
+    s.system.calls.push('openApp')
+  }
+  assert.equal(await s.run('restart', ['--yes']), 1)
+  assert.match(s.out.join(''), /app did not reopen during resume/)
+  assert.ok(readFlipMarker(s.root), 'the marker stays for another try')
 })

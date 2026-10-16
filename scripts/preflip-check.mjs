@@ -270,7 +270,7 @@ function adapterAppServers() {
 function firstInstall(sessions) {
   if (!statOrNull(sessions)?.isDirectory())
     throw new Error(
-      `${sessions} is not there, so there is nothing to look at: open ChatGPT.app, send one message, then run on again`,
+      `${sessions} is not there, so there is nothing to look at: open ChatGPT.app, send one message, wait ten minutes, then run on again`,
     )
   const legacy = join(codexHome, 'claude-codex-adapter')
   if (lstatOrNull(legacy))
