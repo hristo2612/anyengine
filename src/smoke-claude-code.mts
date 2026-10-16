@@ -1,7 +1,7 @@
 // One installed Claude harness turn. The gateway supplies models; Claude owns Read.
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { realpathSync, unlinkSync, writeFileSync } from 'node:fs'
+import { readFileSync, realpathSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { resolveGptModel } from './claude-models.mjs'
 import { atomicFile, digest, regularBytes, sameState, stateAt } from './control-layer-state.mjs'
@@ -13,7 +13,7 @@ const MARKER = 'anyengine-smoke-marker.txt'
 const PROMPT =
   'Read the file anyengine-smoke-marker.txt using Read once and reply with exactly PONG.'
 const REAL_PROMPT = 'Reply with exactly PONG. Do not use any tool.'
-const markerArgs = (model: string) => [
+const markerArgs = (model: string, router: string) => [
   '-p',
   PROMPT,
   '--output-format',
@@ -29,6 +29,8 @@ const markerArgs = (model: string) => [
   '2',
   '--no-session-persistence',
   '--disable-slash-commands',
+  '--settings',
+  JSON.stringify({ env: { ANTHROPIC_BASE_URL: router } }),
 ]
 // Every tool call in the real-settings turn is refused by a flag-scope hook:
 // plan mode alone still lets a Bash allow rule run, and --max-turns 1 stops
@@ -286,6 +288,24 @@ function verified(bytes: Buffer, project: string, markerText: string, model: str
   )
 }
 
+// The read-only hook cannot load when settings switch hooks off (user or
+// managed `disableAllHooks`, managed-hooks-only, or the CLI's simple mode).
+const MANAGED_SETTINGS = '/Library/Application Support/ClaudeCode/managed-settings.json'
+function hooksDisabled(home: string): boolean {
+  if (process.env.CLAUDE_CODE_SIMPLE) return true
+  for (const path of [join(home, '.claude', 'settings.json'), MANAGED_SETTINGS]) {
+    let value: Event
+    try {
+      value = JSON.parse(readFileSync(path, 'utf8'))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
+      return true
+    }
+    if (value?.disableAllHooks === true || value?.allowManagedHooksOnly === true) return true
+  }
+  return false
+}
+
 function events(bytes: Buffer): Event[] | null {
   const lines = new TextDecoder('utf-8', { fatal: true }).decode(bytes).trim().split('\n')
   if (lines.length > 1024) return null
@@ -344,7 +364,8 @@ export async function runClaudeCodeSmoke(ctx: PathContext): Promise<PathResult> 
     if (!model || !resolveGptModel(model, view.models))
       return result(false, 'Configured GPT smoke model unavailable; codex login or anyengine off')
     owned = marker(ctx)
-    const work = await cliTurn(ctx, markerArgs(model), controller.signal)
+    const router = `http://127.0.0.1:${ctx.config.router.port}`
+    const work = await cliTurn(ctx, markerArgs(model, router), controller.signal)
     const ok = work.code === 0 && verified(work.bytes, ctx.deps.project, owned.text, model)
     const restore = owned
     owned = undefined
@@ -355,13 +376,14 @@ export async function runClaudeCodeSmoke(ctx: PathContext): Promise<PathResult> 
         false,
         'Claude Code GPT tool/terminal evidence failed; codex login or anyengine off',
       )
+    if (hooksDisabled(ctx.deps.claudeHome))
+      return result(
+        true,
+        'Claude Code GPT one Read marker result then PONG verified; real-settings turn skipped: hooks are disabled in your Claude settings, so it could not be kept read-only',
+      )
     let servers: number | null = null
     try {
-      const real = await cliTurn(
-        ctx,
-        realArgs(model, `http://127.0.0.1:${ctx.config.router.port}`),
-        controller.signal,
-      )
+      const real = await cliTurn(ctx, realArgs(model, router), controller.signal)
       servers = real.code === 0 ? verifiedReal(real.bytes, model) : null
     } catch {
       servers = null

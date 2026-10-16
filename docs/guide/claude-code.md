@@ -96,7 +96,11 @@ turn with your real settings and whole tool surface, MCP servers and claude.ai
 connectors included, and requires PONG with no tool use. In that turn a
 flag-scope PreToolUse hook refuses every tool call, so no tool runs whatever
 your allow rules say; it also runs in plan mode, for one turn, with no saved
-session. Your own session hooks still run, as for any Claude session.
+session. Your own session hooks still run, as for any Claude session. If your
+settings switch hooks off (`disableAllHooks`, managed-hooks-only), the refusal
+hook cannot load, so the turn is skipped and the smoke says so. Both turns pin
+the router URL in flag settings, which outrank a base URL in your own
+settings.
 
 Claude Code 2.1.30x can change its tool set mid-conversation: a `system`
 message adds tools (`tool_addition`) or removes them (`tool_removal`), tools

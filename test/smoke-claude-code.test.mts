@@ -174,9 +174,32 @@ test('Claude Code smoke proves one correlated Read, the fresh marker result and 
   const hooks = JSON.parse(real.args[real.args.indexOf('--settings') + 1])
   const hook = hooks.hooks.PreToolUse[0]
   assert.equal(hook.matcher, '*')
-  assert.match(hook.hooks[0].command, /"permissionDecision":"deny"/)
+  // Run the hook exactly as the CLI does (sh -c) and read its decision.
+  const { execFileSync } = await import('node:child_process')
+  const decision = JSON.parse(
+    execFileSync('/bin/sh', ['-c', hook.hooks[0].command], { encoding: 'utf8' }),
+  )
+  assert.equal(decision.hookSpecificOutput.hookEventName, 'PreToolUse')
+  assert.equal(decision.hookSpecificOutput.permissionDecision, 'deny')
+  // The marker turn is pinned to the configured router too.
+  const markerSettings = JSON.parse(launched.args[launched.args.indexOf('--settings') + 1])
+  assert.equal(
+    markerSettings.env.ANTHROPIC_BASE_URL,
+    `http://127.0.0.1:${f.ctx.config.router.port}`,
+  )
   // The configured router wins over a base URL in the user's own settings.
   assert.equal(hooks.env.ANTHROPIC_BASE_URL, `http://127.0.0.1:${f.ctx.config.router.port}`)
+})
+
+test('Claude Code smoke skips the real-settings turn when hooks are disabled in settings', async (t) => {
+  const f = await fixture(t)
+  const home = (f.ctx.deps as unknown as { claudeHome: string }).claudeHome
+  mkdirSync(join(home, '.claude'), { recursive: true })
+  writeFileSync(join(home, '.claude', 'settings.json'), JSON.stringify({ disableAllHooks: true }))
+  const result = await f.runClaudeCodeSmoke(f.ctx)
+  assert.equal(result.ok, true, result.detail)
+  assert.match(result.detail, /real-settings turn skipped: hooks are disabled/)
+  assert.equal(existsSync(`${f.capture}.real`), false)
 })
 
 test('Claude Code smoke skips the real-settings turn when the marker turn fails', async (t) => {
