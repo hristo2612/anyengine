@@ -112,7 +112,21 @@ function origin(marker: FlipMarker): FlipMarker {
   validateRecoveryState(state)
   if (Object.hasOwn(state, 'interrupted')) throw new Error('nested interrupted flip state')
   validateOrigin(row.op as FlipOp, row.args as string[], row.phase)
-  return { ...marker, op: row.op as FlipOp, args: row.args as string[], phase: row.phase, state }
+  // A resume that was itself interrupted kept its own progress at the top
+  // level. Carry it, so the next decision still knows the app quit
+  // (quitDone, true if either run saw it), a postflight began (expect) or a
+  // rollback began (route).
+  const progress: Record<string, unknown> = {}
+  for (const key of ['expect', 'route'])
+    if (Object.hasOwn(marker.state, key)) progress[key] = marker.state[key]
+  if (state.quitDone === true || marker.state.quitDone === true) progress.quitDone = true
+  return {
+    ...marker,
+    op: row.op as FlipOp,
+    args: row.args as string[],
+    phase: row.phase,
+    state: { ...state, ...progress },
+  }
 }
 function admitRunner(system: System, root: string, nativeProof: string | null): FlipMarker | null {
   outsideApp(system)

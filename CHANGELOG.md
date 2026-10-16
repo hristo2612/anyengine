@@ -60,10 +60,10 @@ first-install bugs fixed below.
   The package previously listed fixtures that no longer existed.
 - **Compatibility follows ChatGPT.app 26.1013.** Pins and CI now use codex
   `0.163.0-alpha.10.2`. Its zero-spend wire and spawn recordings add one
-  request field (`history_initialization`) the router does not read; the auth
-  recording matches; the posture and Rust protocol fixture checks pass. The
-  `0.162.0-alpha.2` and `0.162.0-alpha.17.2` (ChatGPT.app 26.1002 and 26.1007)
-  wire and spawn recordings are kept. A Mac whose ChatGPT.app bundles another codex fails the
+  turn-metadata key (`history_initialization`) the router does not read; the
+  auth recording matches; the posture and Rust protocol fixture checks pass.
+  The `0.162.0-alpha.2` and `0.162.0-alpha.17.2` (ChatGPT.app 26.1002 and
+  26.1007) wire and spawn recordings are kept. A Mac whose ChatGPT.app bundles another codex fails the
   doctor's pin check, and so `setup`, until a release pins that version.
 - **Other front ends.** The managed shell block reaches any program that imports
   a `CODEX_SHELL` login environment; the deployment guide says how a separate

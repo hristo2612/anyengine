@@ -572,16 +572,37 @@ test('a restart marker at quit resumes without quitting only if the app runs and
   kept.deps.preflip = () => quiet
   assert.equal(await kept.run('restart', ['--yes']), 1)
   assert.deepEqual(installedRestarts(kept), [], kept.out.join(''))
-  // A rollback's quit (route, expect in the state) is not a forward restart's.
-  const rolled = await setup()
-  assert.equal(await rolled.run('on'), 0, rolled.out.join(''))
-  rolled.system.calls.length = 0
-  stale(rolled, { quitDone: false, expect: 'router', route: 'router' })
-  rolled.deps.preflip = () => quiet
-  await rolled.run('restart', ['--yes'])
+  // A rollback's quit (route, with or without expect) is not a forward restart's.
+  for (const state of [
+    { quitDone: false, expect: 'router', route: 'router' },
+    { quitDone: false, route: 'router' },
+  ]) {
+    const rolled = await setup()
+    assert.equal(await rolled.run('on'), 0, rolled.out.join(''))
+    rolled.system.calls.length = 0
+    stale(rolled, state)
+    rolled.deps.preflip = () => quiet
+    await rolled.run('restart', ['--yes'])
+    assert.ok(
+      installedRestarts(rolled).includes('quitApp'),
+      `${JSON.stringify(state)} resumes for real: ${rolled.out.join('')}`,
+    )
+  }
+  // A resume that was itself interrupted after a postflight and rollback
+  // began keeps that progress at the top level; the next run must see it.
+  const twice = await setup()
+  assert.equal(await twice.run('on'), 0, twice.out.join(''))
+  twice.system.calls.length = 0
+  stale(twice, {
+    expect: 'router',
+    route: 'router',
+    interrupted: { op: 'restart', args: ['--yes'], phase: 'quit', state: { quitDone: false } },
+  })
+  twice.deps.preflip = () => quiet
+  await twice.run('restart', ['--yes'])
   assert.ok(
-    installedRestarts(rolled).includes('quitApp'),
-    `rollback resumes for real: ${rolled.out.join('')}`,
+    installedRestarts(twice).includes('quitApp'),
+    `a re-resume resumes for real: ${twice.out.join('')}`,
   )
   // The app is not running: the quit may have happened, so it is finished for real.
   const down = await setup()
