@@ -97,3 +97,58 @@ test('shutdown denies new admission immediately and joins every live request bef
   assert.equal(joined, true)
   assert.equal(runtime.activeRequests(), 0)
 })
+
+test('official children run one at a time and always close, even when a call fails', async () => {
+  const root = await tempDir('br-')
+  const home = join(root, 'h')
+  mkdirSync(home, { mode: 0o700 })
+  let open = 0,
+    peak = 0,
+    launches = 0,
+    closes = 0
+  const runtime = (await load()).createRouterBroker({
+    root,
+    account: () => ({ home, generation: 1 }),
+    launch: async () => {
+      launches++
+      open++
+      peak = Math.max(peak, open)
+      const index = launches
+      return {
+        id: `fake-${index}`,
+        home,
+        generation: 1,
+        kind: 'standalone' as const,
+        request: async (_method: string, params: { refreshToken: boolean }) => {
+          await new Promise((done) => setTimeout(done, 20))
+          if (index === 2) throw new Error('official child failed')
+          return {
+            authMethod: 'chatgpt',
+            authToken: `FAKE_OFFICIAL_${params.refreshToken}`,
+            requiresOpenaiAuth: true,
+          }
+        },
+        close: async () => {
+          closes++
+          open--
+        },
+      }
+    },
+  })
+  try {
+    const results = await Promise.allSettled([
+      runtime.official.status(home, 1, false),
+      runtime.official.status(home, 1, true),
+      runtime.official.status(home, 1, true),
+    ])
+    assert.deepEqual(
+      results.map((result) => result.status),
+      ['fulfilled', 'rejected', 'fulfilled'],
+    )
+    assert.equal(peak, 1)
+    assert.equal(launches, 3)
+    assert.equal(closes, 3)
+  } finally {
+    await runtime.close()
+  }
+})

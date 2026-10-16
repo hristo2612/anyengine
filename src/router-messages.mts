@@ -191,7 +191,7 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
     } catch (cause) {
       if (caller.signal.aborted) return
       if ((cause as Error)?.message === CATALOG_REJECTED)
-        error(res, 503, GPT_LOGIN_REFUSED.code, GPT_LOGIN_REFUSED.message)
+        error(res, GPT_LOGIN_REFUSED.status, GPT_LOGIN_REFUSED.code, GPT_LOGIN_REFUSED.message)
       else error(res, 503, 'gpt_unavailable', 'GPT model settings are unavailable; try again')
     } finally {
       caller.detach()
@@ -267,7 +267,7 @@ export function messagesHook(deps: MessagesDependencies): MessagesHook {
     } catch (cause) {
       if (caller.signal.aborted) return
       if ((cause as Error)?.message === CATALOG_REJECTED)
-        error(res, 503, GPT_LOGIN_REFUSED.code, GPT_LOGIN_REFUSED.message)
+        error(res, GPT_LOGIN_REFUSED.status, GPT_LOGIN_REFUSED.code, GPT_LOGIN_REFUSED.message)
       else error(res, 503, 'gpt_unavailable', 'GPT is unavailable; try again')
     } finally {
       caller.detach()

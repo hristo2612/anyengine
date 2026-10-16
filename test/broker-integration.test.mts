@@ -1,6 +1,8 @@
 // The 2026-10-10 GPT outage, end to end: real token cache, owner, file source,
 // catalog and settings view against a local upstream that answers a refused
-// bearer exactly as chatgpt.com did (captured 2026-10-16).
+// bearer with chatgpt.com's real 401 (captured 2026-10-16). During the outage
+// the nightly claude-code-gpt smoke failed (10-11 to 10-13) while the borrowed
+// process's own /models polls logged HTTP_401 through the Codex face.
 import assert from 'node:assert/strict'
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
@@ -79,7 +81,9 @@ async function fixture(t: TestContext) {
   let refresh: () => AuthStatus = () => {
     throw new Error('official refresh not expected')
   }
-  const account = () => ({ home, generation: 1 })
+  let generation = 1
+  let clock = NOW
+  const account = () => ({ home, generation })
   const owner = createBrokerOwner({
     account,
     official: {
@@ -88,13 +92,13 @@ async function fixture(t: TestContext) {
         return refresh()
       },
     },
-    now: () => NOW,
+    now: () => clock,
   })
   const events: { event: string; fields: Record<string, unknown> }[] = []
   const broker = createTokenBroker({
     account,
     owner,
-    now: () => NOW,
+    now: () => clock,
     log: (event, fields) => events.push({ event, fields }),
   })
   const catalogs = createGptCatalogs({
@@ -102,7 +106,7 @@ async function fixture(t: TestContext) {
     broker,
     owner,
     upstream: new URL(`http://127.0.0.1:${address.port}/backend-api/codex`),
-    now: () => NOW,
+    now: () => clock,
   })
   const admission: AccountAdmission = {
     begin: async () => ({ generation: 1, release: async () => {} }),
@@ -119,6 +123,12 @@ async function fixture(t: TestContext) {
       readGptSettingsView({ admission, broker, catalogs, signal: new AbortController().signal }),
     onRefresh: (next: typeof refresh) => {
       refresh = next
+    },
+    advance: (ms: number) => {
+      clock += ms
+    },
+    switchGeneration: (next: number) => {
+      generation = next
     },
   }
 }
@@ -196,3 +206,35 @@ test(
     assert.equal(JSON.stringify(status).includes('FAKE_BEARER'), false)
   },
 )
+
+test(
+  'a refused caller that joins a plain read of the same bearer forces one fresh read',
+  bounded,
+  async (t) => {
+    const f = await fixture(t)
+    const a = await f.broker.get()
+    // The lease cache expires, so a plain caller starts a read of the same file
+    // while a 401 caller arrives in the same tick and joins it.
+    f.advance(6 * 60_000)
+    f.onRefresh(() => {
+      writeLogin(f.home, token('E'))
+      return { authMethod: 'chatgpt', authToken: token('E'), requiresOpenaiAuth: true }
+    })
+    const [plain, refused] = await Promise.all([f.broker.get(), f.broker.get({ rejected: a })])
+    assert.equal(plain.bearer, token('A'))
+    assert.equal(refused.bearer, token('E'))
+    assert.deepEqual(f.official, [{ refreshToken: true }])
+  },
+)
+
+test("another account's open 401 is not reported for the active login", bounded, async (t) => {
+  const f = await fixture(t)
+  const lease = await f.broker.get()
+  f.broker.observe?.(lease, 'models', 401)
+  assert.equal(f.broker.status().rejection?.open, true)
+  f.switchGeneration(2)
+  assert.equal(f.broker.status().rejection, null)
+  // A late answer for the old account cannot reopen or close anything either.
+  f.broker.observe?.(lease, 'responses', 401)
+  assert.equal(f.broker.status().rejection, null)
+})

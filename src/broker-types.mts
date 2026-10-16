@@ -49,9 +49,9 @@ export interface BrokerLease {
   cacheRevision: number
 }
 
-// The last upstream answer to a broker bearer that was a 401. `open` stays
-// true until the same endpoint answers 200 again, so doctor can say whether a
-// refresh already fixed it.
+// The last HTTP 401 the upstream gave a broker bearer of the active account.
+// `open` stays true until any later GPT call is accepted, so doctor can say
+// whether a fresh read or refresh already fixed it.
 export interface BrokerRejection {
   at: string
   endpoint: 'models' | 'responses'

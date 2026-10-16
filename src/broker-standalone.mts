@@ -10,7 +10,19 @@ import { CodexUpstream } from './codex-upstream.mjs'
 
 export function standaloneEnvironment(home: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const clean: NodeJS.ProcessEnv = { CODEX_HOME: realpathSync(home) }
-  for (const name of ['HOME', 'PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'USER', 'LOGNAME', 'SHELL']) {
+  // The last two let a Linux login stored in the Secret Service keyring be read.
+  for (const name of [
+    'HOME',
+    'PATH',
+    'LANG',
+    'LC_ALL',
+    'TMPDIR',
+    'USER',
+    'LOGNAME',
+    'SHELL',
+    'DBUS_SESSION_BUS_ADDRESS',
+    'XDG_RUNTIME_DIR',
+  ]) {
     if (env[name]) clean[name] = env[name]
   }
   clean.PATH ??= '/usr/bin:/bin'
@@ -25,7 +37,13 @@ export async function createStandaloneAuthSource(input: {
   env?: NodeJS.ProcessEnv
   processLifecycle?: ManagedChildLifecycle
   accounts?: AccountParticipant
-}): Promise<AuthSource & { close(): Promise<void>; onClose(listener: () => void): () => void }> {
+}): Promise<
+  AuthSource & {
+    close(): Promise<void>
+    onClose(listener: () => void): () => void
+    pid(): number | null
+  }
+> {
   const home = realpathSync(input.home),
     env = input.env ?? process.env
   const binary = input.binary ?? resolveBundledCodex(env).path
@@ -101,6 +119,7 @@ export async function createStandaloneAuthSource(input: {
     generation: input.generation,
     kind: 'standalone',
     close,
+    pid: () => upstream.pid ?? null,
     onClose(listener) {
       listeners.add(listener)
       if (ended) listener()

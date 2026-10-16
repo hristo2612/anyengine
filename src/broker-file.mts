@@ -14,6 +14,12 @@ import type { AuthSource, AuthStatus } from './broker-types.mjs'
 const MAX_LOGIN_BYTES = 64 * 1024
 // Same margin the token cache uses before it asks for a refresh.
 const REFRESH_MARGIN = 60_000
+// A bearer refused again soon after an official refresh is a dead login: it is
+// handed back without another launch, so a retrying client cannot spend the
+// shared single-use refresh token over and over. A new login on disk ends it.
+export const REFRESH_COOLDOWN = 5 * 60_000
+// Codex may be rewriting auth.json; a torn read is retried once after this.
+const TORN_READ_DELAY = 50
 const decoder = new TextDecoder('utf-8', { fatal: true })
 const fail = (code = 'source-unavailable') => new Error(`broker.${code}`)
 
@@ -94,13 +100,25 @@ export function createFileAuthSource(input: {
   // The bearer this source last handed out; a forced refresh compares against it.
   let served: string | null = null
   let refreshing: Promise<AuthStatus> | null = null
+  let last: { at: number; token: string | null; status: AuthStatus | null } | null = null
   const remember = (status: AuthStatus): AuthStatus => {
     if (status.authToken) served = status.authToken
     return status
   }
+  // The served bearer came from an official refresh moments ago (or that refresh failed).
+  const cooling = () => last !== null && now() - last.at < REFRESH_COOLDOWN && last.token === served
   function officialRefresh(): Promise<AuthStatus> {
     if (!refreshing) {
-      const flight = input.official.status(home, input.generation, true)
+      const flight = input.official.status(home, input.generation, true).then(
+        (status) => {
+          last = { at: now(), token: status.authToken, status }
+          return status
+        },
+        (error: unknown) => {
+          last = { at: now(), token: served, status: null }
+          throw error
+        },
+      )
       refreshing = flight
       void flight
         .finally(() => {
@@ -109,6 +127,19 @@ export function createFileAuthSource(input: {
         .catch(() => {})
     }
     return refreshing
+  }
+  async function readDisk(): Promise<AuthStatus | null> {
+    try {
+      return readCodexLogin(home)
+    } catch (error) {
+      if ((error as Error).message !== 'broker.invalid-login') throw error
+      await new Promise((done) => setTimeout(done, TORN_READ_DELAY))
+      return readCodexLogin(home)
+    }
+  }
+  function cooled(disk: AuthStatus | null): AuthStatus {
+    if (!last?.status) throw fail()
+    return remember(disk ?? last.status)
   }
   return {
     id: `file-${randomUUID()}`,
@@ -122,9 +153,13 @@ export function createFileAuthSource(input: {
         typeof params.refreshToken !== 'boolean'
       )
         throw fail()
-      const disk = readCodexLogin(home)
-      if (!disk)
-        return remember(await input.official.status(home, input.generation, params.refreshToken))
+      const disk = await readDisk()
+      if (!disk) {
+        // Keyring or no login: only the official client can answer.
+        if (!params.refreshToken)
+          return remember(await input.official.status(home, input.generation, false))
+        return cooling() ? cooled(null) : remember(await officialRefresh())
+      }
       if (!params.refreshToken || disk.authMethod !== 'chatgpt' || !disk.authToken)
         return remember(disk)
       // A forced refresh follows a rejected or expiring bearer. Another Codex
@@ -132,7 +167,7 @@ export function createFileAuthSource(input: {
       const expires = expiresAt(disk.authToken)
       if (disk.authToken !== served && expires !== null && expires > now() + REFRESH_MARGIN)
         return remember(disk)
-      return remember(await officialRefresh())
+      return cooling() ? cooled(disk) : remember(await officialRefresh())
     },
   }
 }

@@ -282,7 +282,7 @@ const LOGIN_REASONS: Record<string, string> = {
 export function brokerProblem(broker: BrokerView | null): string | null {
   if (!broker) return null
   if (broker.rejection?.open)
-    return `OpenAI refused the GPT login with HTTP 401 on /${broker.rejection.endpoint} at ${broker.rejection.at}, even after the router re-read the Codex login and asked the official client to refresh it; run codex login for the active account`
+    return `OpenAI refused the GPT login with HTTP 401 on /${broker.rejection.endpoint} at ${broker.rejection.at} and no GPT call has succeeded since; the router re-reads the Codex login and refreshes it at most once every 5 minutes, so run codex login for the active account`
   const login = broker.reason ? LOGIN_REASONS[broker.reason] : undefined
   return login ? `${login}; run codex login for the active account` : null
 }

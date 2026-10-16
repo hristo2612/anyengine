@@ -35,10 +35,11 @@ const localCodes = new Set([
   'invalid_image',
 ])
 const stale = () => new Error('catalog.source-changed')
-// OpenAI refused the broker's bearer again after the one forced refresh.
+// OpenAI refused the broker's bearer again after the one forced read. A 401,
+// like the Responses path's, so clients do not retry a dead login in a loop.
 export const GPT_LOGIN_REFUSED: TranslationFailure = {
-  status: 503,
-  type: 'api_error',
+  status: 401,
+  type: 'authentication_error',
   code: 'gpt_login_refused',
   message: 'OpenAI refused the GPT login (HTTP 401); run codex login, then try again',
   retryAfter: null,
@@ -113,7 +114,7 @@ async function sendModel(
   generation: number,
   signal: AbortSignal,
   rejected?: BrokerLease,
-): Promise<{ lease: BrokerLease; call: ReturnType<typeof startRequest> }> {
+): Promise<{ lease: BrokerLease; call: ReturnType<typeof startRequest>; forced: boolean }> {
   let refused = rejected
   for (let attempt = 0; attempt < 2; attempt++) {
     let lease: BrokerLease | undefined
@@ -137,13 +138,19 @@ async function sendModel(
       const target = gptTarget(input.upstream, 'responses')
       // No await can split the final lease/capability check from model bytes.
       if (!validSnapshot(input, lease, snapshot, generation, signal)) throw stale()
-      return { lease, call: startRequest(target, body, lease, model, signal) }
+      return {
+        lease,
+        call: startRequest(target, body, lease, model, signal),
+        forced: refused !== undefined,
+      }
     } catch (error) {
       // The catalog's 401 means this bearer is refused: force a fresh one once.
+      // At most one forced read per request: a Responses 401 already used it.
       if (
         attempt === 0 &&
         !signal.aborted &&
         lease &&
+        !rejected &&
         (error as Error)?.message === CATALOG_REJECTED
       ) {
         refused = lease
@@ -310,7 +317,7 @@ export async function serveGpt(input: GptInput): Promise<void> {
     admitted = await input.admission.begin(controller.signal)
     let rejected: BrokerLease | undefined
     for (let attempt = 0; attempt < 2; attempt++) {
-      const { lease, call } = await sendModel(
+      const { lease, call, forced } = await sendModel(
         input,
         admitted.generation,
         controller.signal,
@@ -327,6 +334,7 @@ export async function serveGpt(input: GptInput): Promise<void> {
           input.admission.quota?.(lease, input.requestedModel)
         if (
           attempt === 0 &&
+          !forced &&
           mapped.status === 401 &&
           !output.semantic &&
           !controller.signal.aborted

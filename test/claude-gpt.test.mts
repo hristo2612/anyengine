@@ -354,11 +354,32 @@ test('a catalog 401 that survives the refresh is named and sends no model bytes'
   const response = await f.post()
   const text = await response.text()
   await f.released.promise
-  assert.equal(response.status, 503)
+  assert.equal(response.status, 401)
   assert.match(text, /gpt_login_refused/)
+  assert.match(text, /authentication_error/)
   assert.match(text, /HTTP 401/)
   assert.equal(f.modelCalls().length, 0)
   assert.equal(f.gets.filter(Boolean).length, 1)
+  assert.equal(f.releases(), 1)
+})
+
+test('a Responses 401 after a catalog-forced read is not retried: one forced read per request', async (t) => {
+  const f = await fixture(t)
+  f.backend.failModels = 401
+  f.backend.respond = (_req, res) => {
+    res.writeHead(401)
+    res.end('{}')
+  }
+  f.refresh(() => {
+    f.elect('B')
+    f.backend.failModels = null
+  })
+  const response = await f.post()
+  await response.text()
+  await f.released.promise
+  assert.equal(response.status, 401)
+  assert.equal(f.gets.filter(Boolean).length, 1)
+  assert.equal(f.modelCalls().length, 1)
   assert.equal(f.releases(), 1)
 })
 

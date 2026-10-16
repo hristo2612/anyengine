@@ -72,14 +72,18 @@ The GPT bearer comes from the active account's own Codex login. The router reads
 minutes, or at once after a refusal) and keeps it only in memory. It never
 refreshes or writes the login: when the bearer is expiring, or OpenAI answers
 HTTP 401 and the file still holds the same bearer, one short-lived official
-`codex app-server` refreshes it, exactly as Codex would. No app, adapter or
-codex-anywhere process is borrowed for this, so their restarts no longer decide
-which bearer the router holds. Each GPT request retries once after a 401.
+`codex app-server` refreshes it, exactly as Codex would. Official children run
+one at a time, and a bearer refused again within five minutes of a refresh is
+not refreshed again, so a retrying client cannot spend the shared single-use
+refresh token in a loop; a new login on disk is used at once. No app, adapter or
+codex-anywhere process is borrowed, so their restarts no longer decide which
+bearer the router holds. Each GPT request gets at most one fresh read after a
+401; a second refusal returns HTTP 401 `gpt_login_refused`.
 
-If the retry is refused too, `anyengine doctor` says so plainly: "OpenAI refused
-the GPT login with HTTP 401 on /models at <time> ... run codex login for the
-active account". The router log records `gpt.upstream-rejected` and, once a
-later request succeeds, `gpt.upstream-recovered`. A 401 on the Codex face
+`anyengine doctor` then says so plainly: "OpenAI refused the GPT login with
+HTTP 401 on /models at <time> and no GPT call has succeeded since ... run codex
+login for the active account". The router log records `gpt.upstream-rejected`
+and, once a later request succeeds, `gpt.upstream-recovered`. A 401 on the Codex face
 (`models: HTTP_401` in router health) is the app's own login, which the router
 forwards unchanged; doctor names that case separately.
 

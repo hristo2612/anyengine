@@ -100,7 +100,7 @@ export function createTokenBroker(input: {
   log?: (event: string, fields: Record<string, unknown>) => void
 }): TokenBroker {
   const now = input.now ?? Date.now
-  let rejection: BrokerRejection | null = null
+  let rejection: (BrokerRejection & { generation: number }) | null = null
   let cacheRevision = 0
   let value: Value | null = null
   let inflight: Flight | null = null
@@ -251,13 +251,33 @@ export function createTokenBroker(input: {
 
   return {
     async get(options = {}) {
+      let forced = false
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           if (closed) fail('broker.closed')
-          const force = prepare(options.rejected)
-          if (value) return value.lease
-          const lease = await flight(key(), force)
-          if (!leaseCurrent(lease)) fail('broker.source-changed')
+          const force = prepare(options.rejected) || forced
+          let lease: BrokerLease
+          if (value) lease = value.lease
+          else {
+            lease = await flight(key(), force)
+            if (!leaseCurrent(lease)) fail('broker.source-changed')
+          }
+          // A plain read of the same source (the cache, or another caller's flight
+          // this one joined) can return the bearer just refused: force one fresh
+          // read. A refusal of another source's lease never touches this one.
+          const refused = options.rejected
+          if (
+            !force &&
+            !attempt &&
+            refused?.bearer === lease.bearer &&
+            refused.sourceId === lease.sourceId &&
+            refused.sourceRevision === lease.sourceRevision &&
+            refused.generation === lease.generation
+          ) {
+            drop('broker.source-changed')
+            forced = true
+            continue
+          }
           return lease
         } catch (error) {
           if (
@@ -282,7 +302,12 @@ export function createTokenBroker(input: {
         return
       }
       if (status === 401) {
-        rejection = { at: new Date(now()).toISOString(), endpoint, open: true }
+        rejection = {
+          at: new Date(now()).toISOString(),
+          endpoint,
+          open: true,
+          generation: lease.generation,
+        }
         // The caller retries once with this lease as `rejected`, which forces a fresh read.
         input.log?.('gpt.upstream-rejected', { endpoint, code: 'HTTP_401' })
       } else if (status === 200 && rejection?.open) {
@@ -314,7 +339,11 @@ export function createTokenBroker(input: {
         source: source === null ? 'none' : (source.kind ?? 'adapter'),
         generation: account.generation,
         reason,
-        rejection,
+        // Another account's refusal says nothing about the active login.
+        rejection:
+          rejection?.generation === account.generation
+            ? { at: rejection.at, endpoint: rejection.endpoint, open: rejection.open }
+            : null,
       }
     },
   }

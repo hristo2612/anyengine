@@ -54,11 +54,12 @@ async function setup() {
       return answer()
     },
   }
+  let clock = NOW
   const source = (await load()).createFileAuthSource({
     home,
     generation: 3,
     official,
-    now: () => NOW,
+    now: () => clock,
   })
   const ask = (refreshToken: boolean) =>
     source.request('getAuthStatus', { includeToken: true, refreshToken })
@@ -71,6 +72,9 @@ async function setup() {
     token: (name: string, exp?: number) => bearer(fakeJwt, name, exp),
     official: (next: typeof answer) => {
       answer = next
+    },
+    advance: (ms: number) => {
+      clock += ms
     },
   }
 }
@@ -250,4 +254,83 @@ test('the source refuses anything but a token status request', async () => {
     s.source.request('other' as 'getAuthStatus', { includeToken: true, refreshToken: false }),
     /broker\.source-unavailable/,
   )
+})
+
+test('a bearer refused again soon after an official refresh is not refreshed again', async () => {
+  const { REFRESH_COOLDOWN } = await load()
+  const s = await setup()
+  await s.ask(false)
+  s.official(() => {
+    replaceToken(s.home, s.token('refreshed'))
+    return { authMethod: 'chatgpt', authToken: s.token('refreshed'), requiresOpenaiAuth: true }
+  })
+  assert.equal((await s.ask(true)).authToken, s.token('refreshed'))
+  // OpenAI refuses the refreshed bearer too: a client retrying in a loop
+  // gets the same bearer back and no second refresh within the cooldown.
+  for (let i = 0; i < 5; i++) assert.equal((await s.ask(true)).authToken, s.token('refreshed'))
+  assert.deepEqual(s.calls, [{ refreshToken: true }])
+  // A new login on disk is used at once, cooldown or not.
+  replaceToken(s.home, s.token('relogin'))
+  assert.equal((await s.ask(true)).authToken, s.token('relogin'))
+  assert.equal(s.calls.length, 1)
+  // After the cooldown the official client may refresh again.
+  s.advance(REFRESH_COOLDOWN + 1)
+  s.official(() => ({
+    authMethod: 'chatgpt',
+    authToken: s.token('later'),
+    requiresOpenaiAuth: true,
+  }))
+  assert.equal((await s.ask(true)).authToken, s.token('later'))
+  assert.equal(s.calls.length, 2)
+})
+
+test('a failed official refresh is not retried within the cooldown', async () => {
+  const s = await setup()
+  await s.ask(false)
+  s.official(() => {
+    throw new Error('official refresh failed')
+  })
+  await assert.rejects(s.ask(true), /official refresh failed/)
+  await assert.rejects(s.ask(true), /broker\.source-unavailable/)
+  assert.deepEqual(s.calls, [{ refreshToken: true }])
+})
+
+test('keyring logins share one official refresh and honour the cooldown', async () => {
+  const root = await tempDir('bf-')
+  const home = join(root, 'codex')
+  mkdirSync(home, { mode: 0o700 })
+  const calls: boolean[] = []
+  let release!: () => void
+  const gate = new Promise<void>((done) => {
+    release = done
+  })
+  const source = (await load()).createFileAuthSource({
+    home,
+    generation: 1,
+    official: {
+      status: async (_home: string, _generation: number, refreshToken: boolean) => {
+        calls.push(refreshToken)
+        if (refreshToken) await gate
+        return { authMethod: 'chatgpt', authToken: 'FAKE_KEYRING_BEARER', requiresOpenaiAuth: true }
+      },
+    },
+  })
+  const ask = (refreshToken: boolean) =>
+    source.request('getAuthStatus', { includeToken: true, refreshToken })
+  await ask(false)
+  const both = Promise.all([ask(true), ask(true)])
+  release()
+  await both
+  await ask(true)
+  assert.deepEqual(calls, [false, true])
+})
+
+test('a torn read while Codex rewrites the login is read once more', async () => {
+  const s = await setup()
+  const path = join(s.home, 'auth.json')
+  const whole = readFileSync(path, 'utf8')
+  writeFileSync(path, whole.slice(0, 40), { mode: 0o600 })
+  setTimeout(() => writeFileSync(path, whole, { mode: 0o600 }), 10)
+  const status = await s.ask(false)
+  assert.equal(status.authToken, JSON.parse(whole).tokens.access_token)
 })
