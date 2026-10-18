@@ -25,6 +25,10 @@ semver; while the major version is 0, a minor version may change behavior.
 
 ### Managed updates
 
+- Reobserve postflight readiness during bounded startup checks. A short-lived
+  app transport can become ready or exit before the next observation; persistent
+  failures, frozen-identity drift and an absent adapter family still fail before
+  mandatory work.
 - Report a bounded failure stage when the restricted Claude helper stops, so
   authentication failures are distinguished from acknowledgment failures
   without logging credentials or arbitrary subprocess output.

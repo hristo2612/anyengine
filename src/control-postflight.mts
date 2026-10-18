@@ -32,15 +32,9 @@ import {
   type ProbeObserver,
 } from './smoke-evidence.mjs'
 
-export { realFlipDeps } from './control-postflight-evidence.mjs'
-export type {
-  FrozenIdentity,
-  GateRequest,
-  GateResult,
-  GateTurn,
-  ProbeObserver,
-} from './smoke-evidence.mjs'
-export { classifyCodexProcesses }
+export { classifyCodexProcesses, realFlipDeps } from './control-postflight-evidence.mjs'
+export type { GateTurn } from './smoke-evidence.mjs'
+export type { FrozenIdentity, GateRequest, GateResult, ProbeObserver }
 export interface CheckResult {
   name: string
   ok: boolean
@@ -165,10 +159,11 @@ function noError(error: string | null): void {
 }
 function currentAdapters(o: Observed, input: PostflightInput): ProcessInfo[] {
   noError(o.processError)
-  return o.adapters.filter(
-    (p) => Date.parse(p.processStart) >= Math.floor(input.since.getTime() / 1000) * 1000,
-  )
+  const since = Math.floor(input.since.getTime() / 1000) * 1000
+  return o.adapters.filter((p) => Date.parse(p.processStart) >= since)
 }
+const adapterIdentities = (o: Observed, input: PostflightInput) =>
+  currentAdapters(o, input).map(({ pid, processStart }) => ({ pid, processStart }))
 function checkIdentity(o: Observed, deps: FlipDeps, input: PostflightInput): PostflightSnapshot {
   noError(o.snapshotError)
   const snapshot = requireValue(o.snapshot, 'current snapshot unavailable')
@@ -379,11 +374,8 @@ async function routerHealth(
   )
     throw new Error('router health has no current matching process/library/start identity')
   const fanout = (value.fanout as Record<string, unknown>).path
-  if (
-    currentAdapters(o, input).some(
-      (p) => lastEvent(o.events, /^router\.link$/, p.pid)?.fanout !== fanout,
-    )
-  )
+  const adapters = currentAdapters(o, input)
+  if (adapters.some((p) => lastEvent(o.events, /^router\.link$/, p.pid)?.fanout !== fanout))
     throw new Error('router and adapter fan-out paths disagree')
   return `pid ${value.pid}; verified ${value.version}; mode ${value.mode}; fan-out ${fanout}; zero faults`
 }
@@ -392,8 +384,7 @@ export async function postflight(
   deps: FlipDeps,
   input: PostflightInput,
 ): Promise<CheckResult[]> {
-  const checks: CheckResult[] = []
-  checks.push(await checked('app version', () => appVersion(system, input)))
+  const checks: CheckResult[] = [await checked('app version', () => appVersion(system, input))]
   let observed = observe(system, deps, input)
   let hand = await checked('handshake', () => handshake(observed, input, system.home))
   let gpt = await checked('GPT child', () => child(observed, input))
@@ -435,10 +426,22 @@ export async function postflight(
   checks.push(
     await checked('doctor', async () => {
       if (input.expect === 'vanilla') return 'not required for vanilla'
-      checkIdentity(observed, deps, input)
-      const result = await deps.doctor()
-      if (!result.ok) throw new Error(result.text)
-      return result.text
+      const expected = checkIdentity(observe(system, deps, input), deps, input)
+      const refresh = () => {
+        observed = observe(system, deps, input)
+        const current = checkIdentity(observed, deps, input)
+        if (!sameKey(expected.key, current.key) || expected.bundled !== current.bundled)
+          throw new Error('identity drift during doctor')
+      }
+      // Fresh App transports can precede their child/link events in doctor's snapshot.
+      for (let attempt = 0; ; attempt += 1) {
+        refresh()
+        const result = await deps.doctor()
+        refresh()
+        if (result.ok) return result.text
+        if (attempt === 3) throw new Error(result.text)
+        await system.sleep(2000)
+      }
     }),
   )
   checks.push(
@@ -452,6 +455,8 @@ export async function postflight(
       if (checks.some((check) => !check.ok))
         throw new Error('mandatory gate not run: postflight prerequisites failed')
       const snapshot = checkIdentity(observed, deps, input)
+      if (!currentAdapters(observed, input).length)
+        throw new Error('mandatory gate not run: no restarted adapter remains')
       const request: GateRequest = {
         attempt: randomUUID(),
         root: snapshot.root,
@@ -462,10 +467,7 @@ export async function postflight(
         codeIdentity: requireValue(snapshot.codeIdentity, 'code identity missing'),
         key: { ...snapshot.key },
         mode: snapshot.mode,
-        adapters: currentAdapters(observed, input).map(({ pid, processStart }) => ({
-          pid,
-          processStart,
-        })),
+        adapters: adapterIdentities(observed, input),
       }
       const probes = createProbeObserver(system, request, snapshot.config, () => {
         const fresh = checkIdentity(observe(system, deps, input), deps, input)
@@ -483,9 +485,7 @@ export async function postflight(
         !sameKey(current.key, request.key) ||
         current.codeIdentity !== request.codeIdentity ||
         current.bundled !== snapshot.bundled ||
-        JSON.stringify(
-          currentAdapters(after, input).map(({ pid, processStart }) => ({ pid, processStart })),
-        ) !== JSON.stringify(request.adapters)
+        JSON.stringify(adapterIdentities(after, input)) !== JSON.stringify(request.adapters)
       )
         throw new Error('identity, process family or frozen settings changed during mandatory gate')
       child(after, input)

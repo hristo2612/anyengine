@@ -432,6 +432,13 @@ operator's configuration and must use the interactive PTY. Bridge work requires
 a completed Claude parent and GPT child; native claim evidence is separate.
 Vanilla recovery uses app/process/absence checks and does not claim model acceptance.
 
+On macOS, run the whole update controller from the logged-in GUI session. An
+SSH process can lack Keychain access despite a valid saved Claude login. Check
+OAuth with the configured official CLI in the controller's actual launch context
+before live changes. Preserve the operator's `HOME` and `CLAUDE_CONFIG_DIR`
+selection: explicitly setting even the default folder can select a different
+credential namespace. Keep the mandatory postflight checks unchanged.
+
 ## Smoke
 
 ```bash
