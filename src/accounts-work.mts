@@ -14,6 +14,7 @@ export class AccountWork {
   readonly runtime: AccountParticipant
   private readonly leases = new Map<string, WorkLease>()
   private readonly active = new Set<string>()
+  private readonly starting = new Set<string>()
   private readonly completed = new Set<string>()
   private readonly spawnItems = new Set<string>()
   private readonly finished = new Set<string>()
@@ -44,7 +45,7 @@ export class AccountWork {
     }
     const thread = threadIdOf(asRecord(message.params))
     const key = thread ?? `request:${peer.id}:${message.id}`
-    if (this.leases.has(key)) {
+    if (this.starting.has(key) || this.active.has(key) || this.realtime.has(key)) {
       peer.send({
         jsonrpc: '2.0',
         id: message.id,
@@ -53,7 +54,16 @@ export class AccountWork {
       return false
     }
     try {
-      this.leases.set(key, this.runtime.begin())
+      // Account-rotation protection can outlive a completed turn while another
+      // chat or native child is active. It is not a per-chat busy flag.
+      // Admit afresh so a frozen/retired account still refuses new work, then
+      // replace the retained lease without an unprotected switching window.
+      const lease = this.runtime.begin()
+      const retained = this.leases.get(key)
+      this.leases.set(key, lease)
+      void retained?.release().catch(() => {})
+      this.starting.add(key)
+      this.completed.delete(key)
       if (message.method === 'thread/realtime/start') this.realtime.add(key)
     } catch {
       peer.send({
@@ -75,8 +85,15 @@ export class AccountWork {
           'id' in outgoing &&
           outgoing.id === message.id &&
           ('error' in outgoing || message.method === 'command/exec')
-        )
-          this.release(key)
+        ) {
+          this.starting.delete(key)
+          if (message.method === 'thread/realtime/start') this.realtime.delete(key)
+          if (message.method === 'command/exec') this.release(key)
+          else {
+            this.completed.add(key)
+            this.flushCompleted()
+          }
+        }
         peer.send(outgoing)
       },
     }
@@ -86,6 +103,8 @@ export class AccountWork {
     const params = asRecord(message.params),
       thread = threadIdOf(params)
     if (message.method === 'turn/started' && thread) {
+      this.starting.delete(thread)
+      this.completed.delete(thread)
       this.active.add(thread)
       this.finished.delete(thread)
     }
@@ -94,15 +113,18 @@ export class AccountWork {
       thread &&
       ['turn/completed', 'thread/compacted', 'thread/realtime/closed'].includes(message.method)
     ) {
+      this.starting.delete(thread)
       this.active.delete(thread)
       this.finished.add(thread)
       if (message.method === 'thread/realtime/closed') this.realtime.delete(thread)
       if (!this.realtime.has(thread)) this.completed.add(thread)
     }
-    if (!this.active.size && !this.spawnItems.size) {
-      for (const id of this.completed) this.release(id)
-      this.completed.clear()
-    }
+    this.flushCompleted()
+  }
+  private flushCompleted(): void {
+    if (this.active.size || this.starting.size || this.spawnItems.size) return
+    for (const id of this.completed) this.release(id)
+    this.completed.clear()
   }
   private observeSpawn(method: string, item: Record<string, unknown>): void {
     if (
@@ -121,6 +143,7 @@ export class AccountWork {
   private release(key: string): void {
     const lease = this.leases.get(key)
     this.leases.delete(key)
+    this.starting.delete(key)
     this.realtime.delete(key)
     // SQLite release is synchronous before the returned Promise settles.
     void lease?.release().catch(() => {})

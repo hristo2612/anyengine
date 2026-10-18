@@ -142,3 +142,104 @@ test('retired participants cannot admit work or launch after recovery reopens Ho
     await runtime.close()
   }
 })
+
+test('a completed chat accepts follow-ups while another chat stays active, without leaking rotation leases', async () => {
+  const runtime = new AccountParticipant(await accountFixture(), 'adapter')
+  await runtime.ready
+  const work = new AccountWork(runtime)
+  const peer = { id: 'app', send() {}, close() {} }
+  let id = 0
+  const start = (threadId: string) =>
+    work.admit(peer, {
+      jsonrpc: '2.0',
+      id: ++id,
+      method: 'turn/start',
+      params: { threadId },
+    })
+  const event = (method: string, threadId: string) => work.observe({ method, params: { threadId } })
+  try {
+    assert.notEqual(start('long-running'), false)
+    event('turn/started', 'long-running')
+    for (let turn = 0; turn < 3; turn++) {
+      assert.notEqual(start('finished-chat'), false, 'finished chat can continue')
+      assert.equal(start('finished-chat'), false, 'a pending start still blocks duplicates')
+      event('turn/started', 'finished-chat')
+      assert.equal(start('finished-chat'), false, 'an actual active turn still blocks duplicates')
+      event('turn/completed', 'finished-chat')
+      assert.equal(
+        runtime.ledger.workCount(),
+        2,
+        'one retained lease per chat, never one per reply',
+      )
+    }
+    event('turn/completed', 'long-running')
+    assert.equal(runtime.ledger.workCount(), 0)
+  } finally {
+    await work.close()
+  }
+})
+
+test('a retained completed-chat lease cannot admit a new turn while account switching is frozen', async () => {
+  const runtime = new AccountParticipant(await accountFixture(), 'adapter')
+  await runtime.ready
+  const work = new AccountWork(runtime)
+  const peer = { id: 'app', send() {}, close() {} }
+  const start = (id: number, threadId: string) =>
+    work.admit(peer, {
+      jsonrpc: '2.0',
+      id,
+      method: 'turn/start',
+      params: { threadId },
+    })
+  const owner = accountOwner()
+  try {
+    assert.notEqual(start(1, 'long-running'), false)
+    work.observe({ method: 'turn/started', params: { threadId: 'long-running' } })
+    assert.notEqual(start(2, 'finished-chat'), false)
+    work.observe({ method: 'turn/started', params: { threadId: 'finished-chat' } })
+    work.observe({ method: 'turn/completed', params: { threadId: 'finished-chat' } })
+    runtime.ledger.freeze(owner, 'b', 'manual')
+    assert.equal(start(3, 'finished-chat'), false)
+    assert.equal(runtime.ledger.workCount(), 2)
+    work.observe({ method: 'turn/completed', params: { threadId: 'long-running' } })
+    assert.equal(runtime.ledger.workCount(), 0)
+    runtime.ledger.cancelDrain(owner, () => {})
+  } finally {
+    await work.close()
+  }
+})
+
+for (const method of ['turn/start', 'thread/realtime/start']) {
+  test(`a failed ${method} clears its pending state and preserves rotation protection for other active work`, async () => {
+    const runtime = new AccountParticipant(await accountFixture(), 'adapter')
+    await runtime.ready
+    const work = new AccountWork(runtime)
+    const peer = { id: 'app', send() {}, close() {} }
+    const start = (id: number, threadId: string, startMethod = method) =>
+      work.admit(peer, {
+        jsonrpc: '2.0',
+        id,
+        method: startMethod,
+        params: { threadId },
+      })
+    try {
+      assert.notEqual(start(1, 'long-running', 'turn/start'), false)
+      work.observe({ method: 'turn/started', params: { threadId: 'long-running' } })
+      const failed = start(2, 'retrying')
+      if (!failed) throw new Error('initial admission failed')
+      failed.send({ jsonrpc: '2.0', id: 2, error: { code: -32000, message: 'fixture refusal' } })
+      assert.equal(runtime.ledger.workCount(), 2)
+      assert.notEqual(start(3, 'retrying'), false)
+      assert.equal(runtime.ledger.workCount(), 2)
+      work.observe({ method: 'turn/started', params: { threadId: 'retrying' } })
+      work.observe({
+        method: method === 'thread/realtime/start' ? 'thread/realtime/closed' : 'turn/completed',
+        params: { threadId: 'retrying' },
+      })
+      work.observe({ method: 'turn/completed', params: { threadId: 'long-running' } })
+      assert.equal(runtime.ledger.workCount(), 0)
+    } finally {
+      await work.close()
+    }
+  })
+}
