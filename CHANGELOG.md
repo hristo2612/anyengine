@@ -23,6 +23,15 @@ semver; while the major version is 0, a minor version may change behavior.
   protection, preventing a stale "A managed turn is already running" error.
   Real concurrent starts and account freezes still refuse work.
 
+### Managed updates
+
+- Rehearse Claude settings restoration semantically, preserving later unrelated
+  edits and validating newly retained recovery evidence by path, mode and hash.
+  Node-free journal publication stays inside the confined recovery directory.
+- Cancel an idle wait before Off starts, while allowing interrupted recovery to
+  finish restoring the installation. Staged-update admission is independent of
+  cancellation policy.
+
 ## 0.1.2 (2026-10-17)
 
 First npm release. Install with `npx anyengine-cli@latest setup` (macOS, Node.js

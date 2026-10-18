@@ -60,8 +60,18 @@ function claudeBroadIntent(root,dir,path,hash,mode) {
   var c=l.changes.filter(function(c) { return c.target === l.claudeCode.settingsTarget })[0]
   c.pending={kind:'file',sha:hash,link:null,bytes:name,mode:parseInt(mode,8)}
   f.layers.forEach(function(l) { delete l.isPopped })
+  var target=root+'/state/layers.json', tmp=target+'.claude-off-'+ObjC.unwrap($.NSUUID.UUID.UUIDString)+'.tmp'
+  if (attr(tmp)) fail('Claude intent temporary collision')
   var data=$(JSON.stringify(f)+'\n').dataUsingEncoding($.NSUTF8StringEncoding)
-  if (!data.writeToFileAtomically($(root+'/state/layers.json'),true) || !fm.setAttributesOfItemAtPathError($({NSFilePosixPermissions:384}),$(root+'/state/layers.json'),null)) fail('Claude intent journal')
+  // Foundation's atomic writer uses a replacement directory outside the owned
+  // home. Keep publication on the same filesystem, within the confined parent.
+  if (!data.writeToFileAtomically($(tmp),false) || !fm.setAttributesOfItemAtPathError($({NSFilePosixPermissions:384}),$(tmp),null)) fail('Claude intent journal')
+  var handle=$.NSFileHandle.fileHandleForWritingAtPath($(tmp))
+  if (handle.isNil()) fail('Claude intent sync')
+  handle.synchronizeFile; handle.closeFile
+  var task=$.NSTask.alloc.init
+  task.launchPath='/bin/mv'; task.arguments=$(['-fh',tmp,target]); task.launch; task.waitUntilExit
+  if (Number(task.terminationStatus) !== 0) fail('Claude intent publication')
 }
 `}`
 export const claudeRecoveryShell = `

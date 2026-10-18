@@ -57,24 +57,35 @@ export function down(ctx: FlipContext): void {
   if (ctx.system.appRunning())
     throw new Error('configured app must exit before changing dependencies')
 }
+interface QuietOptions {
+  allowStaged?: boolean
+  recovering?: boolean
+  force?: boolean
+  firstInstall?: boolean
+}
 export async function quiet(
   ctx: FlipContext,
   minutes: number,
-  recovery: boolean,
-  force = false,
-  firstInstall = false,
+  {
+    allowStaged = false,
+    recovering = false,
+    force = false,
+    firstInstall = false,
+  }: QuietOptions = {},
 ): Promise<void> {
   for (let attempt = 0; ; attempt += 1) {
-    if (!recovery) interrupted(ctx)
+    // Off accepts staged updates too, but only recovery must finish under a stop.
+    if (!recovering) interrupted(ctx)
     const check = ctx.deps.preflip(30, { firstInstall })
+    if (!recovering) interrupted(ctx)
     if (check.staged) {
-      if (!recovery) throw new Error(`staged update: ${check.text}`)
+      if (!allowStaged) throw new Error(`staged update: ${check.text}`)
       ctx.say(`staged update expected on the way back: ${check.text}\n`)
     }
     if (
       force ||
       check.quiet ||
-      (recovery &&
+      (allowStaged &&
         check.staged &&
         check.text.includes('preflip-check: not quiet: an app update is staged') &&
         !/preflip-check: (not quiet; wait|cannot tell)/.test(check.text))
@@ -82,7 +93,7 @@ export async function quiet(
       return
     if (attempt >= minutes * 12)
       throw new Error(
-        recovery
+        allowStaged
           ? `app is not quiet: ${check.text}; this waits for a quiet app; run again, or use --force to skip the wait`
           : // --force skips this wait only for off and recovery (control.md); a
             // forward on or restart quits the app, so it always needs quiet.
@@ -332,7 +343,11 @@ export async function rollback(
     ? ['all']
     : [...(upgrade ? ['last-good' as const] : []), 'router', 'all']
   for (const route of routes) {
-    await quiet(ctx, options.waitQuietMinutes, true, options.force)
+    await quiet(ctx, options.waitQuietMinutes, {
+      allowStaged: true,
+      recovering: true,
+      force: options.force,
+    })
     let frozen: FrozenIdentity | undefined
     let expected: Expect = 'vanilla'
     const since = ctx.system.now()

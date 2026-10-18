@@ -28,8 +28,10 @@ import {
   settledState,
   statAt,
   stateAt,
+  stateDiff,
 } from './control-layer-state.mjs'
 import { LayerWriter, readLayers, recoveryPaths, restoreChange } from './control-layers.mjs'
+import { claudeArtifacts, claudeBaseline } from './control-proof-claude.mjs'
 import {
   createScratch,
   type Saved,
@@ -73,16 +75,6 @@ function inventory(home: string): Tree {
     else tree.set(path, JSON.stringify(stateAt(path)))
   }
   return tree
-}
-function stateDiff(
-  path: string,
-  expected: FileState,
-  actual: FileState,
-  home: string,
-): string | null {
-  return sameState(expected, actual)
-    ? null
-    : `${relative(home, path)}: expected ${JSON.stringify(expected)}, observed ${JSON.stringify(actual)}`
 }
 function baseline(s: Scratch, routerOnly: boolean): Map<string, Saved> {
   const expected = new Map(s.targets)
@@ -293,6 +285,9 @@ function retained(
 ): string[] {
   const after = inventory(s.home)
   const { allowed, differences } = cacheBackup(cache, before, after, s.home)
+  const claude = claudeArtifacts(lastGood ? [] : prior, expected, before, after)
+  for (const path of claude.allowed) allowed.add(path)
+  differences.push(...claude.differences)
   const journal = enginePaths(s.root).layers
   const markers = new Set(
     prior
@@ -404,7 +399,10 @@ function onePass(
       for (const [path, value] of initialShared) expected.set(path, value)
     } else expected = upgrade(s)
   }
-  if (!lastGood) sharedBaseline(s, expected)
+  if (!lastGood) {
+    sharedBaseline(s, expected)
+    claudeBaseline(s, expected)
+  }
   const prior = structuredClone(readLayers(s.root).layers)
   const cache = cacheExpected(s, prior, route)
   if (cache.directory) expected.set(cache.path, { state: ABSENT })

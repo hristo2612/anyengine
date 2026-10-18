@@ -171,7 +171,7 @@ export async function runOn(ctx: FlipContext, options: OnOptions): Promise<numbe
     const before = beforeVersion(ctx)
     const other = baselineOther(ctx)
     if (options.noRestart && !options.dryRun) down(ctx)
-    await quiet(ctx, options.waitQuietMinutes, false, false, fresh)
+    await quiet(ctx, options.waitQuietMinutes, { firstInstall: fresh })
     const planned = applyOnFiles(ctx.system, ctx.root, plan, {
       dryRun: true,
       paths: flipPaths(ctx.system),
@@ -194,7 +194,7 @@ export async function runOn(ctx: FlipContext, options: OnOptions): Promise<numbe
       changed = true
     }
     prepareRecovery(ctx, plan.libDir)
-    await quiet(ctx, options.waitQuietMinutes, false, false, fresh)
+    await quiet(ctx, options.waitQuietMinutes, { firstInstall: fresh })
     interrupted(ctx)
     let frozen: FrozenIdentity | undefined
     let expected: Expect = 'router'
@@ -286,12 +286,12 @@ export async function runOff(ctx: FlipContext, options: OffOptions): Promise<num
     const before = beforeVersion(ctx)
     const other = baselineOther(ctx)
     if (options.noRestart) down(ctx)
-    await quiet(ctx, options.waitQuietMinutes, true, options.force)
+    await quiet(ctx, options.waitQuietMinutes, { allowStaged: true, force: options.force })
     interrupted(ctx)
     prepareRecovery(ctx)
     ctx.marker('off-files', { routerOnly: options.routerOnly, appVersionBefore: before })
     // The marker records intent; the owning installer journals ordered restores after quit.
-    await quiet(ctx, options.waitQuietMinutes, true, options.force)
+    await quiet(ctx, options.waitQuietMinutes, { allowStaged: true, force: options.force })
     interrupted(ctx)
     let frozen: FrozenIdentity | undefined
     let expected: Expect = 'vanilla'
@@ -329,11 +329,11 @@ export async function runRestart(ctx: FlipContext, options: RestartOptions): Pro
     const expected = expectation(ctx)
     const other = baselineOther(ctx)
     const frozen = freeze(ctx, expected)
-    await quiet(ctx, options.waitQuietMinutes, false)
+    await quiet(ctx, options.waitQuietMinutes)
     // Like on: preflight stays read-only, so a refusal there leaves no marker.
     ctx.marker('prepare')
     prepareRecovery(ctx)
-    await quiet(ctx, options.waitQuietMinutes, false)
+    await quiet(ctx, options.waitQuietMinutes)
     interrupted(ctx)
     ctx.marker('restart', { appVersionBefore: before })
     const since = ctx.system.now()
@@ -424,7 +424,11 @@ export async function resumeFlip(
       const expected = expectation(ctx)
       const frozen = freeze(ctx, expected)
       const other = baselineOther(ctx)
-      await quiet(ctx, options.waitQuietMinutes, true, options.force)
+      await quiet(ctx, options.waitQuietMinutes, {
+        allowStaged: true,
+        recovering: true,
+        force: options.force,
+      })
       const since = ctx.system.now()
       await windowRun(ctx, false, () =>
         cacheClean(

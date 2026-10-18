@@ -17,7 +17,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative as relativePath, resolve } from 'node:path'
 import { enginePaths } from './anyengine-config.mjs'
 
 export type LayerName = 'adapter' | 'router' | 'claude-code'
@@ -280,4 +280,15 @@ export function prepareDirectory(root: string, dir: string): void {
     mkdirSync(path, { mode: 0o700 })
     syncDirectory(dirname(path))
   }
+}
+
+export function stateDiff(
+  path: string,
+  expected: FileState,
+  actual: FileState,
+  home: string,
+): string | null {
+  return sameState(expected, actual)
+    ? null
+    : `${relativePath(home, path)}: expected ${JSON.stringify(expected)}, observed ${JSON.stringify(actual)}`
 }
