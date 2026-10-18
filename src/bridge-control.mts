@@ -8,7 +8,9 @@ import {
   assertChildCanEnforceReads,
   prepareChildSend,
   resolveBridgeCaller,
+  resolveBridgeRequestCaller,
   stringArg,
+  uniqueName,
 } from './bridge-input.mjs'
 import { providerFor, resolveModelAlias } from './bridge-instructions.mjs'
 import { SpawnLineage } from './bridge-lineage.mjs'
@@ -17,6 +19,7 @@ import type { Route } from './codex-mux.mjs'
 import { mcpServerRecord } from './mcp.mjs'
 import { modelPrompt } from './model-prompt.mjs'
 import { childStart, type Posture, toCodexThreadStart, toCodexTurn } from './posture.mjs'
+import { asRecord, idOf } from './rpc-shape.mjs'
 import type { JsonRpcResponse, RpcPeer, ThreadItem, WireMessage } from './types.mjs'
 import { nicknameFor, SUBAGENT_START_PARAM, type SubagentStart } from './upstream-subagents.mjs'
 import { debugLog, ensureParent, newId } from './util.mjs'
@@ -417,6 +420,7 @@ class BridgeConnection {
         message.id as JsonRpcResponse['id'],
         message.method,
         message.params,
+        message.callerThreadId,
       )
     })
   }
@@ -441,28 +445,30 @@ class BridgeConnection {
     id: JsonRpcResponse['id'],
     method: string,
     params: unknown,
+    requestCaller: unknown,
   ): Promise<void> {
     const args = asRecord(params)
     try {
+      const callerId = resolveBridgeRequestCaller(this.host, this.callerThreadId, requestCaller)
       let result: unknown
       switch (method) {
         case 'bridge/models':
           result = { models: await this.listModels(true) }
           break
         case 'bridge/spawnSession':
-          result = await this.spawnSession(args)
+          result = await this.spawnSession(args, callerId)
           break
         case 'bridge/spawnSubagents':
-          result = await this.spawnSubagents(args)
+          result = await this.spawnSubagents(args, callerId)
           break
         case 'bridge/send':
-          result = await this.sendToSession(args)
+          result = await this.sendToSession(args, callerId)
           break
         case 'bridge/wait':
           result = await this.waitSession(args)
           break
         case 'bridge/exec':
-          result = await runBridgeExec(resolveBridgeCaller(this.host, this.callerThreadId), args)
+          result = await runBridgeExec(resolveBridgeCaller(this.host, callerId), args)
           break
         default:
           throw new Error(`unknown bridge method: ${method}`)
@@ -509,10 +515,13 @@ class BridgeConnection {
     return resolveModelAlias(wanted, models)
   }
 
-  private async spawnSession(args: Record<string, unknown>): Promise<unknown> {
+  private async spawnSession(
+    args: Record<string, unknown>,
+    callerId: string | null,
+  ): Promise<unknown> {
     const model = await this.resolveModel(args.model)
     const prompt = stringArg(args.prompt, 'prompt')
-    const caller = resolveBridgeCaller(this.host, this.callerThreadId)
+    const caller = resolveBridgeCaller(this.host, callerId)
     const { posture, cwd } = childStart(caller, args.cwd)
     const threadId = await this.startChild(model, cwd, posture, caller?.id ?? null)
     debugLog('bridge.spawnSession', { callerThreadId: this.callerThreadId, threadId, model, cwd })
@@ -524,10 +533,13 @@ class BridgeConnection {
     return { ...outcome, model, cwd }
   }
 
-  private async sendToSession(args: Record<string, unknown>): Promise<unknown> {
+  private async sendToSession(
+    args: Record<string, unknown>,
+    callerId: string | null,
+  ): Promise<unknown> {
     const threadId = stringArg(args.threadId, 'threadId')
     const prompt = stringArg(args.prompt, 'prompt')
-    const caller = resolveBridgeCaller(this.host, this.callerThreadId)
+    const caller = resolveBridgeCaller(this.host, callerId)
     prepareChildSend(this.host, this.control.lineage, caller, threadId)
     return this.runTurn(threadId, prompt, args.wait !== false, timeoutArg(args))
   }
@@ -590,10 +602,13 @@ class BridgeConnection {
     return this.control.waitTurn(tracker, timeoutMs)
   }
 
-  private async spawnSubagents(args: Record<string, unknown>): Promise<unknown> {
+  private async spawnSubagents(
+    args: Record<string, unknown>,
+    callerId: string | null,
+  ): Promise<unknown> {
     const tasks = Array.isArray(args.tasks) ? args.tasks.map((task) => asRecord(task)) : []
     if (tasks.length === 0) throw new Error('tasks must be a non-empty array')
-    const caller = resolveBridgeCaller(this.host, this.callerThreadId)
+    const caller = resolveBridgeCaller(this.host, callerId)
     const named = typeof args.parentThreadId === 'string' ? args.parentThreadId : null
     if (named && caller && named !== caller.id)
       throw new Error(`parentThreadId ${named} is not the calling thread ${caller.id}`)
@@ -863,25 +878,7 @@ function trackerText(tracker: TurnTracker): string {
   return tracker.deltas
 }
 
-function uniqueName(name: string, used: Set<string>): string {
-  let candidate = name
-  let n = 2
-  while (used.has(candidate)) candidate = `${name}-${n++}`
-  used.add(candidate)
-  return candidate
-}
-
 function timeoutArg(args: Record<string, unknown>): number {
   const value = Number(args.timeoutMs)
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_WAIT_TIMEOUT_MS
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-}
-
-function idOf(record: Record<string, unknown>): string | null {
-  return typeof record.id === 'string' && record.id.length > 0 ? record.id : null
 }

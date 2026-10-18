@@ -2,7 +2,8 @@ import { isClaudeModelId } from './codex-models.mjs'
 import { isGrokModel } from './grok-acp.mjs'
 import type { Posture } from './posture.mjs'
 import { routerServesClaude } from './router-link.mjs'
-import { asRecord, idOf } from './rpc-shape.mjs'
+import { asRecord, idOf, threadIdOf } from './rpc-shape.mjs'
+import type { WireMessage } from './types.mjs'
 import { isCodexOpenAiModel, textFromInput } from './util.mjs'
 
 // Mid-thread engine switching ("re-homing").
@@ -185,6 +186,19 @@ export function rewriteThreadIds<T>(value: T, from: string, to: string): T {
     return input
   }
   return walk(value) as T
+}
+
+// Child -> desktop: an aliased thread id becomes the one the app knows.
+export function toAppThreadIds<T extends WireMessage>(
+  message: T,
+  appIdByUpstream: ReadonlyMap<string, string>,
+): T {
+  if (appIdByUpstream.size === 0) return message
+  const params = asRecord((message as { params?: unknown }).params)
+  const upstreamId = threadIdOf(params) ?? idOf(asRecord(params.thread))
+  if (!upstreamId) return message
+  const appId = appIdByUpstream.get(upstreamId)
+  return appId ? rewriteThreadIds(message, upstreamId, appId) : message
 }
 
 // Local turns record seconds, the child's may record milliseconds. Normalize

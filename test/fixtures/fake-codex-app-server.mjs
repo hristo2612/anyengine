@@ -109,7 +109,11 @@ const spawnedChildren = new Map()
 // Threads started here, newest last, for FAKE_CODEX_LIST_STARTED.
 const started = []
 // threadId -> turns in the shape `thread/read` returns them.
-const threadTurns = new Map()
+const threadTurns = new Map(
+  process.env.FAKE_CODEX_HISTORY_INPUT
+    ? Object.entries(JSON.parse(readFileSync(process.env.FAKE_CODEX_HISTORY_INPUT, 'utf8')))
+    : [],
+)
 // threadId -> raw Responses items handed over by thread/inject_items.
 const injectedItems = new Map()
 // threadId -> the `input` array of every turn/start, newest last.
@@ -523,8 +527,28 @@ async function handleRequest(message) {
       respond(id, {})
       notify('thread/deleted', { threadId: params.threadId })
       return
+    case 'thread/turns/list': {
+      if (!process.env.FAKE_CODEX_HISTORY_INPUT) return respond(id, { fake: true, method, params })
+      let data = [...(threadTurns.get(params.threadId) ?? [])]
+      if (params.sortDirection === 'desc') data.reverse()
+      const start = Number(params.cursor ?? 0)
+      const limit = params.limit ?? 100
+      const end = Math.min(data.length, start + limit)
+      data = data
+        .slice(start, end)
+        .map((turn) =>
+          params.itemsView === 'notLoaded' ? { ...turn, items: [], itemsView: 'notLoaded' } : turn,
+        )
+      return respond(id, {
+        data,
+        nextCursor: end < (threadTurns.get(params.threadId) ?? []).length ? String(end) : null,
+        backwardsCursor: start > 0 ? String(Math.max(0, start - limit)) : null,
+      })
+    }
     case 'thread/read': {
       const target = params.threadId
+      if (process.env.FAKE_CODEX_HISTORY_INPUT && params.includeTurns === true)
+        return fail(id, -32600, 'paginated history requires turns/list')
       if (deletedThreads.has(target)) return fail(id, -32600, 'thread not found')
       if (++nextRead === 1 && process.env.FAKE_CODEX_HOLD_FIRST_READ) {
         while (!existsSync(process.env.FAKE_CODEX_HOLD_FIRST_READ))
@@ -556,6 +580,7 @@ async function handleRequest(message) {
         fake: true,
         thread: thread(target, {
           ...lineage,
+          ...(process.env.FAKE_CODEX_HISTORY_INPUT ? { historyMode: 'paginated' } : {}),
           model: threadModels.get(target) ?? lineage.model ?? 'gpt-5.6-sol',
           cwd: threadCwds.get(target) ?? threadCwds.get(lineage.parentThreadId) ?? process.cwd(),
           turns: params.includeTurns ? (threadTurns.get(target) ?? []) : [],

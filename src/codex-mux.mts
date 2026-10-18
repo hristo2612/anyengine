@@ -12,13 +12,12 @@ import { upstreamThreadInfoFrom } from './claude-project-guard.mjs'
 import { mergeLoadedThreads, readThreadSides } from './codex-history.mjs'
 import {
   INSTRUCTION_LIFECYCLE_METHODS,
-  LOCAL_GLOBAL_METHODS,
   MERGED_METHODS,
   MODEL_CHANGE_METHODS,
   ModelReadOwnership,
   POSTURE_METHODS,
   routedTurnModel,
-  routeThreadStart,
+  routeRequest,
   type UpstreamThreadInfo,
   upstreamModelsFrom,
 } from './codex-models.mjs'
@@ -43,6 +42,7 @@ import {
   type RehomeAdoption,
   rehomeCwd,
   rewriteThreadIds,
+  toAppThreadIds,
   transcriptEntriesFromTurns,
 } from './rehome.mjs'
 import { ReserveModelsProbe } from './reserve.mjs'
@@ -249,7 +249,7 @@ export class NativeCodexMux {
     if (!('method' in incoming) || !incoming.method) return
     const accepted = this.continuity ? this.continuity.filter(incoming) : incoming
     if (!accepted || !('method' in accepted) || !accepted.method) return
-    const message = this.subagents.present(this.toAppThreadIds(accepted))
+    const message = this.subagents.present(toAppThreadIds(accepted, this.appIdByUpstream))
     this.accountWork?.observe(message)
     this.replay?.observe(message)
     const params = asRecord(message.params)
@@ -372,13 +372,15 @@ export class NativeCodexMux {
       else peer.send({ jsonrpc: '2.0', id: request.id, result: plan.answer })
       return true
     }
-    const route = this.routeRequest(method, params)
+    const route = routeRequest(method, params, (id) => this.ownerOf(id))
     debugLog('codex.mux.route', { method, id: request.id, route, threadId: threadIdOf(params) })
     if (route === 'local') return false
     const threadId = threadIdOf(params)
     if (threadId) this.peerByThread.set(threadId, peer)
     if (threadId && POSTURE_METHODS.has(method)) this.notePosture(threadId, params)
     const outgoing = this.forUpstream(request, threadId)
+    if (await this.subagents.replyToRead(outgoing.peer(peer), outgoing.request, this.upstream))
+      return true
     if (await this.continuity?.forward(outgoing.peer(peer), outgoing.request, threadId)) return true
     if (INSTRUCTION_LIFECYCLE_METHODS.has(method)) {
       this.forwardThreadLifecycle(
@@ -443,14 +445,6 @@ export class NativeCodexMux {
         close: () => peer.close(),
       }),
     }
-  }
-
-  private routeRequest(method: string, params: Record<string, unknown>): Route {
-    if (LOCAL_GLOBAL_METHODS.has(method)) return 'local'
-    if (method === 'thread/start') return routeThreadStart(params)
-    const threadId = threadIdOf(params)
-    if (threadId) return this.ownerOf(threadId)
-    return 'upstream'
   }
 
   private ownerOf(threadId: string): Route {
@@ -1018,7 +1012,9 @@ export class NativeCodexMux {
       peer.send({
         jsonrpc: '2.0',
         id: request.id,
-        result: { thread: { ...base, id: threadId, turns: sides.turns } },
+        result: this.store.bridgeHistory.projectRead(threadId, {
+          thread: { ...base, id: threadId, turns: sides.turns },
+        }),
       })
       return true
     } catch (error) {
@@ -1040,16 +1036,6 @@ export class NativeCodexMux {
     if (!upstreamId || upstreamId === record.id) return
     this.upstreamIdByApp.set(record.id, upstreamId)
     this.appIdByUpstream.set(upstreamId, record.id)
-  }
-
-  // Child -> desktop: an aliased thread id becomes the one the app knows.
-  private toAppThreadIds<T extends WireMessage>(message: T): T {
-    if (this.appIdByUpstream.size === 0) return message
-    const params = asRecord((message as { params?: unknown }).params)
-    const upstreamId = threadIdOf(params) ?? idOf(asRecord(params.thread))
-    if (!upstreamId) return message
-    const appId = this.appIdByUpstream.get(upstreamId)
-    return appId ? rewriteThreadIds(message, upstreamId, appId) : message
   }
 
   private failRequest(peer: RpcPeer, id: JsonRpcRequest['id'], message: string): void {

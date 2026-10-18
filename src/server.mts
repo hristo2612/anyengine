@@ -550,9 +550,7 @@ export class CodexClaudeAppServer {
     return { threadId: id, agentNickname, agentPath: `/root/${agentNickname}` }
   }
 
-  // Parent-side collab items for a bridge sub-agent. Persisted when the
-  // parent's turn lives in our store (a local parent); a child-owned (gpt-*)
-  // parent only gets the live notifications.
+  // Local turns own their items; native parents use the adapter's bridge overlay.
   private emitBridgeParentItem(
     parentThreadId: string,
     turnId: string,
@@ -561,6 +559,7 @@ export class CodexClaudeAppServer {
   ): void {
     const turn = this.store.getTurn(turnId)
     const persist = turn != null && turn.threadId === parentThreadId
+    if (!persist) this.store.bridgeHistory.record(parentThreadId, turnId, item, phase)
     const peer = this.appPeerFor(parentThreadId)
     const params = { threadId: parentThreadId, turnId, item }
     if (phase === 'begin' && persist) this.store.appendItem(turnId, item)

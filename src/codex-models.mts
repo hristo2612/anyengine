@@ -4,7 +4,7 @@ import type { Route } from './codex-mux.mjs'
 import type { CodexUpstream } from './codex-upstream.mjs'
 import { applyCodexParams, claimPosture, type Posture, postureContext } from './posture.mjs'
 import { routerServesClaude } from './router-link.mjs'
-import { asRecord } from './rpc-shape.mjs'
+import { asRecord, threadIdOf } from './rpc-shape.mjs'
 import { claudeModelOptions, isCodexOpenAiModel } from './util.mjs'
 
 export const MERGED_METHODS = new Set([
@@ -123,4 +123,16 @@ export function routeThreadStart(params: Record<string, unknown>): Route {
   }
   if (provider === 'claude-code' && !isClaudeModelId(model)) return 'local'
   return routeForModel(model)
+}
+
+export function routeRequest(
+  method: string,
+  params: Record<string, unknown>,
+  ownerOf: (id: string) => Route,
+): Route {
+  if (LOCAL_GLOBAL_METHODS.has(method)) return 'local'
+  if (method === 'thread/start') return routeThreadStart(params)
+  const threadId = threadIdOf(params)
+  if (threadId) return ownerOf(threadId)
+  return 'upstream'
 }

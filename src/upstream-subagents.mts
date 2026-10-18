@@ -1,6 +1,8 @@
+import { readNativeThread } from './codex-history.mjs'
+import type { CodexUpstream } from './codex-upstream.mjs'
 import { subagentDepth } from './server-views.mjs'
 import type { SessionStore } from './store.mjs'
-import type { JsonRpcRequest, WireMessage } from './types.mjs'
+import type { JsonRpcRequest, RpcPeer, WireMessage } from './types.mjs'
 import { debugLog, nowSeconds } from './util.mjs'
 
 // Bridge sub-agents that live on the real Codex child (docs/guide/bridge.md).
@@ -102,6 +104,34 @@ export class UpstreamSubagents {
 
   get(threadId: string): UpstreamSubagent | null {
     return this.records.get(threadId) ?? null
+  }
+
+  async replyToRead(
+    peer: RpcPeer,
+    request: JsonRpcRequest,
+    upstream: CodexUpstream,
+  ): Promise<boolean> {
+    if (await this.store.bridgeHistory.replyToRead(peer, request, upstream)) return true
+    if (request.method !== 'thread/read') return false
+    const result = await this.readThread(asRecord(request.params), (method, params) =>
+      upstream.request(method, params),
+    )
+    if (!result) return false
+    peer.send({ jsonrpc: '2.0', id: request.id, result })
+    return true
+  }
+
+  // The desktop opens children with includeTurns:false and can leave that
+  // empty history marked loaded. Local children already hydrate this read;
+  // native children need the same treatment, including paginated persistence.
+  // Read through vendor RPCs: never interpret or copy private rollout records.
+  async readThread(
+    params: Record<string, unknown>,
+    read: (method: string, params: Record<string, unknown>) => Promise<unknown>,
+  ): Promise<unknown | null> {
+    const id = typeof params.threadId === 'string' ? params.threadId : ''
+    if (!this.records.has(id)) return null
+    return readNativeThread(params, read)
   }
 
   forget(threadId: string): void {

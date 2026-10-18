@@ -3,6 +3,26 @@
 All notable changes to `anyengine-cli` are summarized here. Versions follow
 semver; while the major version is 0, a minor version may change behavior.
 
+## Unreleased
+
+### Cross-engine subagents
+
+- Preserve Codex's per-call MCP caller identity when several chats are active.
+  Claude children inherit their actual parent's permissions, working directory
+  and lineage. Follow-up messages use the same caller identity. Invalid or
+  mismatched identities are refused; model-authored parent IDs grant no access.
+
+- Hydrate linked native Codex child transcripts on metadata-only opens, including
+  paginated persisted histories. Reopening no longer depends on replaying live
+  deltas. Persist native parents' bridge navigation items in the adapter and
+  project them into history reads, preserving links to saved Claude replies
+  across restarts without modifying native rollouts.
+
+- A completed chat accepts its next turn while another chat or native child
+  remains active. Per-chat busy state is separate from account-switching
+  protection, preventing a stale "A managed turn is already running" error.
+  Real concurrent starts and account freezes still refuse work.
+
 ## 0.1.2 (2026-10-17)
 
 First npm release. Install with `npx anyengine-cli@latest setup` (macOS, Node.js

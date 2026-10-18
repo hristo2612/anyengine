@@ -56,3 +56,27 @@ export function resolveBridgeCaller(
   }
   return null
 }
+
+// A shared Codex MCP process carries identity per call. Fixed Claude/Grok
+// bridges remain bound to their original thread, including concurrent calls.
+export function resolveBridgeRequestCaller(
+  host: Pick<BridgeHost, 'threadInfo'>,
+  fixed: string | null,
+  value: unknown,
+): string | null {
+  if (value == null) return fixed
+  if (typeof value !== 'string' || !value.trim()) throw new Error('Invalid bridge caller identity')
+  if (fixed && value !== fixed)
+    throw new Error('Bridge caller identity does not match this connection')
+  if (!host.threadInfo(value))
+    throw new Error('Unknown bridge caller identity; child control needs a known calling thread')
+  return value
+}
+
+export function uniqueName(name: string, used: Set<string>): string {
+  let candidate = name
+  let n = 2
+  while (used.has(candidate)) candidate = `${name}-${n++}`
+  used.add(candidate)
+  return candidate
+}

@@ -167,8 +167,10 @@ The adapter builds the server spec once per thread:
   to the child's argv (after the desktop's own `-c` globals) and puts the two
   variables in the child's environment; the token never appears in argv.
   Codex spawns one bridge per process, so there is no thread id: the adapter
-  uses the single thread with a turn in flight, or `parentThreadId` when
-  given. `tool_timeout_sec` is raised because Codex defaults MCP calls to 60 s.
+  uses Codex's per-call `tools/call` `_meta.threadId` to preserve caller
+  identity across parallel turns. Older clients fall back to the single thread
+  with a turn in flight; an explicit `parentThreadId` only supplies a lineage
+  link and never grants that named thread's permissions. `tool_timeout_sec` is raised because Codex defaults MCP calls to 60 s.
 
 Picking a Claude or Grok model in the app no longer writes it to
 `~/.codex/config.toml`. AnyEngine keeps that pick in
@@ -212,10 +214,11 @@ node scripts/smoke-bridge.mjs natural  # the two natural-language prompts above,
 - A gpt-* **child** thread is linked by the adapter, not by the real
   app-server: its own rollout still says `source: vscode`, so a codex TUI
   opening that rollout directly sees a plain thread.
-- Parent-side collab items for a gpt-* **parent** are live notifications
-  only: the child's rollout does not persist them.
-- The caller of a GPT thread is inferred on each call; two GPT turns calling
-  the bridge at once need `parentThreadId`, and their children then get the
-  default posture.
+- Parent-side bridge collab items for a gpt-* **parent** persist in the adapter
+  database and replay through adapter history reads. Native rollouts remain
+  unchanged; older live-only items cannot be reconstructed automatically.
+- Older MCP clients without per-call thread metadata still require a uniquely
+  active caller to inherit permissions. An unresolved caller gets the
+  conservative default; naming another thread never grants its permissions.
 - Turn text is collected from `item/completed agentMessage` (fallback: the
   deltas); tool output of the spawned thread is not returned.

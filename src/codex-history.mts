@@ -67,3 +67,44 @@ export async function mergeLoadedThreads(
   ].filter((id): id is string => typeof id === 'string')
   return { ...(a ?? b ?? {}), data: [...new Set(present(ids))] }
 }
+
+export async function readNativeThread(
+  params: Record<string, unknown>,
+  read: (method: string, params: Record<string, unknown>) => Promise<unknown>,
+): Promise<unknown> {
+  const id = typeof params.threadId === 'string' ? params.threadId : ''
+  const response = asRecord(await read('thread/read', { ...params, includeTurns: false }))
+  const thread = asRecord(response.thread)
+  if (thread.id !== id) throw new Error('Sub-agent history returned a different thread')
+  if (thread.historyMode !== 'paginated') {
+    const full = asRecord(await read('thread/read', { ...params, includeTurns: true }))
+    const loaded = asRecord(full.thread)
+    if (loaded.id !== id || !Array.isArray(loaded.turns))
+      throw new Error('Invalid sub-agent history')
+    return full
+  }
+  const turns: unknown[] = []
+  const cursors = new Set<string>()
+  let cursor: string | null = null
+  do {
+    const page = asRecord(
+      await read('thread/turns/list', {
+        threadId: id,
+        cursor,
+        limit: 100,
+        sortDirection: 'asc',
+        itemsView: 'full',
+      }),
+    )
+    if (!Array.isArray(page.data)) throw new Error('Invalid sub-agent history page')
+    turns.push(...page.data)
+    const next = page.nextCursor
+    if (next != null && typeof next !== 'string')
+      throw new Error('Invalid sub-agent history cursor')
+    cursor = typeof next === 'string' && next ? next : null
+    if (cursor && (cursors.has(cursor) || cursors.size >= 1000))
+      throw new Error('Sub-agent history pagination did not finish')
+    if (cursor) cursors.add(cursor)
+  } while (cursor)
+  return { ...response, thread: { ...thread, turns } }
+}

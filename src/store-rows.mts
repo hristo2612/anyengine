@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 // Stored rows as records (`threads`, `turns`, `thread_engines`), and a
 // request's posture applied to a thread row. Kept out of store.mts so the
 // store stays under its size baseline as columns are added.
@@ -110,4 +111,13 @@ export function threadEngineFromRow(row: any): ThreadEngineRecord {
 // Guard direct store callers as well as the usual postureFields boundary.
 export function postureJson(posture: Posture | null | undefined): string | null {
   return posture ? JSON.stringify(durablePosture(posture)) : null
+}
+
+const require = createRequire(import.meta.url)
+
+type DatabaseSync = any
+
+export function openDatabase(path: string): DatabaseSync {
+  const sqlite = require('node:sqlite') as { DatabaseSync: new (filename: string) => DatabaseSync }
+  return new sqlite.DatabaseSync(path)
 }

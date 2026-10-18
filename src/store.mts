@@ -1,7 +1,13 @@
 import { mkdirSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { join } from 'node:path'
-import { postureJson, threadEngineFromRow, threadFromRow, turnFromRow } from './store-rows.mjs'
+import { BridgeHistory } from './bridge-history.mjs'
+import {
+  openDatabase,
+  postureJson,
+  threadEngineFromRow,
+  threadFromRow,
+  turnFromRow,
+} from './store-rows.mjs'
 import type {
   ThreadEngineRecord,
   ThreadItem,
@@ -12,22 +18,15 @@ import type {
 } from './types.mjs'
 import { adapterHome, jsonClone, nowSeconds } from './util.mjs'
 
-const require = createRequire(import.meta.url)
-
-type DatabaseSync = any
-
-function openDatabase(path: string): DatabaseSync {
-  const sqlite = require('node:sqlite') as { DatabaseSync: new (filename: string) => DatabaseSync }
-  return new sqlite.DatabaseSync(path)
-}
-
 export class SessionStore {
-  private db: DatabaseSync
+  private db: any
+  readonly bridgeHistory: BridgeHistory
 
   constructor(path = join(adapterHome(), 'state.sqlite')) {
     mkdirSync(adapterHome(), { recursive: true, mode: 0o700 })
     this.db = openDatabase(path)
     this.migrate()
+    this.bridgeHistory = new BridgeHistory(this.db)
   }
 
   private migrate(): void {
@@ -181,6 +180,7 @@ export class SessionStore {
 
   deleteNativeCodexThread(threadId: string): void {
     this.db.prepare('DELETE FROM native_codex_threads WHERE id = ?').run(threadId)
+    this.bridgeHistory.deleteThread(threadId)
   }
 
   setNativeCodexSubagent(threadId: string, json: string): void {

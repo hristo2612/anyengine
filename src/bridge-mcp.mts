@@ -16,7 +16,8 @@ import { MODEL_ALIAS_TABLE } from './bridge-instructions.mjs'
 // control socket (src/bridge-control.mts) for the actual work. The calling
 // thread is passed by the runtime that spawned the engine in
 // ANYENGINE_BRIDGE_THREAD; when absent (the codex child runs one bridge per
-// process) the adapter infers it from the single thread with a turn in flight.
+// process), Codex supplies tools/call _meta.threadId for each call. Older
+// clients fall back to the single thread with a turn in flight.
 
 const PROTOCOL_VERSIONS = new Set(['2024-11-05', '2025-03-26', '2025-06-18'])
 const LATEST_PROTOCOL = '2025-06-18'
@@ -185,7 +186,12 @@ export class BridgeClient {
     return this.socketPath.length > 0 && this.token.length > 0
   }
 
-  async call(method: string, params: unknown, timeoutMs: number): Promise<unknown> {
+  async call(
+    method: string,
+    params: unknown,
+    timeoutMs: number,
+    callerThreadId: string | null = null,
+  ): Promise<unknown> {
     const ws = await this.connect()
     const id = `m${++this.nextId}`
     return new Promise((resolve, reject) => {
@@ -204,7 +210,7 @@ export class BridgeClient {
           reject(error)
         },
       })
-      ws.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
+      ws.send(JSON.stringify({ jsonrpc: '2.0', id, method, params, callerThreadId }))
     })
   }
 
@@ -354,7 +360,8 @@ async function callTool(client: BridgeClient, params: Json): Promise<unknown> {
   const waitMs = Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_WAIT_TIMEOUT_MS
   try {
     // The adapter enforces the wait; this cap only catches a dead socket.
-    const result = asRecord(await client.call(method, args, waitMs + 30_000))
+    const callerThreadId = mcpCallerThreadId(params, client.threadId)
+    const result = asRecord(await client.call(method, args, waitMs + 30_000, callerThreadId))
     return {
       content: [{ type: 'text', text: renderResult(name, result) }],
       structuredContent: result,
@@ -403,4 +410,18 @@ export function renderResult(tool: string, result: Json): string {
 
 function asRecord(value: unknown): Json {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Json) : {}
+}
+
+// Transport metadata belongs to the MCP client, never the model-authored arguments.
+export function mcpCallerThreadId(params: Json, fixed: string | null): string | null {
+  if (!Object.hasOwn(params, '_meta')) return fixed
+  if (params._meta == null || typeof params._meta !== 'object' || Array.isArray(params._meta))
+    throw new Error('Invalid MCP caller metadata container')
+  const meta = asRecord(params._meta)
+  if (meta.threadId === undefined) return fixed
+  if (typeof meta.threadId !== 'string' || !meta.threadId.trim())
+    throw new Error('Invalid MCP caller thread metadata')
+  if (fixed && fixed !== meta.threadId)
+    throw new Error('MCP caller thread metadata does not match this bridge')
+  return meta.threadId
 }
