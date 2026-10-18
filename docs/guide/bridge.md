@@ -112,8 +112,10 @@ into the protocol layer under a **bridge peer**, so:
   the calling thread), so the adapter hands both to the child itself (on the
   row of a Claude or Grok child, beside what a GPT child reports). A child
   never takes a baseline of its own, so Claude config written during the
-  session is not loaded by the Claude children started after it. When the caller is unknown the
-  child gets the default: read-only, asking before anything leaves it;
+  session is not loaded by the Claude children started after it. With no active
+  caller and no supplied identity, the legacy path uses the default: read-only,
+  asking before anything leaves it. Multiple active chats without caller
+  metadata refuse rather than guessing a posture;
 - a `cwd` the model passes is resolved against the caller's. When the
   caller can write (workspace-write or an external sandbox), it must be the
   caller's own cwd or one of its explicit writable roots, matched by real
@@ -124,12 +126,15 @@ into the protocol layer under a **bridge peer**, so:
 - `parentThreadId` must name the calling thread when the bridge knows it.
   When it does not, the named thread only links the children, which get the
   default posture, never the named thread's;
-- `send_to_session` runs the turn under the target thread's own posture,
-  which may be looser than the caller's. So the adapter remembers which
-  thread started each child (in memory: after an adapter restart a continue
-  is refused until the caller spawns again) and refuses a send from any other
-  thread, unless the caller is unrestricted (full access, not planning, not
-  under `untrusted`). A caller the bridge cannot identify is refused.
+- `send_to_session` retains the tighter of the child's existing posture and
+  the caller's current posture on every follow-up. Tightening the parent applies
+  to its next child turn; loosening the parent does not loosen the child. A
+  projected writable cwd must still be one of the caller's current roots.
+  The adapter remembers which thread started each child (in memory: after an
+  adapter restart a continue is refused until the caller spawns again) and
+  refuses a send from any other thread, unless the caller is unrestricted
+  (full access, not planning, not under `untrusted`). A caller the bridge
+  cannot identify is refused.
 
 Sub-agents mirror what the Task tool path emits: `collabAgentToolCall
 spawnAgent` → `subAgentActivity started` → `wait` on the parent's active turn,
@@ -169,8 +174,9 @@ The adapter builds the server spec once per thread:
   Codex spawns one bridge per process, so there is no thread id: the adapter
   uses Codex's per-call `tools/call` `_meta.threadId` to preserve caller
   identity across parallel turns. Older clients fall back to the single thread
-  with a turn in flight; an explicit `parentThreadId` only supplies a lineage
-  link and never grants that named thread's permissions. `tool_timeout_sec` is raised because Codex defaults MCP calls to 60 s.
+  with a turn in flight; multiple active chats without metadata refuse. An
+  explicit `parentThreadId` only supplies a lineage link and never grants that
+  named thread's permissions. `tool_timeout_sec` is raised because Codex defaults MCP calls to 60 s.
 
 Picking a Claude or Grok model in the app no longer writes it to
 `~/.codex/config.toml`. AnyEngine keeps that pick in

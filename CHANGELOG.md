@@ -11,6 +11,10 @@ semver; while the major version is 0, a minor version may change behavior.
   Claude children inherit their actual parent's permissions, working directory
   and lineage. Follow-up messages use the same caller identity. Invalid or
   mismatched identities are refused; model-authored parent IDs grant no access.
+  Older clients without caller metadata refuse ambiguous active chats rather
+  than assuming default permissions. Follow-ups retain the tighter of the
+  child's existing limits and the parent's current limits, including plan,
+  approval, trust, network and write roots.
 
 - Hydrate linked native Codex child transcripts on metadata-only opens, including
   paginated persisted histories. Reopening no longer depends on replaying live

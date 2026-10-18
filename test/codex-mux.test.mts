@@ -1078,7 +1078,14 @@ test("mid-thread switch: the desktop's own signal is thread/settings/update, not
       input: [text('and again')],
     })
     assert.ok(upstream.result?.turn?.id)
-    await client.waitFor((m) => m.method === 'turn/completed' && m.params?.threadId === threadId)
+    // Earlier local completions are still buffered. Wait for this upstream turn
+    // so the fake has finished writing its state before readState opens the file.
+    await client.waitFor(
+      (m) =>
+        m.method === 'turn/completed' &&
+        m.params?.threadId === threadId &&
+        m.params?.turn?.id === upstream.result.turn.id,
+    )
     const state = await readState(home)
     assert.match(JSON.stringify(state.injected['fake-thread-1']), /remember the codeword BANANA/)
 

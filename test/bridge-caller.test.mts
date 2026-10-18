@@ -95,6 +95,28 @@ test('shared bridge keeps concurrent callers and follow-ups under their own perm
   const fixed = new BridgeClient({ ...env, ANYENGINE_BRIDGE_THREAD: 'restricted' })
   await control.start()
   try {
+    // Older clients without per-call identity must not borrow a default from
+    // either of two active chats, even when neither restricts reads.
+    for (const posture of [
+      restricted.posture,
+      { ...restricted.posture, plan: true },
+      { ...restricted.posture, approval: 'untrusted' as const },
+      { ...restricted.posture, trust: 'untrusted' as const },
+    ]) {
+      threads.set(restricted.id, { ...restricted, posture })
+      for (const [method, args] of [
+        ['bridge/spawnSession', { model: 'gpt-test', prompt: 'x', wait: false }],
+        [
+          'bridge/spawnSubagents',
+          { tasks: [{ model: 'gpt-test', prompt: 'x' }], parentThreadId: full.id },
+        ],
+        ['bridge/exec', { command: 'must not execute' }],
+      ] as const)
+        await assert.rejects(client.call(method, args, 5000), /multiple active threads/)
+      assert.equal(starts.length, 0)
+      assert.equal(sent.length, 0)
+    }
+    threads.set(restricted.id, restricted)
     const [a, b] = (await Promise.all([
       client.call(
         'bridge/spawnSession',

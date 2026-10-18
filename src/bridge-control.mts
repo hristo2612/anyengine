@@ -540,8 +540,8 @@ class BridgeConnection {
     const threadId = stringArg(args.threadId, 'threadId')
     const prompt = stringArg(args.prompt, 'prompt')
     const caller = resolveBridgeCaller(this.host, callerId)
-    prepareChildSend(this.host, this.control.lineage, caller, threadId)
-    return this.runTurn(threadId, prompt, args.wait !== false, timeoutArg(args))
+    const bound = prepareChildSend(this.host, this.control.lineage, caller, threadId)
+    return this.runTurn(threadId, prompt, args.wait !== false, timeoutArg(args), toCodexTurn(bound))
   }
 
   private async waitSession(args: Record<string, unknown>): Promise<unknown> {

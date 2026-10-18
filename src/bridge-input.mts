@@ -1,7 +1,9 @@
 import type { BridgeHost, BridgeThreadInfo } from './bridge-control.mjs'
 import type { SpawnLineage } from './bridge-lineage.mjs'
-import type { Posture } from './posture.mjs'
+import { inheritFromCaller } from './claude-project-guard.mjs'
+import { childStart, claimPosture, type Posture, postureContext } from './posture.mjs'
 import { engineForModel } from './rehome.mjs'
+import { durablePosture, withLocalReadRestrictions } from './requirements-reads.mjs'
 
 export function stringArg(value: unknown, name: string): string {
   if (typeof value !== 'string' || value.length === 0) throw new Error(`${name} is required`)
@@ -30,15 +32,27 @@ export function prepareChildSend(
   lineage: SpawnLineage,
   caller: BridgeThreadInfo | null,
   threadId: string,
-): void {
+): Posture {
   lineage.assertMayDrive(caller, threadId)
+  if (!caller) throw new Error('Calling thread unknown; child control refused')
   const target = host.threadInfo(threadId)
   if (!target) throw new Error(`unknown thread: ${threadId}`)
-  if (!caller?.posture.readRestricted) return
-  assertChildCanEnforceReads(host, caller.posture, target.model)
-  // A child may predate its caller's restriction. Tighten before starting the
-  // next turn; Claude's spawn key then removes reads from any warm PTY too.
-  host.inheritFromCaller(threadId, caller.posture)
+  const cwd = target.cwd ?? caller.cwd ?? process.cwd()
+  // Compare durable permissions first: the live read overlay can otherwise
+  // hide write differences, then disappear at the persistence boundary.
+  const parent = durablePosture(caller.posture)
+  const bounded = claimPosture(durablePosture(target.posture), parent, postureContext(cwd))
+  const posture = withLocalReadRestrictions(inheritFromCaller(bounded, parent))
+  // Workspace/external permissions include the turn's own cwd. A parent
+  // tightened since spawning must still own that root, not accidentally grant
+  // a different child's cwd by projecting its new posture there.
+  if (posture.fileSystem.kind === 'workspace-write' || posture.fileSystem.kind === 'external')
+    childStart(caller, cwd)
+  assertChildCanEnforceReads(host, posture, target.model)
+  // Preserve private trust/read/baseline fields before the public turn params
+  // apply the complete tightened posture to either the local or native child.
+  host.inheritFromCaller(threadId, posture)
+  return posture
 }
 
 export function resolveBridgeCaller(
@@ -47,13 +61,22 @@ export function resolveBridgeCaller(
 ): BridgeThreadInfo | null {
   const named = callerId ? host.threadInfo(callerId) : null
   if (named) return named
+  if (callerId) throw new Error('Unknown bridge caller identity; child control refused')
   const active = [...new Set(host.activeThreadIds())]
-  if (!callerId && active.length === 1) return host.threadInfo(active[0] ?? '')
+  if (active.length === 1) {
+    const only = host.threadInfo(active[0] ?? '')
+    if (!only) throw new Error('Calling thread unknown; child control refused')
+    return only
+  }
   if (active.some((id) => host.threadInfo(id)?.posture.readRestricted)) {
     throw new Error(
       'Calling thread unknown while an active thread restricts reads; child control refused.',
     )
   }
+  if (active.length > 1)
+    throw new Error(
+      'Calling thread unknown among multiple active threads; client caller metadata is required.',
+    )
   return null
 }
 
