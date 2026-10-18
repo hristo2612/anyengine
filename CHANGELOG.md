@@ -25,6 +25,12 @@ semver; while the major version is 0, a minor version may change behavior.
 
 ### Managed updates
 
+- Report a bounded failure stage when the restricted Claude helper stops, so
+  authentication failures are distinguished from acknowledgment failures
+  without logging credentials or arbitrary subprocess output.
+- Recover a failed update from any journal-validated generation in both Node and
+  Node-free recovery, including mixed initial and immediate last-good states.
+  Unrecorded edits still retain recovery evidence and refuse replacement.
 - Rehearse Claude settings restoration semantically, preserving later unrelated
   edits and validating newly retained recovery evidence by path, mode and hash.
   Node-free journal publication stays inside the confined recovery directory.

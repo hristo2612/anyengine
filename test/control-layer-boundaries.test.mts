@@ -9,6 +9,7 @@ import {
   readlinkSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
@@ -400,3 +401,53 @@ test('journal: valid empty POPPED stays supported for logical reads and explicit
   assert.equal(existsSync(path), false)
   assert.equal(readFileSync(marker).length, 0)
 })
+
+for (const kind of ['file', 'symlink', 'absent'] as const) {
+  test(`upgrade: full recovery accepts a restored last-good ${kind} without checkpoint retirement`, async () => {
+    const home = await tempDir('anyengine-cascade-')
+    const root = join(home, '.anyengine')
+    const target = join(home, 'target')
+    if (kind === 'symlink') symlinkSync('initial', target)
+    else if (kind === 'file') writeFileSync(target, 'initial', { mode: 0o640 })
+    const writer = new LayerWriter(root, null, 'router', STAMP)
+    const set = (value: string, mode: number) => {
+      if (kind === 'symlink') writer.writeSymlink(target, value)
+      else writer.writeFile(target, value, mode)
+    }
+    set('good', 0o600)
+    writer.beginUpgrade()
+    set('next', 0o644)
+    const layer = readLayers(root).layers[0]
+    assert.ok(layer?.changes[0])
+    const change = layer.changes[0]
+    assert.equal(restoreChange(change, layer.rollbackDir, false, 'last-good').outcome, 'restored')
+    assert.ok(layer.upgrade, 'a failed verification has not retired the checkpoint')
+
+    if (kind === 'symlink') {
+      unlinkSync(target)
+      symlinkSync('operator', target)
+    } else writeFileSync(target, 'operator')
+    assert.equal(restoreChange(change, layer.rollbackDir, false).outcome, 'left-changed')
+    if (kind === 'symlink') {
+      assert.equal(readlinkSync(target), 'operator')
+      unlinkSync(target)
+      symlinkSync('good', target)
+    } else {
+      assert.equal(readFileSync(target, 'utf8'), 'operator')
+      writeFileSync(target, 'good')
+    }
+    assert.equal(restoreChange(change, layer.rollbackDir, false).outcome, 'restored')
+    if (kind === 'symlink') assert.equal(readlinkSync(target), 'initial')
+    else if (kind === 'absent') assert.equal(existsSync(target), false)
+    else {
+      assert.equal(readFileSync(target, 'utf8'), 'initial')
+      assert.equal(lstatSync(target).mode & 0o777, 0o640)
+    }
+    assert.equal(restoreChange(change, layer.rollbackDir, false, 'last-good').outcome, 'restored')
+    if (kind === 'symlink') assert.equal(readlinkSync(target), 'good')
+    else {
+      assert.equal(readFileSync(target, 'utf8'), 'good')
+      assert.equal(lstatSync(target).mode & 0o777, 0o600)
+    }
+  })
+}

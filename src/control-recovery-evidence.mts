@@ -172,7 +172,8 @@ function plan(root, selector, baseline) {
         return
       }
       var base = baseline === 'last-good' ? c.lastGood : before(c)
-      var states = [settled(c), c.pending || settled(c), c.lastGood || settled(c)]
+      var other = baseline === 'last-good' ? before(c) : c.lastGood || settled(c)
+      var states = [settled(c), c.pending || settled(c), other]
       out += call('restore',[c.target,/\/(\.zshrc|\.bash_profile)$/.test(c.target) ? 'rc' : claude ? 'claude' : 'file'].concat(args(base,dir),args(states[0],dir),args(states[1],dir),args(states[2],dir)))
       if (/\/(\.zshrc|\.bash_profile)$/.test(c.target)) out += '[ "$RC_OK" = 1 ] || RC_BLOCKED=1\n'
     })

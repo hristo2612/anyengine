@@ -92,7 +92,12 @@ export function restoreChange(
   if (!before) throw new Error('missing last-good recovery baseline')
   const current = stateAt(change.target)
   if (sameState(current, before)) return { outcome: 'already', detail: 'already as before' }
-  const states = [settledState(change), ...(change.pending ? [change.pending] : [])]
+  const states = [
+    beforeState(change),
+    settledState(change),
+    ...(change.pending ? [change.pending] : []),
+    ...(change.lastGood ? [change.lastGood] : []),
+  ]
   if (states.some((state) => sameState(current, state))) {
     restoreState(change.target, before, rollbackDir)
     return { outcome: 'restored', detail: 'restored recorded baseline' }

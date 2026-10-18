@@ -141,15 +141,28 @@ type RestrictedResult = Pick<
   GateTurn,
   'sessionId' | 'responseId' | 'exitCode' | 'oauth' | 'model' | 'completedAt' | 'success' | 'status'
 >
+const RESTRICTED_STAGES = [
+  'before-ack',
+  'configuration',
+  'oauth-before',
+  'turn',
+  'oauth-after',
+  'terminal',
+  'after-ack',
+] as const
+type RestrictedStage = (typeof RESTRICTED_STAGES)[number]
 export async function restrictedTurn(
   root: string,
   project: string,
   signal: AbortSignal,
+  stage?: (value: RestrictedStage) => void,
 ): Promise<RestrictedResult> {
+  stage?.('configuration')
   const config = configAt(root)
   const model = config.claude.models.find((model) => model.id === config.smoke.claudeModel)
   if (!model || !config.claude.cli) throw new Error('restricted CLI/model not configured')
   const env = trampolineEnv()
+  stage?.('oauth-before')
   const before = observeOAuth(config.claude.cli, env)
   const sink = new RestrictedSink()
   const stream = new ResponsesStream(sink, { model: model.id })
@@ -159,6 +172,7 @@ export async function restrictedTurn(
     events.push({ event, ...fields })
   }
   stream.begin()
+  stage?.('turn')
   await runTrampolineTurn({
     stream,
     parsed: {
@@ -186,8 +200,10 @@ export async function restrictedTurn(
     signal,
     ownedHelperGroup: true,
   })
+  stage?.('oauth-after')
   const after = observeOAuth(config.claude.cli, trampolineEnv())
   if (!sameOAuth(before, after)) throw new Error('restricted OAuth/executable/home drifted')
+  stage?.('terminal')
   const done = events.filter((e) => e.event === 'trampoline.done' && e.turnId === stream.id)
   const response = sink.completed
   const session = done[0]?.sessionId
@@ -220,6 +236,16 @@ function phase(value: unknown, attempt: string, expected: string): Record<string
   )
     throw new Error('invalid/replayed restricted helper phase')
   return value
+}
+function helperFailure(value: unknown, attempt: string): string | null {
+  if (!object(value) || value.phase !== 'failure') return null
+  if (
+    Object.keys(value).sort().join(',') !== 'attempt,phase,stage' ||
+    value.attempt !== attempt ||
+    !RESTRICTED_STAGES.some((stage) => stage === value.stage)
+  )
+    throw new Error('invalid restricted helper failure')
+  return String(value.stage)
 }
 function restrictedResult(value: unknown): RestrictedResult {
   if (
@@ -265,6 +291,8 @@ export async function runRestrictedProbe(ctx: PathContext, timeoutMs = 150_000):
   const close = new Promise<number | null>((done) => child.once('close', done))
   const onMessage = (value: unknown) => {
     try {
+      const stage = helperFailure(value, ctx.request.attempt)
+      if (stage) throw new Error(`restricted helper failed at ${stage}`)
       const message = phase(value, ctx.request.attempt, expected)
       if (expected === 'before') {
         if (message.result !== undefined) throw new Error('unexpected helper result')
@@ -369,10 +397,29 @@ async function restrictedMain(): Promise<void> {
       process.send!({ attempt, phase: name, ...(result ? { result } : {}) })
       if (abort.signal.aborted) cancel()
     })
+  let stage: RestrictedStage = 'before-ack'
   try {
     await acknowledge('before')
-    const result = await restrictedTurn(root, project, abort.signal)
+    const result = await restrictedTurn(root, project, abort.signal, (value) => {
+      stage = value
+    })
+    stage = 'after-ack'
     await acknowledge('after', result)
+  } catch (error) {
+    if (process.connected)
+      await new Promise<void>((done) => {
+        const timer = setTimeout(done, 1000)
+        const finish = () => {
+          clearTimeout(timer)
+          done()
+        }
+        try {
+          process.send?.({ attempt, phase: 'failure', stage }, finish)
+        } catch {
+          finish()
+        }
+      })
+    throw error
   } finally {
     abort.abort()
     process.off('disconnect', stop)
