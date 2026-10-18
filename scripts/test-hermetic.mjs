@@ -4,7 +4,9 @@
 // real ~/.codex, ~/.claude or ~/.anyengine, and never find a real `codex`,
 // `claude` or `grok` on PATH (docs/quality.md, "Hermetic tests").
 //
-// Usage: node scripts/test-hermetic.mjs [--coverage] [dist/test/<suite>.mjs ...]
+// Usage: node scripts/test-hermetic.mjs [--coverage] [--test-concurrency=N]
+//        [dist/test/<suite>.mjs ...]
+// Defaults to four file workers; use two for coverage on a busy host.
 //   default suites: every dist/test/*.mjs (run `npm run build` first)
 //
 // ANYENGINE_HOME is deliberately NOT set: tests give each adapter its own
@@ -28,7 +30,21 @@ import { findStrays, listAnyengine } from './hermetic-strays.mjs'
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
 const coverage = args.includes('--coverage')
-const named = args.filter((arg) => arg !== '--coverage')
+const workerFlags = args.filter((arg) => arg.startsWith('--test-concurrency='))
+const workers = workerFlags[0]?.slice('--test-concurrency='.length) ?? '4'
+if (
+  workerFlags.length > 1 ||
+  !/^[1-9]\d*$/.test(workers) ||
+  !Number.isSafeInteger(Number(workers))
+) {
+  console.error('test-hermetic: --test-concurrency requires one positive safe integer')
+  process.exit(2)
+}
+const named = args.filter((arg) => arg !== '--coverage' && !arg.startsWith('--test-concurrency='))
+if (named.some((arg) => arg.startsWith('-'))) {
+  console.error('test-hermetic: expected --coverage, --test-concurrency=N or suite paths')
+  process.exit(2)
+}
 const suites =
   named.length > 0
     ? named
@@ -77,11 +93,13 @@ writeFileSync(refuse, '#!/bin/sh\necho "refused in tests: $0 $*" >&2\nexit 1\n',
 
 const QUIET = '--disable-warning=ExperimentalWarning'
 
-// Inherited settings that would reach a real engine or a real account.
+// Prefer env -i HOME=... PATH=... for release runs. Ordinary npm test also
+// drops credential-bearing names and SSH/GPG agent channels before spawning.
 const DROPPED = /^(ANYENGINE_|CLAUDE_CODEX_|CODEX_|CLAUDE_|ANTHROPIC_|OPENAI_|XAI_|GROK_|GIT_)/
+const CREDENTIALS = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|COOKIE|AUTHORIZATION|^(SSH_|GPG_|GNUPG)/i
 const env = {}
 for (const [key, value] of Object.entries(process.env)) {
-  if (value !== undefined && !DROPPED.test(key)) env[key] = value
+  if (value !== undefined && !DROPPED.test(key) && !CREDENTIALS.test(key)) env[key] = value
 }
 Object.assign(env, {
   HOME: home,
@@ -118,6 +136,7 @@ Object.assign(env, {
 const nodeArgs = [
   QUIET,
   '--test',
+  `--test-concurrency=${workers}`,
   '--test-timeout=180000',
   '--test-reporter=spec',
   '--test-reporter-destination=stdout',
@@ -129,6 +148,8 @@ if (coverage) {
     '--test-coverage-lines=80.7',
   )
 }
+
+console.log(`test-hermetic: ${suites.length} suites, concurrency ${workers}`)
 
 const result = spawnSync(process.execPath, [...nodeArgs, ...suites], {
   cwd: repo,

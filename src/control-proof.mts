@@ -7,14 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { enginePaths } from './anyengine-config.mjs'
 import { insertTopLevelLine, topLevelKeys } from './codex-config-toml.mjs'
 import { inspectModelsCache } from './control-cache.mjs'
-import {
-  applyOffFiles,
-  applyOnFiles,
-  applySharedConfig,
-  finishOff,
-  type InstallPaths,
-  type OnPlan,
-} from './control-install.mjs'
+import { applyOffFiles, finishOff, type InstallPaths, type OnPlan } from './control-install.mjs'
 import { configAt, pickAt, readText } from './control-install-on.mjs'
 import { jobLoaded, loadJob, plistPath, unloadJob } from './control-launchd.mjs'
 import {
@@ -32,6 +25,7 @@ import {
 } from './control-layer-state.mjs'
 import { LayerWriter, readLayers, recoveryPaths, restoreChange } from './control-layers.mjs'
 import { claudeArtifacts, claudeBaseline } from './control-proof-claude.mjs'
+import { install, upgrade } from './control-proof-install.mjs'
 import {
   createScratch,
   type Saved,
@@ -116,29 +110,6 @@ function sharedBaseline(s: Scratch, expected: Map<string, Saved>): void {
         : ABSENT,
     })
   }
-}
-function install(s: Scratch, plan = s.plan): void {
-  const result = applyOnFiles(s.system, s.root, plan, { dryRun: false, paths: s.paths })
-  if (result.refused) throw new Error(result.refused)
-  for (const path of [...result.wrote, ...result.unchanged])
-    if (!s.targets.has(path)) s.targets.set(path, { state: ABSENT })
-  const shared = applySharedConfig(s.system, s.root, plan, { dryRun: false, paths: s.paths })
-  for (const path of shared.wrote) if (!s.targets.has(path)) s.targets.set(path, { state: ABSENT })
-}
-function upgrade(s: Scratch): Map<string, Saved> {
-  const before = new Map([...s.targets.keys()].map((path) => [path, saved(path)]))
-  const plan = {
-    ...s.plan,
-    version: `${s.plan.version}-proof-upgrade`,
-    libDir: `${s.plan.libDir}-proof-upgrade`,
-    stamp: `${s.plan.stamp}-upgrade`,
-  }
-  mkdirSync(plan.libDir, { recursive: true })
-  const result = applyOnFiles(s.system, s.root, plan, { dryRun: false, paths: s.paths })
-  if (result.refused) throw new Error(result.refused)
-  for (const path of [...result.wrote, ...result.unchanged])
-    if (!before.has(path)) before.set(path, { state: ABSENT })
-  return before
 }
 function recoverLastGood(s: Scratch): void {
   const layer = readLayers(s.root).layers.find((layer) => layer.name === 'router')

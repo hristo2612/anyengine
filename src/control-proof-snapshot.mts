@@ -28,8 +28,10 @@ import {
   stateAt,
 } from './control-layer-state.mjs'
 import { readLayers, writeLayers } from './control-layers.mjs'
+import { publishScratchRecovery, relocated } from './control-proof-relocation.mjs'
 import { rcPath } from './control-rc.mjs'
-import { publishRecovery, shellQuote } from './control-scripts.mjs'
+import { assertNoRecoveryPublication } from './control-recovery-publication.mjs'
+import { shellQuote } from './control-scripts.mjs'
 import { readStatusKnownGood, readStatusSmoke } from './control-status-evidence.mjs'
 import type { ExecResult, System } from './control-system.mjs'
 import { realSystem } from './control-system.mjs'
@@ -138,6 +140,7 @@ export function sourceSnapshot(
     plan.launcherSource,
   ])
     admitRead(path)
+  assertNoRecoveryPublication(root)
   // Strict readers run before copying anything. Physical POPPED/pending evidence is authority too.
   readLayers(root)
   const journal = (jsonAt(enginePaths(root).layers) ?? { version: 1, layers: [] }) as LayerFile
@@ -218,43 +221,6 @@ export interface Scratch extends ReturnType<typeof relocated> {
   plan: OnPlan
   system: System
   targets: Map<string, Saved>
-}
-function relocated(source: SourceSnapshot, home: string) {
-  const pairs = new Map<string, string>([
-    [source.home, home],
-    [source.root, join(home, '.anyengine')],
-    [source.paths.codexHome, join(home, '.codex')],
-    [source.plan.app, join(home, 'Applications/Proof.app')],
-    [source.plan.node, join(home, '.proof-tools/node')],
-  ])
-  if (source.plan.claudeCli) pairs.set(source.plan.claudeCli, join(home, '.proof-tools/claude'))
-  if (!source.paths.pickFile.startsWith(`${source.paths.codexHome}/`))
-    pairs.set(source.paths.pickFile, join(home, '.proof-pick/app-model-pick.json'))
-  for (const path of [source.plan.libDir, ...(source.journal.recovery?.pinnedLibs ?? [])])
-    if (![...pairs.keys()].some((p) => path === p || path.startsWith(`${p}/`)))
-      pairs.set(path, join(home, '.proof-references', digest(Buffer.from(path)).slice(0, 16)))
-  const map = (path: string): string => {
-    if (!isAbsolute(path) || resolve(path) !== path)
-      throw new Error(`invalid relocation path: ${path}`)
-    const match = [...pairs]
-      .sort(([a], [b]) => b.length - a.length)
-      .find(([from]) => path === from || path.startsWith(`${from}/`))
-    if (!match) throw new Error(`unowned absolute target cannot be relocated: ${path}`)
-    return `${match[1]}${path.slice(match[0].length)}`
-  }
-  const transform = (bytes: Buffer): Buffer => {
-    // File data remains opaque unless it is valid text containing a relocated reference.
-    let text: string
-    try {
-      text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)
-    } catch {
-      return bytes
-    }
-    for (const [from, to] of [...pairs].sort(([a], [b]) => b.length - a.length))
-      text = text.replaceAll(from, to)
-    return Buffer.from(text)
-  }
-  return { map, transform }
 }
 function moveState(
   state: FileState,
@@ -489,7 +455,7 @@ export function createScratch(source: SourceSnapshot, home: string): Scratch {
       if (!change) throw new Error(`job ownership has no recorded plist: ${label}`)
       if (settledState(change).kind !== 'absent') writeFileSync(join(tools.jobDir, label), '')
     }
-  publishRecovery({
+  publishScratchRecovery(scratch, {
     root: scratch.root,
     app: plan.app,
     bundleId: plan.bundleId,

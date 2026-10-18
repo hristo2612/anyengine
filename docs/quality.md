@@ -116,6 +116,19 @@ homes; other-shell cases override it explicitly. `test/hermetic.test.mts` fails
 any run that is not set up this way. A test run once wrote into the live debug
 log; this is the gate that stops it happening again.
 
+Test files run in separate processes with at most four workers by default.
+Set `--test-concurrency=N` on the hermetic runner to choose a positive worker
+count. On a busy host, run coverage with two workers after the build:
+
+```sh
+node scripts/test-hermetic.mjs --coverage --test-concurrency=2
+```
+
+The runner keeps the default suite list when only options are supplied.
+Concurrency belongs on this command; Node 24 does not admit this flag in
+`NODE_OPTIONS`. Limiting file workers leaves production probe deadlines, the
+coverage floor, process isolation and cleanup checks unchanged.
+
 The runner also points TMPDIR into the throwaway directory and fails a run
 that leaves anything there, or that adds `anyengine-*` entries to the real temp
 directory: make temp directories with `tempDir()` from `test/helpers/tmp.mts`

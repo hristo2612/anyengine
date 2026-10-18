@@ -404,6 +404,7 @@ function usage(code: number): never {
   anyengine app-server proxy [--sock PATH]
   anyengine selfcheck [--deep]
   anyengine router
+  anyengine claude [--native | --routed] [-- CLAUDE_ARGS...] (native for this command only)
   anyengine desktop chatgpt on|off|restart|status|doctor
   anyengine desktop claude picker|tools|sessions <command>
   anyengine desktop --help

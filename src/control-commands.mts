@@ -8,6 +8,7 @@ import { basename, join } from 'node:path'
 import { readConfig } from './anyengine-config.mjs'
 import { runCodexRemote } from './codex-remote.mjs'
 import { accountsCommand, limitsCommand } from './control-accounts.mjs'
+import { claudeLaunchCommand } from './control-claude-launch.mjs'
 import { type UpdateCapture, verifyClaudeCodeUpdate } from './control-claude-update.mjs'
 import { registerCommand } from './control-cli.mjs'
 import { desktopCommand } from './control-desktop.mjs'
@@ -38,6 +39,7 @@ registerCommand('accounts', accountsCommand)
 registerCommand('limits', limitsCommand)
 registerCommand('sessions', sessionsCommand)
 registerCommand('desktop', desktopCommand)
+registerCommand('claude', claudeLaunchCommand)
 registerCommand('rollback', async (args, system, root, say) => {
   if (
     !['m2', 'm3'].includes(args[0] ?? '') ||

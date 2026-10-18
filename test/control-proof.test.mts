@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -13,6 +14,8 @@ import { DEFAULT_CONFIG, writeJsonAtomic } from '../src/anyengine-config.mjs'
 import { applyOnFiles, applySharedConfig } from '../src/control-install.mjs'
 import { LayerWriter, readLayers } from '../src/control-layers.mjs'
 import { proveRollback } from '../src/control-proof.mjs'
+import { createScratch, sourceSnapshot } from '../src/control-proof-snapshot.mjs'
+import { publicationPath } from '../src/control-recovery-publication.mjs'
 import { shellQuote } from '../src/control-scripts.mjs'
 import { fakeSystem } from './helpers/fake-system.mjs'
 import { strictJobs } from './helpers/flip-deps.mjs'
@@ -300,4 +303,23 @@ test('failed Bash recovery reaps its exact owned background family before scratc
   assert.ok(children.length >= 3)
   for (const pid of children) assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' })
   assert.deepEqual(readdirSync(scratchParent), [])
+})
+
+test('current recovery publication attribution stays inside the relocated proof home', async () => {
+  const home = await m0Home()
+  const system = fakeSystem(home)
+  strictJobs(system)
+  const root = join(home, '.anyengine')
+  const plan = fakeLib(home)
+  applyOnFiles(system, root, plan, { dryRun: false, paths: pathsFor(home) })
+  const source = sourceSnapshot(system, root, plan, pathsFor(home))
+  const scratchHome = join(await tempDir('proof-publisher-'), 'scratch')
+  const sourceAuthority = readFileSync(join(root, 'state/layers.json'))
+  const scratch = createScratch(source, scratchHome)
+  assert.deepEqual(readFileSync(join(root, 'state/layers.json')), sourceAuthority)
+  assert.equal(existsSync(publicationPath(scratch.root)), false)
+  const recovery = readLayers(scratch.root).recovery
+  assert.ok(recovery)
+  for (const pin of [recovery.controlLib, ...recovery.pinnedLibs])
+    assert.ok(pin.startsWith(`${scratchHome}/`), `unrelocated recovery pin: ${pin}`)
 })

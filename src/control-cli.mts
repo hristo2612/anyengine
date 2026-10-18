@@ -29,6 +29,7 @@ export const CONTROL_COMMANDS: ReadonlySet<string> = new Set([
   'cache',
   'smoke',
   'codex',
+  'claude',
   'accounts',
   'limits',
   'sessions',
@@ -39,6 +40,7 @@ const USAGE = `usage: anyengine <command>
   mode [codex-claude agent|model]
   config [get KEY | set KEY VALUE]
   cache clean [--dry-run]
+  claude [--native | --routed] [-- CLAUDE_ARGS...] (native for this command only)
   rollback m2 [--no-restart]
   accounts add|list|use|rotate|recover
   limits [--json] [--refresh]

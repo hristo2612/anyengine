@@ -2,7 +2,8 @@
 // A script consumes the current journal, so an interrupted next publication is
 // recoverable through the previously published private entry.
 import { mkdirSync } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { claudeRecoveryJxa, claudeRecoveryShell } from './control-claude-recovery.mjs'
 import {
   absolute,
@@ -21,6 +22,10 @@ import {
 } from './control-m2-upgrade.mjs'
 import { recoveryEvidence } from './control-recovery-evidence.mjs'
 import { recoveryLifecycle } from './control-recovery-lifecycle.mjs'
+import {
+  beginRecoveryPublication,
+  inspectRecoveryPublication,
+} from './control-recovery-publication.mjs'
 import { recoveryShell } from './control-recovery-shell.mjs'
 import { recoveryText } from './control-recovery-text.mjs'
 
@@ -192,12 +197,15 @@ function prepare(path: string): void {
 }
 // Invoke once before the first writer, then synchronously in every OnRecord.
 // LayerWriter already durably published intent; throws here prevent its write.
-// Task24 owns immutable control/lib pin collection in LayerFile.recovery.
+// Attribute replacement ahead of its first rename; settlement keeps every
+// previous pin and retains an immutable receipt of the completed intent.
 export function publishRecovery(options: RecoveryOptions): void {
   const file = readLayers(options.root)
   const script = offScript(file.layers, options)
   const paths = recoveryPaths(options.root)
   prepare(paths.directory)
+  const controlLib = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+  const pending = beginRecoveryPublication(options.root, controlLib, Buffer.from(script), options)
   const publish = (target: string, bytes: Buffer, mode: number) => {
     const settle = recordM2RecoveryIntent(
       options.root,
@@ -223,6 +231,19 @@ export function publishRecovery(options: RecoveryOptions): void {
       Buffer.from(rollbackScript(layer, options)),
       0o700,
     )
-  if (file.layers[0])
-    recordM2ControlChanges(options.root, file.layers[0], 'checkpoint', activeUpgrade(options.root))
+  const checkpoint = () => {
+    if (file.layers[0])
+      recordM2ControlChanges(
+        options.root,
+        file.layers[0],
+        'checkpoint',
+        activeUpgrade(options.root),
+      )
+  }
+  if (pending) {
+    const publication = inspectRecoveryPublication(options.root)
+    if (!publication || publication.controlLib !== controlLib)
+      throw new Error('recovery publication was not installed; preserve evidence')
+    publication.settle(checkpoint)
+  } else checkpoint()
 }

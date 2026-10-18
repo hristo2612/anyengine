@@ -145,8 +145,9 @@ export async function bootstrapAccounts(
   if (
     db.prepare('SELECT 1 FROM account_bootstrap WHERE version=? AND completed>0').get(input.version)
   ) {
-    const errors = verifyOverlay(paths, ledger.registry())
-    if (errors.length) throw new Error(errors.join('; '))
+    // The native app can add shared state without changing its CLI version.
+    // Link new canonical entries; existing conflicts and auth stay guarded.
+    prepareOverlay(paths, ledger.registry())
     return
   }
   const owner = accountOwner()

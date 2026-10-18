@@ -9,7 +9,6 @@ import { executingLib, flipPaths } from './control-flip-options.mjs'
 import { applyOffFiles, finishOff, restoreSharedConfig, retireOff } from './control-install.mjs'
 import { configAt } from './control-install-on.mjs'
 import { loadJob, plistPath, unloadJob } from './control-launchd.mjs'
-import { regularBytes } from './control-layer-state.mjs'
 import type { Layer } from './control-layers.mjs'
 import {
   LayerWriter,
@@ -33,7 +32,9 @@ import {
   postflight,
 } from './control-postflight.mjs'
 import { validateSnapshot } from './control-postflight-evidence.mjs'
-import { offScript, publishRecovery, shellQuote } from './control-scripts.mjs'
+import { assertNoRecoveryPublication } from './control-recovery-publication.mjs'
+import { settleTerminalRecovery, validateRetainedRecovery } from './control-recovery-validation.mjs'
+import { publishRecovery, shellQuote } from './control-scripts.mjs'
 import { processOwnership, type System } from './control-system.mjs'
 
 export interface Stop {
@@ -116,26 +117,29 @@ export function recoveryNotice(ctx: FlipContext): void {
 }
 export function prepareRecovery(ctx: FlipContext, selected?: string): void {
   const { root, system } = ctx
-  const file = readLayers(root)
-  if (file.recovery && !selected) {
-    const expected = offScript(file.layers, {
-      root,
-      app: system.app,
-      bundleId: 'com.openai.codex',
-      codexHome: flipPaths(system).codexHome,
-    })
-    if (!regularBytes(file.recovery.entry).equals(Buffer.from(expected)))
-      throw new Error('private recovery entry changed; preserve existing authority')
+  if (settleTerminalRecovery(ctx) && !selected) {
     recoveryNotice(ctx)
     return
   }
+  const file = readLayers(root)
+  if (file.recovery && !selected) {
+    const settle = validateRetainedRecovery(ctx, file)
+    settle?.(() => refreshRecoveryBaseline(root))
+    recoveryNotice(ctx)
+    return
+  }
+  assertNoRecoveryPublication(root)
   const pins = new Set(file.recovery?.pinnedLibs ?? [])
-  const controlLib = file.recovery?.controlLib ?? executingLib()
+  const controlLib = executingLib()
   pins.add(controlLib)
   if (selected) pins.add(selected)
   const snapshot = ctx.deps.currentSnapshot()
   if (snapshot.libDir) pins.add(snapshot.libDir)
-  file.recovery = { entry: recoveryPaths(root).entry, controlLib, pinnedLibs: [...pins] }
+  if (file.recovery) {
+    // Add pins without claiming that replacement bytes have already landed.
+    file.recovery.pinnedLibs = [...pins]
+    writeLayers(root, file)
+  }
   // Publish the private Node-free entry before this flip can downgrade a public CLI.
   publishRecovery({
     root,
@@ -143,11 +147,16 @@ export function prepareRecovery(ctx: FlipContext, selected?: string): void {
     bundleId: 'com.openai.codex',
     codexHome: flipPaths(system).codexHome,
   })
-  writeLayers(root, file)
+  const published = readLayers(root)
+  published.recovery = { entry: recoveryPaths(root).entry, controlLib, pinnedLibs: [...pins] }
+  writeLayers(root, published)
+  refreshRecoveryBaseline(root)
+  recoveryNotice(ctx)
+}
+function refreshRecoveryBaseline(root: string): void {
   const milestone = activeUpgrade(root)
   const baseline = readM2Baseline(root, milestone)
   if (baseline && baseline.phase !== 'rolled-back') refreshM2LayersHash(root, milestone)
-  recoveryNotice(ctx)
 }
 export function freeze(ctx: FlipContext, expect: Expect): FrozenIdentity | undefined {
   if (expect === 'vanilla') return undefined

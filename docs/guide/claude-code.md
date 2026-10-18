@@ -18,6 +18,49 @@ GPT default affects future sessions. GPT aliases such as `[1m]` retain their
 requested name; they do not promise a million-token GPT context. The backend's
 validated catalog determines the actual context budget and supported effort.
 
+## Explicit native Claude entry
+
+Use the additive launcher when you want a native Claude session:
+
+```bash
+anyengine claude -- --model sonnet
+anyengine claude --native -- --remote-control
+anyengine claude --routed -- --model 'gpt-<available-model>'
+```
+
+Native mode is the default for **`anyengine claude` only**. It prepends exactly
+`--settings '{"env":{"ANTHROPIC_BASE_URL":"https://api.anthropic.com"}}'` for
+that process. It uses the configured `claude.cli` executable, or `claude` on
+PATH when unset, and inherits your working directory, terminal and environment.
+Normal authentication, trust, hooks, permissions, managed policy and settings
+sources still apply. It does not use the adapter's filtered child environment
+or disable any settings sources.
+
+The interactive launcher requires Node.js 24+ with process replacement support
+on macOS or Linux. Both the public entry and controller replace themselves so
+terminal signals reach Claude directly. Executable lookup failures and caught
+JavaScript exceptions use fixed diagnostics. An OS-level execution failure can
+instead abort Node and print its diagnostics on some Node 24 releases, including
+when an executable script names a missing interpreter. Check or reinstall the
+configured executable in that case.
+
+For Remote Control, start interactive Claude with `--remote-control`. This
+entry refuses the standalone `remote-control` server command because that
+command does not support the settings overlay. Vendor account, policy and
+Remote Control eligibility requirements still apply.
+
+Native mode reserves `--settings` and refuses an additional settings flag.
+Explicit GPT model, fallback-model and agent selections require `--routed`.
+Routed mode forwards your Claude arguments unchanged and retains the installed
+Claude/GPT routing; it does not install or enable routing. Put launcher mode
+options before the first `--`, and Claude arguments after it. Claude's own
+`--` delimiter can then precede literal prompt text.
+
+This launcher performs no settings migration. The installed global routing,
+saved model defaults and picker rows remain as configured, and **bare
+`claude` retains its existing behavior**. If your saved default is GPT, select
+a Claude model explicitly for a native session, as in the first example.
+
 ## Recovery
 
 For an installation upgraded through the milestones, first restore M2 with

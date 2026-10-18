@@ -323,9 +323,9 @@ function recordPublic(root: string, writer: LayerWriter, publish: OnRecord): voi
 }
 function pinned(root: string, plan: OnPlan): void {
   const file = readLayers(root)
-  const controlLib =
-    file.recovery?.controlLib ?? resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-  const pins = new Set(file.recovery?.pinnedLibs ?? [controlLib])
+  const controlLib = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+  const pins = new Set(file.recovery?.pinnedLibs ?? [])
+  pins.add(controlLib)
   pins.add(plan.libDir)
   for (const layer of file.layers)
     for (const change of layer.changes) {
@@ -449,6 +449,9 @@ export function applyOnFiles(
   if (options.dryRun) return describeFiles(root, plan, files, result, removing, rc, adoption)
   publishRecovery(recovery)
   if (adoption && 'layer' in adoption) {
+    // Publication may have advanced the controller; do not restore a stale record.
+    const recovery = readLayers(root).recovery
+    if (recovery) file.recovery = recovery
     file.layers.push(adoption.layer)
     writeLayers(root, file)
     result.adopted = true

@@ -8,6 +8,7 @@ import { enginePaths } from '../src/anyengine-config.mjs'
 import { BRIDGE_LINE, BRIDGE_LINE_GPT } from '../src/bridge-instructions.mjs'
 import { routedTurnModel } from '../src/codex-models.mjs'
 import type { UpstreamThreadInfo } from '../src/codex-mux.mjs'
+import { tailJsonl } from '../src/control-logs.mjs'
 import { markDegraded, markProven, proofKey } from '../src/degraded.mjs'
 import { DEFAULT_POSTURE, noLooser, postureContext } from '../src/posture.mjs'
 import { adapterOwns } from '../src/router-claim-client.mjs'
@@ -336,6 +337,35 @@ function adapterWith(root: string, url: string, extra: NodeJS.ProcessEnv = {}) {
   closers.push(() => client.close())
   return client
 }
+// Only this fixture child's admission decision is useful here. Never emit the
+// whole debug log, URLs, environment, or arbitrary error/degradation text.
+function routerLinkDiagnostics(root: string, pid: number | undefined): unknown {
+  if (pid === undefined) return 'adapter not launched'
+  const reasons = new Set([
+    'catalog marked v1',
+    'the router did not answer healthy within 500 ms',
+    'native fan-out is not proven for this lib, app, codex and settings',
+    'native fan-out is not proven for this running lib, app, codex and settings',
+    'router Claude mode differs from adapter settings',
+    'router configuration or health is unavailable',
+    'invalid router configuration',
+    'native router settings disabled',
+  ])
+  try {
+    return tailJsonl(join(root, 'home/debug.jsonl'), 32_768)
+      .filter((event) => event.event === 'router.link' && event.pid === pid)
+      .map((event) => ({
+        attached: event.attached === true,
+        fanout: event.fanout === 'native' || event.fanout === 'bridge' ? event.fanout : 'unknown',
+        reason:
+          typeof event.reason === 'string' && reasons.has(event.reason)
+            ? event.reason
+            : 'details omitted',
+      }))
+  } catch {
+    return 'router.link diagnostics unavailable'
+  }
+}
 const argvOf = (root: string): string =>
   JSON.parse(readFileSync(join(root, 'argv.json'), 'utf8')).argv.join(' ')
 const requestsOf = (root: string): Wire[] =>
@@ -532,7 +562,35 @@ test('native model-mode adapter ownership admits a real router trampoline turn a
   h.scenario('plan')
   prove(h.root, true)
   h.runtime.fanout.observeCatalog(h.backend.models)
+  let completed = false
+  let adapterPid: number | undefined
+  t.after(() => {
+    if (!completed)
+      t.diagnostic(JSON.stringify({ routerLinks: routerLinkDiagnostics(h.root, adapterPid) }))
+  })
+  // Warm the real health hook's isolated fake-version probe before the child's
+  // fixed 500 ms health deadline; readiness still requires the full native proof.
+  const healthResponse = await fetch(h.router.baseUrl.replace('/backend-api/codex', '/health'), {
+    signal: AbortSignal.timeout(30000),
+  })
+  assert.equal(healthResponse.status, 200)
+  const health = asRecord(await healthResponse.json())
+  assert.equal(health.ok, true)
+  assert.equal(health.mode, 'model')
+  assert.equal(asRecord(health.faults).hookErrors, 0)
+  assert.equal(asRecord(health.faults).unhandledRejections, 0)
+  assert.deepEqual(health.proofKey, proofKey(h.root, { codexVersion: () => '0.153.4-fake' }))
+  assert.equal(asRecord(health.fanout).path, 'native')
+  const admitted = await linkRouter(['app-server'], {
+    root: h.root,
+    env: envFor(h.router.baseUrl),
+    codexBinary: fakeCodexAt(h.root),
+  })
+  assert.equal(admitted.state.attached, true)
+  assert.equal(admitted.state.fanout, 'native')
+  assert.equal(routerServesClaude(), true)
   const client = adapterWith(h.root, h.router.baseUrl)
+  adapterPid = client.child.pid
   await initialize(client)
   const started = await client.request('thread/start', {
     model: 'opus',
@@ -558,6 +616,7 @@ test('native model-mode adapter ownership admits a real router trampoline turn a
   assert.equal(denied.at(-1)?.type, 'response.failed')
   assert.equal(h.calls().filter((call) => call.args?.includes('-p')).length, 1)
   await client.close()
+  completed = true
 })
 
 test('adapter fallback handover creates GPT with the bridge line and keeps it on resume', async () => {

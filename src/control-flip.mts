@@ -49,6 +49,7 @@ import { activeUpgrade, needsMilestoneBaseline, retireM2Upgrade } from './contro
 import type { FlipMarker } from './control-marker.mjs'
 import type { Expect, FrozenIdentity } from './control-postflight.mjs'
 import { proveRollback } from './control-proof.mjs'
+import { settleTerminalRecovery } from './control-recovery-validation.mjs'
 import { clearDegraded, markProven, type ProofKey, sameKey } from './degraded.mjs'
 import { validateNativeReceipt } from './smoke-evidence.mjs'
 
@@ -177,6 +178,9 @@ export async function runOn(ctx: FlipContext, options: OnOptions): Promise<numbe
       paths: flipPaths(ctx.system),
     })
     if (planned.refused) throw new Error(planned.refused)
+    // A completed older Bash Off may have removed the live journal while a
+    // publication intent remains. Validate and archive it under this lock.
+    if (!options.dryRun) settleTerminalRecovery(ctx)
     proof(ctx, plan)
     if (options.dryRun) {
       previewOn(ctx, plan, planned)

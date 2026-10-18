@@ -17,6 +17,7 @@ const help = `Usage: anyengine <command>
   on | off | restart | rollback
   config | mode | cache | smoke | codex
   accounts | limits | sessions | desktop
+  claude [--native | --routed] [-- CLAUDE_ARGS...] (native for this command only)
   desktop chatgpt on|off|restart|status|doctor
   desktop claude picker|tools|sessions <command>
   Legacy desktop commands remain aliases.
@@ -56,7 +57,25 @@ if (Number(process.versions.node.split('.')[0]) < 24) {
         join(source, 'dist/src/adapter.mjs'),
         ...args,
       ]
-  const result = spawnSync('/bin/bash', argv, { stdio: 'inherit' })
-  if (result.error) console.error(`anyengine: ${result.error.message}`)
-  process.exitCode = result.status ?? 1
+  if (args[0] === 'claude') {
+    if (!process.execve) {
+      console.error(
+        'anyengine: Claude launch requires process.execve on Node.js 24+ (macOS or Linux)',
+      )
+      process.exitCode = 1
+    } else {
+      try {
+        // Keep the original PID and foreground terminal semantics through the
+        // public entry as well as the controller. Other controls retain spawn.
+        process.execve('/bin/bash', ['/bin/bash', ...argv], process.env)
+      } catch {
+        console.error('anyengine: could not start the Claude launcher')
+        process.exitCode = 1
+      }
+    }
+  } else {
+    const result = spawnSync('/bin/bash', argv, { stdio: 'inherit' })
+    if (result.error) console.error(`anyengine: ${result.error.message}`)
+    process.exitCode = result.status ?? 1
+  }
 }

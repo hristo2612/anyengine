@@ -22,15 +22,25 @@ import { join, resolve } from 'node:path'
 import test, { after } from 'node:test'
 import { DEFAULT_CONFIG } from '../src/anyengine-config.mjs'
 import { runDoctor } from '../src/control-doctor.mjs'
-import { LayerWriter, readLayers, writeLayers } from '../src/control-layers.mjs'
+import { LayerWriter, readLayers, restoreChange, writeLayers } from '../src/control-layers.mjs'
 import { readM2Baseline } from '../src/control-m2-upgrade.mjs'
+import {
+  beginRecoveryPublication,
+  inspectRecoveryPublication,
+  publicationPath,
+} from '../src/control-recovery-publication.mjs'
+import { settleTerminalRecovery } from '../src/control-recovery-validation.mjs'
+import { offScript } from '../src/control-scripts.mjs'
 import { M2_FIXTURES } from '../src/fixture-pins.mjs'
 import { codexCompatVersion } from '../src/util.mjs'
 import { killChildren, spawn, waitForOutput } from './helpers/children.mjs'
 import { startFakeBackend } from './helpers/fake-backend.mjs'
 import { fakeSystem } from './helpers/fake-system.mjs'
+import { retained, tree } from './helpers/retained-recovery.mjs'
+import { removeTempDirs } from './helpers/tmp.mjs'
 
 after(() => killChildren())
+after(removeTempDirs)
 
 const installLib = resolve('scripts/install-lib.mjs')
 const libVerify = resolve('scripts/lib-verify.mjs')
@@ -665,4 +675,74 @@ esac
     await backend.close()
     rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('terminal pending publication refuses installer writes/pruning until Node settlement', async () => {
+  const s = await retained()
+  const source = makeSource(s.root)
+  for (const version of ['A', 'B', 'C']) {
+    const installed = install(s.root, source, version, {}, fakeNpm, [
+      '--no-activate',
+      '--keep',
+      '8',
+    ])
+    assert.equal(installed.status, 0, installed.stderr)
+  }
+  assert.equal(
+    beginRecoveryPublication(
+      s.root,
+      join(s.root, 'lib/B'),
+      Buffer.from(offScript(readLayers(s.root).layers, s.options)),
+      s.options,
+    ),
+    true,
+  )
+  // Make milestone preparation eligible while the live router journal exists.
+  // Pending publication must win before any baseline preparation or stage write.
+  writeFileSync(join(source, 'dist/src/control-claude-layer.mjs'), '// milestone source fixture\n')
+  const allVersions = versions(s.root)
+  const npmCalls = join(s.root, 'npm-must-not-run.jsonl')
+  const refuse = () => {
+    for (const flags of [[], ['--no-activate'], ['--activate', 'B']]) {
+      const before = tree(s.root)
+      const result = install(s.root, source, 'D', { FAKE_NPM_ARGV_FILE: npmCalls }, fakeNpm, flags)
+      assert.equal(result.status, 1, result.stdout + result.stderr)
+      assert.match(result.stderr, /unfinished recovery publication.*Node Off/)
+      assert.deepEqual(tree(s.root), before, 'refusal preserves every library and authority inode')
+      assert.deepEqual(versions(s.root), allVersions)
+      assert.ok(!existsSync(npmCalls), 'refusal precedes npm/staging')
+      assert.ok(!existsSync(join(s.root, 'm2-upgrade.json')), 'refusal precedes milestone writes')
+    }
+  }
+  refuse()
+
+  // Model the terminal state produced by the actual Bash full Off regression:
+  // physical completion records and the original public baseline survive,
+  // while layers.json is gone and the Node-only publication intent is retained.
+  const file = readLayers(s.root)
+  for (const layer of file.layers) {
+    for (const change of layer.changes.filter(
+      (row) => row.target === join(s.root, 'bin/anyengine-off'),
+    ))
+      assert.notEqual(restoreChange(change, layer.rollbackDir, false).outcome, 'left-changed')
+    writeFileSync(join(layer.rollbackDir, 'POPPED'), '', { mode: 0o600 })
+  }
+  unlinkSync(s.paths.journal)
+  assert.equal(inspectRecoveryPublication(s.root)?.terminal, true)
+  refuse()
+
+  assert.equal(
+    settleTerminalRecovery(s.ctx),
+    true,
+    'Node owner validates and settles terminal evidence',
+  )
+  assert.ok(!existsSync(publicationPath(s.root)))
+  assert.ok(!existsSync(s.paths.journal), 'settlement must not recreate the retired layer journal')
+  const staged = install(s.root, source, 'D', {}, fakeNpm, ['--no-activate'])
+  assert.equal(staged.status, 0, staged.stdout + staged.stderr)
+  assert.ok(existsSync(join(s.root, 'lib/D/install-manifest.json')))
+  assert.ok(
+    versions(s.root).length < allVersions.length,
+    'pruning resumes only after Node settlement',
+  )
 })

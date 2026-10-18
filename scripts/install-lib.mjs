@@ -223,6 +223,11 @@ function recoveryPins() {
 let pins
 try {
   const root = dirname(destRoot)
+  // An older Bash full Off may retire layers.json while publication still
+  // needs its controllers. Only the locked Node owner can settle that intent.
+  // lstat also refuses dangling links and malformed/non-file publication names.
+  if (lstatSync(join(root, 'recovery/publication.json'), { throwIfNoEntry: false }))
+    throw new Error('unfinished recovery publication; use Node Off to settle it before installing')
   // Pin the verified immediate M1 before stageAndInstall or pruning can run.
   if (
     existsSync(join(source, 'dist/src/control-claude-layer.mjs')) &&
