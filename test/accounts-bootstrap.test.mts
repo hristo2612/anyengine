@@ -109,7 +109,7 @@ test('interrupted bootstrap opens only after joined families and credential layo
   }
 })
 
-for (const conflict of ['canonical-copy', 'foreign-link', 'overlay-only']) {
+for (const conflict of ['canonical-copy', 'foreign-link']) {
   test(`completed bootstrap preserves and refuses ${conflict} overlay conflicts`, async () => {
     const paths = await accountFixture()
     const ledger = new AccountLedger(paths)
@@ -142,6 +142,29 @@ for (const conflict of ['canonical-copy', 'foreign-link', 'overlay-only']) {
     }
   })
 }
+
+// A file only the overlay holds is new Codex state, adopted rather than refused.
+test('completed bootstrap adopts overlay-only state into the canonical home', async () => {
+  const paths = await accountFixture()
+  const ledger = new AccountLedger(paths)
+  const canonical = join(paths.canonical, 'hooks.json')
+  const overlay = join(paths.overlay, 'hooks.json')
+  const auth = lstatSync(join(paths.canonical, 'auth.json'))
+  try {
+    ledger.metadata.db.exec(
+      "CREATE TABLE account_bootstrap(version TEXT PRIMARY KEY,completed INTEGER NOT NULL); INSERT INTO account_bootstrap VALUES('0.160.0',1)",
+    )
+    writeFileSync(overlay, 'independent hooks', { mode: 0o600 })
+    await bootstrapAccounts(ledger, { binary: '/must-not-spawn', version: '0.160.0', env: {} })
+    assert.equal(readlinkSync(overlay), canonical)
+    assert.equal(readFileSync(canonical, 'utf8'), 'independent hooks')
+    assert.equal(lstatSync(join(paths.canonical, 'auth.json')).ino, auth.ino)
+    assert.equal(readlinkSync(join(paths.overlay, 'auth.json')), join(paths.canonical, 'auth.json'))
+    assert.equal(ledger.state().phase, 'open')
+  } finally {
+    ledger.close()
+  }
+})
 
 test('completed bootstrap adds native hooks without changing the active managed account', async () => {
   const paths = await accountFixture()

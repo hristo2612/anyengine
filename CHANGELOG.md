@@ -27,6 +27,19 @@ semver; while the major version is 0, a minor version may change behavior.
   protection, preventing a stale "A managed turn is already running" error.
   Real concurrent starts and account freezes still refuse work.
 
+### Account overlay
+
+- A new top-level file that Codex writes into the account overlay no longer
+  stops the adapter. Codex runs with `CODEX_HOME` at the overlay, so a file a
+  newer Codex introduces (here `external_agent_session_imports.json`) appeared
+  there as a real file, and every later start failed with "Unshared overlay
+  entry", which ChatGPT reported as "Org settings could not be loaded". When
+  `~/.codex` has no entry of that name, startup now moves the file there
+  atomically and links it back; an interrupted move finishes on the next start.
+  A name present in both homes still refuses startup and names both
+  directories. Databases and their sidecars are never adopted while other
+  surfaces may hold them open, and `auth.json` keeps its account rules.
+
 ### Managed updates
 
 - Reobserve postflight readiness during bounded startup checks. A short-lived
